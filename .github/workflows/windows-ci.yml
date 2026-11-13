@@ -49,20 +49,7 @@ jobs:
           $reportPath = Join-Path $output 'face-forge-report.json'
           if (!(Test-Path $reportPath)) { throw 'FACE FORGE did not write its conversion report.' }
           $report = Get-Content $reportPath -Raw | ConvertFrom-Json
-          $hasHead = @($report.sourceModels | Where-Object { $_ -match '(^|/)face_high\.fmdl
-      - run: npm test
-      - run: npm run build
-      - run: npm run dist:win
-      - run: node scripts/verify-release-installer.mjs
-      - uses: actions/upload-artifact@v7
-        with:
-          name: face-forge-windows-${{ github.sha }}
-          path: |
-            release/*.exe
-            release/*.sha256
-          if-no-files-found: error
-          retention-days: 14
- }).Count -gt 0
+          $hasHead = @($report.sourceModels | Where-Object { $_.ToLower().EndsWith('face_high.fmdl') }).Count -gt 0
           if ($report.ok -ne $true -or $report.targetPlayerId -ne '79205' -or $report.complete.success -ne $true -or $report.cpkFiles.Count -lt 1 -or !$hasHead) { throw 'FACE FORGE report failed the real-package acceptance checks.' }
           "FACE_FORGE_E2E_OUTPUT=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: npm run typecheck
