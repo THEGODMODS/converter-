@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { ArrowDownUp, ArrowRight, BadgeCheck, Box, CheckCircle2, ChevronDown, CircleHelp, FileArchive, FileImage, FileSearch, FolderOpen, Gauge, HardDrive, History, Layers3, Package, ScanFace, ShieldCheck, Sparkles, UploadCloud, XCircle } from "lucide-react";
-import type { FaceProject } from "./types";
+import type { FaceProject, TextureColorSpace } from "./types";
 
 type Direction = "pes2021-to-pes2017" | "pes2017-to-pes2021";
 const formatBytes = (bytes: number) => bytes < 1024 ? bytes + " B" : bytes < 1024*1024 ? (bytes/1024).toFixed(1)+" KB" : (bytes/1024/1024).toFixed(1)+" MB";
@@ -11,6 +11,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [textureColorSpace,setTextureColorSpace] = useState<TextureColorSpace>("SRGB");
+  const [textureBusy,setTextureBusy] = useState(false);
+  const [textureResult,setTextureResult] = useState("");
   const target = direction === "pes2021-to-pes2017" ? "PES 2017" : "PES 2021";
   const source = direction === "pes2021-to-pes2017" ? "PES 2021" : "PES 2017";
   const canConvert = false;
@@ -36,6 +39,12 @@ export default function App() {
     if (!path) { setError("Drop a face folder from Windows Explorer, not an individual file."); return; }
     await inspect(path);
   };
+  const runTextureLab = async () => {
+    setTextureBusy(true); setTextureResult("");
+    try { const result=await window.faceForge.convertTextureFile(textureColorSpace); if(result) setTextureResult("Converted "+result.format+" "+result.width+"×"+result.height+" → "+result.destination); }
+    catch(e) { setTextureResult(e instanceof Error?e.message:"Texture conversion failed."); }
+    finally { setTextureBusy(false); }
+  };
   const directionLabel = useMemo(() => direction === "pes2021-to-pes2017" ? "NEW-GEN → CLASSIC" : "CLASSIC → NEW-GEN", [direction]);
 
   return <div className="shell">
@@ -46,14 +55,14 @@ export default function App() {
       <button className="nav-item" onClick={() => setProject(null)}><History size={17}/> Recent projects</button>
       <div className="side-label tools-label">TOOLKIT</div>
       <div className="tool-link"><FileSearch size={16}/> Face inspector</div>
-      <div className="tool-link"><FileImage size={16}/> Texture lab <small>SOON</small></div>
+      <button className="tool-link" onClick={runTextureLab} disabled={textureBusy}><FileImage size={16}/> Texture lab <small>{textureBusy?"WORKING":"DDS ↔ FTEX"}</small></button><select className="color-select" value={textureColorSpace} onChange={e=>setTextureColorSpace(e.target.value as TextureColorSpace)} aria-label="Texture color space"><option value="SRGB">Color / diffuse</option><option value="NORMAL">Normal map</option><option value="LINEAR">Linear data</option></select>
       <div className="tool-link"><Box size={16}/> 3D preview <small>SOON</small></div>
       <div className="tool-link"><Package size={16}/> CPK builder <small>SOON</small></div>
       <div className="sidebar-bottom"><div className="free-pill"><Sparkles size={14}/> FREE FOREVER</div><div className="version">FACE FORGE · PREVIEW 0.1.0</div></div>
     </aside>
     <main className="main">
       <header className="topbar"><div><div className="eyebrow">THE MODDING WORKSHOP</div><h1>Face Converter</h1><p>Move face projects between PES generations. Cleanly. Safely. Freely.</p></div><div className="top-status"><span className="status-led"/> LOCAL WORKSPACE <ChevronDown size={14}/></div></header>
-      <section className="direction-card">
+      {textureResult && <div className="texture-toast">{textureResult}</div>}\n      <section className="direction-card">
         <div className="direction-head"><div><span className="eyebrow">CONVERSION ROUTE</span><h2>Choose your direction</h2></div><div className="route-tag"><ArrowDownUp size={14}/> TWO-WAY ENGINE</div></div>
         <div className="routes">
           <button className={direction==="pes2021-to-pes2017"?"route selected":"route"} onClick={()=>{setDirection("pes2021-to-pes2017");setProject(null)}}><div className="game-icon newer">21</div><div className="route-copy"><strong>PES 2021</strong><span>FMDL · FTEX</span></div><ArrowRight className="route-arrow" size={20}/><div className="game-icon older">17</div><div className="route-copy"><strong>PES 2017</strong><span>MODEL · DDS</span></div><div className="route-radio"/></button>
