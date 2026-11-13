@@ -10,6 +10,7 @@ describe("face package dependency resolver",()=>{
   expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.ftex"]);
  });
  it("resolves relative MTL sampler paths against the material file directory",()=>{const result=resolveFaceDependencies([{path:"#Win/face.mtl",kind:"material-pes2017",assetReferences:["./face_c.dds","textures/face_n.dds"]},{path:"#Win/face_c.dds",kind:"texture-pes2017"},{path:"#Win/textures/face_n.dds",kind:"texture-pes2017"}]);expect(result.map(item=>item.status)).toEqual(["resolved","resolved"]);expect(result[0].candidates).toEqual(["#Win/face_c.dds"]);});
+ it("does not basename-match MTL paths that escape the face project root",()=>{const result=resolveFaceDependencies([{path:"#Win/face.mtl",kind:"material-pes2017",assetReferences:["../../outside/face.dds"]},{path:"backup/face.dds",kind:"texture-pes2017"}]);expect(result[0].status).toBe("missing");expect(result[0].candidates).toEqual([]);});
  it("does not guess when two textures share a basename",()=>{
   const result=resolveFaceDependencies([
    {path:"face.fmdl",kind:"model-pes2021",assetReferences:["face_bsm_alp.ftex"]},
