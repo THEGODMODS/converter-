@@ -5,7 +5,7 @@ const MAX_MODEL_BYTES=1024*1024*1024;
 export function decodeWesysModel(input:Buffer):{data:Buffer;wrapperVersion:Buffer|null}{
  if(input.length>=16&&input.toString("ascii",3,8)==="WESYS"){
   const compressedSize=input.readUInt32LE(8),uncompressedSize=input.readUInt32LE(12);
-  if(compressedSize===0||compressedSize>input.length-16||uncompressedSize===0||uncompressedSize>MAX_MODEL_BYTES)throw new Error("Invalid WESYS MODEL size header.");
+  if(compressedSize===0||compressedSize>input.length-16||uncompressedSize===0||uncompressedSize>MAX_MODEL_BYTES)throw new Error("Invalid WESYS compressed-size or uncompressed-size field.");
   if(compressedSize!==input.length-16)throw new Error("WESYS compressed-size field does not match the payload length.");
   let decoded:Buffer;try{decoded=inflateSync(input.subarray(16),{maxOutputLength:MAX_MODEL_BYTES});}catch{throw new Error("WESYS MODEL decompression failed or exceeded the safety limit.");}
   if(decoded.length!==uncompressedSize)throw new Error("WESYS uncompressed-size field does not match the decoded MODEL.");
