@@ -61,8 +61,9 @@ export async function convertFaceTextureDependencies(project:FaceProject,sourceR
    if(!samplers.length||samplers.some(sampler=>sampler.srgb===null))throw new Error("DDS-to-FTEX conversion needs an explicit sRGB setting in the source MTL sampler: "+dependency.reference);
    if(samplers.some(sampler=>sampler.srgb!==samplers[0].srgb))throw new Error("One DDS texture is bound with conflicting sRGB settings: "+dependency.reference);
    const srgb=samplers[0].srgb===true;
-   const normal=samplers.some(sampler=>/normal|bump|nrm/i.test(sampler.name));
-   if(samplers.some(sampler=>/normal|bump|nrm/i.test(sampler.name))&&!normal)throw new Error("One DDS texture is bound to conflicting normal and colour samplers: "+dependency.reference);
+   const normalFlags=samplers.map(sampler=>/normal|bump|nrm/i.test(sampler.name));
+   if(normalFlags.some(Boolean)&&!normalFlags.every(Boolean))throw new Error("One DDS texture is bound to conflicting normal and colour samplers: "+dependency.reference);
+   const normal=normalFlags.every(Boolean);
    const colorSpace:TextureColorSpace=srgb?"SRGB":normal?"NORMAL":"LINEAR";
    converted=ddsToFtex(input,colorSpace);
   }
