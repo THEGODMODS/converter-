@@ -1,6 +1,6 @@
 use std::{env, fs, io::Cursor, path::{Path,PathBuf}, process, sync::{Arc,Mutex}, time::{SystemTime,UNIX_EPOCH}};
 use crossbeam_channel::unbounded;
-use studio_core::{AppPaths,PipelineEvent,Settings,ShellRequest,StudioTool,ToolContext};
+use studio_core::{AppPaths,PipelineEvent,Severity,Settings,ShellRequest,StudioTool,ToolContext};
 use team_compiler::Tool as TeamCompilerTool;
 mod package_policy;
 mod cpk_extract;
@@ -677,10 +677,16 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
 
     let mut complete: Option<(bool, usize)> = None;
     let mut event_summaries = Vec::new();
+    let mut warning_summaries = Vec::new();
     for envelope in events_rx.try_iter() {
         match envelope.event {
             PipelineEvent::Complete { success, files_written, .. } => complete = Some((success, files_written)),
-            PipelineEvent::Message(message) => event_summaries.push(format!("{:?}", message)),
+            PipelineEvent::Message(message) => {
+                if message.severity == Severity::Warning {
+                    warning_summaries.push(format!("{message:?}"));
+                }
+                event_summaries.push(format!("{message:?}"));
+            }
             other => event_summaries.push(format!("{other:?}")),
         }
     }
@@ -723,11 +729,8 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         // Team Compiler run can still contain fidelity warnings (for example,
         // mesh_flags_dropped means the legacy MTL cannot represent no_shadow_cast).
         // Do not silently equate compiler success with a loss-free conversion.
-        "warnings": event_summaries.iter()
-            .filter(|event| event.contains("Warning"))
-            .take(500)
-            .collect::<Vec<_>>(),
-        "warningCount": event_summaries.iter().filter(|event| event.contains("Warning")).count(),
+        "warnings": warning_summaries.iter().take(500).collect::<Vec<_>>(),
+        "warningCount": warning_summaries.len(),
         "complete": complete.map(|(success, files_written)| serde_json::json!({"success":success,"filesWritten":files_written}))
     });
     let report_path = output.join("face-forge-report.json");
