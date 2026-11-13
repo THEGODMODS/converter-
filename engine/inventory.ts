@@ -20,7 +20,7 @@ async function inspectFile(rel:string,absolute:string,size:number,embedded?:Buff
  else if(ext===".ftex"){const x=inspectFtexHeader(data);kind=x.valid?"texture-pes2021":"invalid-ftex";valid=x.valid;details=x.details;}
  else if(ext===".dds"){const x=inspectDdsHeader(data);kind=x.valid?"texture-pes2017":"invalid-dds";valid=x.valid;details=x.details;}
  else if([".xml",".mtl"].includes(ext))kind="material-metadata";else if(ext===".bin"){if(data.toString("ascii",0,4)==="FACE"){try{const x=inspectFaceDiff(data);kind="face-diff";valid=true;details=["FACE diff metadata", "Eye scale: "+x.eyeScale.join(", "), "Mouth position: "+x.mouthPosition.join(", "), "Right eye position: "+x.rightEyePosition.join(", "), "Left eye position: "+x.leftEyePosition.join(", "),...x.warnings];}catch(error){kind="invalid-face-diff";valid=false;details=[error instanceof Error?error.message:"Invalid FACE diff binary."];}}else kind="auxiliary";}else if([".fpk",".fpkd",".kpfd"].includes(ext)){try{const archive=parseFpkArchive(data);kind=archive.kind==="fpk"?"container-fpk":"container-fpkd";packageReferences=archive.references;valid=true;details=["Fox FPK v2 archive",archive.entries.length+" embedded entries",archive.references.length+" package references"];if(ext===".kpfd")details.push("Fox archive signature validated despite the .kpfd extension.");}catch(error){kind=ext===".kpfd"?"container-kpfd-unknown":"invalid-fpk";valid=false;details=[error instanceof Error?error.message:"Invalid Fox archive."];}}else if(ext===".cpk")kind="container-cpk";else if([".png",".jpg",".jpeg"].includes(ext))kind="image-source";
- return {path:rel.replaceAll("\\","/"),bytes:size,kind,sha256:createHash("sha256").update(data).digest("hex"),formatValid:valid,formatDetails:details};
+ return {path:rel.replaceAll("\\","/"),bytes:size,kind,sha256:createHash("sha256").update(data).digest("hex"),formatValid:valid,formatDetails:details,assetReferences,packageReferences};
 }
 export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  const root=path.resolve(folder),rootStat=await lstat(root);if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("Choose a real face folder, not a shortcut or file.");
@@ -32,7 +32,7 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  const detectedGame=has21Model&&has17Model?"mixed":has21Model?"pes2021":has17Model?"pes2017":has21Texture&&has17Texture?"mixed":has21Texture?"pes2021":has17Texture?"pes2017":"unknown";
  const dependencies:FaceDependency[]=[];
  const textureFiles=files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
- const normalizeAsset=(value:string)=>value.replaceAll("\\\\","/").replace(/^\\/+/, "").replace(/^Assets\\//i,"").replace(/\\.(ftex|dds)$/i,"").toLowerCase();
+ const normalizeAsset=(value:string)=>value.split(String.fromCharCode(92)).join("/").replace(/^\\/+/, "").replace(/^Assets\\//i,"").replace(/\\.(ftex|dds)$/i,"").toLowerCase();
  for(const model of files.filter(file=>file.kind==="model-pes2021"&&file.assetReferences?.length)){
   for(const reference of model.assetReferences??[]){
    const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
