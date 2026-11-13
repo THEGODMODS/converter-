@@ -64,3 +64,7 @@
 .manifest-export{display:inline-flex;align-items:center;gap:7px;margin:8px 0 2px;padding:8px 10px;border:1px solid #34495b;border-radius:6px;background:#142230;color:#c6d9ec;font-size:8px;font-weight:900;letter-spacing:.65px;cursor:pointer}
 .manifest-export:hover:not(:disabled){border-color:#6b91b5;background:#1a3042;color:#fff}
 .manifest-export:disabled{opacity:.55;cursor:wait}
+
+.release-notice{display:flex;align-items:flex-start;gap:9px;margin:12px 0;padding:10px 12px;border:1px solid #6a5130;border-radius:7px;background:#241d14;color:#e8c58b;font-size:10px;line-height:1.55}
+.release-notice svg{flex:none;margin-top:1px;color:#e2ae5e}
+.release-notice b{font-weight:900;letter-spacing:.6px}
