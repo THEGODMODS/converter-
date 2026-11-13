@@ -19,5 +19,11 @@ e2e("real PES 2021 to PES 2017 package conversion fixture",()=>{
     expect(report.targetPlayerId).toBe("79205");
     expect(report.complete.success).toBe(true);
     expect(report.sourceModels.some((name:string)=>name.toLowerCase().endsWith("face_high.fmdl"))).toBe(true);
+    expect(report.sourceModels.some((name:string)=>name.toLowerCase().endsWith("fcl_hair.fmdl"))).toBe(true);
+    const preservedSidecars = Array.isArray(report.preservedSidecars) ? report.preservedSidecars as string[] : [];
+    for (const sidecar of preservedSidecars) {
+      const basename = path.posix.basename(sidecar.replaceAll("\\\\", "/")).toLowerCase();
+      expect(result.faceInspection.files.some(entry => path.posix.basename(entry.path).toLowerCase() === basename)).toBe(true);
+    }
   });
 });
