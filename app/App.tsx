@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import type { DragEvent } from "react";
 import { ArrowDownUp, ArrowRight, BadgeCheck, Box, CheckCircle2, ChevronDown, CircleHelp, FileArchive, FileImage, FileSearch, FolderOpen, Gauge, HardDrive, History, Layers3, Package, ScanFace, ShieldCheck, Sparkles, UploadCloud, XCircle } from "lucide-react";
 import type { FaceProject, TextureColorSpace } from "./types";
 
@@ -31,7 +32,7 @@ export default function App() {
     const folder = await window.faceForge.chooseFolder();
     if (folder) await inspect(folder);
   };
-  const onDrop = async (event: React.DragEvent) => {
+  const onDrop = async (event: DragEvent) => {
     event.preventDefault(); setDragging(false);
     const file = event.dataTransfer.files[0];
     if (!file) return;
