@@ -4,7 +4,7 @@ export type Vec4=[number,number,number,number];
 export type FaceVertex={position:Vec3;normal?:Vec3;tangent?:Vec4;uvs:Vec2[];color?:Vec4;boneIndices:number[];boneWeights:number[]};
 export type FaceMaterial={name:string;shader:string|null;textures:Record<string,string>;parameters:Record<string,number|string|boolean>};
 export type FaceMesh={name:string;materialIndex:number;vertices:FaceVertex[];indices:number[];lodRanges?:Array<[number,number]>};
-export type FaceBone={name:string;parentIndex:number|null;inverseBindMatrix:number[]};
+export type FaceBone={name:string;parentIndex:number|null;inverseBindMatrix?:number[];sourceTransform?:number[]};
 export type FaceMorphTarget={name:string;meshIndex:number;positionDeltas:Vec3[];normalDeltas?:Vec3[]};
 export type FaceScene={schemaVersion:1;sourceFormat:"PES2017_MODEL"|"PES2021_FMDL";meshes:FaceMesh[];materials:FaceMaterial[];bones:FaceBone[];morphTargets:FaceMorphTarget[];metadata:Record<string,string|number|boolean>};
 export type ValidationIssue={severity:"error"|"warning";code:string;message:string;mesh?:string};
@@ -34,8 +34,9 @@ export function validateFaceScene(scene:FaceScene):ValidationIssue[]{
  }
  for(const [i,bone] of scene.bones.entries()){
   if(bone.parentIndex!==null&&(bone.parentIndex<0||bone.parentIndex>=scene.bones.length||bone.parentIndex===i))issues.push({severity:"error",code:"BONE_PARENT",message:"Bone parent reference is invalid: "+bone.name});
-  if(bone.inverseBindMatrix.length!==12&&bone.inverseBindMatrix.length!==16)issues.push({severity:"error",code:"BONE_MATRIX",message:"Bone bind matrix must contain 12 or 16 values: "+bone.name});
-  if(!bone.inverseBindMatrix.every(finite))issues.push({severity:"error",code:"BONE_MATRIX_FINITE",message:"Bone bind matrix contains non-finite values: "+bone.name});
+  if(bone.inverseBindMatrix&&bone.inverseBindMatrix.length!==12&&bone.inverseBindMatrix.length!==16)issues.push({severity:"error",code:"BONE_MATRIX",message:"Bone bind matrix must contain 12 or 16 values: "+bone.name});
+  if(bone.inverseBindMatrix&&!bone.inverseBindMatrix.every(finite))issues.push({severity:"error",code:"BONE_MATRIX_FINITE",message:"Bone bind matrix contains non-finite values: "+bone.name});
+  if(bone.sourceTransform&&!bone.sourceTransform.every(finite))issues.push({severity:"error",code:"BONE_SOURCE_TRANSFORM",message:"Bone source transform contains non-finite values: "+bone.name});
  }
  for(const morph of scene.morphTargets){const mesh=scene.meshes[morph.meshIndex];if(!mesh){issues.push({severity:"error",code:"MORPH_MESH",message:"Morph target references a missing mesh: "+morph.name});continue;}if(morph.positionDeltas.length!==mesh.vertices.length)issues.push({severity:"error",code:"MORPH_VERTEX_COUNT",message:"Morph target vertex count does not match its mesh: "+morph.name});if(morph.normalDeltas&&morph.normalDeltas.length!==mesh.vertices.length)issues.push({severity:"error",code:"MORPH_NORMAL_COUNT",message:"Morph normal count does not match its mesh: "+morph.name});}
  return issues;
