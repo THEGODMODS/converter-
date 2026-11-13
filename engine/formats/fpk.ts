@@ -9,7 +9,10 @@ function readU64(data:Buffer,offset:number,label:string):number{const value=data
 function normalizeVirtualName(value:string):string{
  const name=value.replace(/\\/g,"/");
  const normalized=name.startsWith("/Assets/")?name.slice(1):name;
- if(!normalized.startsWith("Assets/")||normalized.startsWith("/")||/^[a-z]:/i.test(normalized)||normalized.split("/").some(part=>!part||part==="."||part===".."))fail("entry contains an unsafe or non-Assets virtual path.");
+ // Real Fox face packages may store members relative to the package root
+ // (for example "face_high.fmdl") instead of under "/Assets/...".
+ // Preserve safe relative names; reject absolute paths and traversal.
+ if(normalized.startsWith("/")||/^[a-z]:/i.test(normalized)||normalized.split("/").some(part=>!part||part==="."||part===".."))fail("entry contains an unsafe virtual path.");
  if(Buffer.byteLength(name,"utf8")>4096)fail("entry name exceeds 4096 UTF-8 bytes.");
  return normalized;
 }

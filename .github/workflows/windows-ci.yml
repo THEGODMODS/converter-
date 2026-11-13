@@ -1,7 +1,7 @@
 name: Windows quality
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, "feature/**", "fix/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -29,17 +29,85 @@ jobs:
           $upstream = Join-Path $env:RUNNER_TEMP 'unlimited-tool-works'
           git clone --filter=blob:none --no-checkout https://github.com/the4chancup/unlimited-tool-works.git $upstream
           git -C $upstream checkout ca4fe4a32500ffc2d932a1a669a42a6f932d571a
-          cargo test --manifest-path (Join-Path $upstream 'Cargo.toml') -p model_convert -p fpk -p ftex
+          cargo test --manifest-path (Join-Path $upstream 'Cargo.toml') -p model_convert -p fpk -p ftex -p team_compiler -p studio_core
+      - name: Verify incomplete upstream archive is rejected safely
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $upstream = Join-Path $env:RUNNER_TEMP 'unlimited-tool-works'
+          $fixture = Join-Path $upstream 'crates/tools/team_compiler/tests/fixtures/tracer/red/Asset/model/character/face/real/79205/#Win'
+          $input = Join-Path $env:RUNNER_TEMP 'face-forge-incomplete-fixture'
+          $output = Join-Path $env:RUNNER_TEMP 'face-forge-rejected-output'
+          if (!(Test-Path (Join-Path $fixture 'face.fpk')) -or !(Test-Path (Join-Path $fixture 'face.fpkd'))) { throw 'Pinned upstream archive fixture is incomplete.' }
+          if (Test-Path $input) { Remove-Item $input -Recurse -Force }
+          if (Test-Path $output) { Remove-Item $output -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $input,$output | Out-Null
+          Copy-Item (Join-Path $fixture 'face.fpk') $input
+          Copy-Item (Join-Path $fixture 'face.fpkd') $input
+          $diagnostic = & cargo run --quiet --manifest-path native/Cargo.toml -- convert-face-folder --input $input --target 2017 --player-id 79205 --out $output 2>&1
+          $exit = $LASTEXITCODE
+          $message = $diagnostic -join "`n"
+          if ($exit -eq 0) { throw 'FACE FORGE accepted an upstream fixture that contains no face_high.fmdl; this must fail closed.' }
+          if ($message -notmatch 'face_high\.fmdl') { throw "FACE FORGE failed for an unexpected reason: $message" }
+          if (@(Get-ChildItem -Path $output -Filter '*.cpk' -File).Count -gt 0) { throw 'FACE FORGE left a partial CPK after rejecting the incomplete source.' }
+          'Confirmed: the pinned upstream 79205 archive is a hair-only/incomplete fixture and is rejected without publishing output.'
+          # The expected cargo failure must not become the PowerShell step exit code.
+          $global:LASTEXITCODE = 0
+      - name: Synthetic hair-geometry package smoke test (not face validation)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $upstream = Join-Path $env:RUNNER_TEMP 'unlimited-tool-works'
+          $fixture = Join-Path $upstream 'crates/tools/team_compiler/tests/fixtures/tracer/old/egg Tracer/Faces/XXX05 - The Chad Stormworks Player'
+          $input = Join-Path $env:RUNNER_TEMP 'face-forge-structural-e2e-input'
+          $output = Join-Path $env:RUNNER_TEMP 'face-forge-structural-e2e-output'
+          foreach ($name in @('fcl_hair.fmdl','fcl_hair_sim.skl','fcl_hair_sim.fclo','face_diff.bin','shirt.dds','portrait.dds')) {
+            if (!(Test-Path (Join-Path $fixture $name))) { throw "Pinned structural fixture is missing $name." }
+          }
+          if (Test-Path $input) { Remove-Item $input -Recurse -Force }
+          if (Test-Path $output) { Remove-Item $output -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $input,$output | Out-Null
+          Copy-Item (Join-Path $fixture 'fcl_hair.fmdl') (Join-Path $input 'face_high.fmdl')
+          Copy-Item (Join-Path $fixture 'fcl_hair.fmdl') (Join-Path $input 'fcl_hair.fmdl')
+          foreach ($name in @('fcl_hair_sim.skl','fcl_hair_sim.fclo','face_diff.bin','shirt.dds','portrait.dds')) { Copy-Item (Join-Path $fixture $name) $input }
+          cargo run --quiet --manifest-path native/Cargo.toml -- convert-face-folder --input $input --target 2017 --player-id 79205 --out $output
+          if ($LASTEXITCODE -ne 0) { throw 'FACE FORGE failed its synthetic hair-geometry package smoke test.' }
+          $reportPath = Join-Path $output 'face-forge-report.json'
+          if (!(Test-Path $reportPath)) { throw 'FACE FORGE did not write its structural conversion report.' }
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          $hasHead = @($report.sourceModels | Where-Object { $_.ToLower().EndsWith('face_high.fmdl') }).Count -gt 0
+          $hasHair = @($report.sourceModels | Where-Object { $_.ToLower().EndsWith('fcl_hair.fmdl') }).Count -gt 0
+          $hasHairPhysics = @($report.preservedSidecars | Where-Object { $_.ToLower().EndsWith('fcl_hair_sim.fclo') }).Count -gt 0
+          if ($report.ok -ne $true -or $report.targetPlayerId -ne '79205' -or $report.complete.success -ne $true -or $report.cpkFiles.Count -lt 1 -or !$hasHead -or !$hasHair -or !$hasHairPhysics) { throw 'FACE FORGE synthetic package smoke-test report failed. The aliased hair mesh is not a real face-head fixture.' }
+          "FACE_FORGE_SYNTHETIC_SMOKE_OUTPUT=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "PASS: synthetic hair geometry exercises package plumbing only; this is NOT evidence of real-face conversion or visual/game compatibility."
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run dist:win
-      - run: node scripts/verify-release-installer.mjs
-      - uses: actions/upload-artifact@v7
+
+  installer:
+    name: Build and verify Windows installer
+    needs: quality
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v7
         with:
-          name: face-forge-windows-${{ github.sha }}
+          node-version: 24
+          package-manager-cache: false
+      - run: npm install
+      - name: Build Windows NSIS installer
+        run: npm run dist:win
+      - name: Verify installer and write SHA-256
+        run: node scripts/verify-release-installer.mjs
+      - name: Upload verified installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FACE-FORGE-Windows-Installer
           path: |
-            release/*.exe
-            release/*.sha256
+            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe
+            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe.sha256
           if-no-files-found: error
           retention-days: 14

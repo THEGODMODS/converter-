@@ -10,6 +10,12 @@ fmdl = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4
 pes_model = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
 pes_version = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
 serde_json = "1"
+cpk = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
 fpk = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
 ftex = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
 wezlib = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
+team_compiler = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
+studio_core = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
+crossbeam-channel = "0.5.17"
+toml = "0.9.8"
+roxmltree = "0.21"

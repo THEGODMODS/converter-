@@ -1,6 +1,7 @@
 import path from "node:path";
 import {lstat,realpath,readdir,readFile,writeFile,mkdir,unlink} from "node:fs/promises";
 import {writeFpkArchive} from "../engine/formats/fpk";
+import {createDefaultFaceDiffV5,inspectFaceDiff} from "../engine/formats/face-diff";
 
 const MAX_FILES=10000,MAX_FILE_BYTES=256*1024*1024,MAX_TOTAL_BYTES=1024*1024*1024;
 function normalizeRoot(value:string):string{
@@ -40,11 +41,19 @@ export async function buildFoxFacePackage(convertedFolder:string,outputBase:stri
  }
  await walk(root,"");
  if(!models.some(file=>file.name.toLowerCase().endsWith(".fmdl")))throw new Error("A Fox face package must contain at least one FMDL model.");
+ const basename=(name:string)=>path.posix.basename(name).toLowerCase(),countRole=(role:string)=>models.filter(file=>basename(file.name)===role+".fmdl").length;
+ if(countRole("face_high")!==1)throw new Error("A complete Fox face package must contain exactly one face_high.fmdl.");
+ if(countRole("hair_high")!==1)throw new Error("A complete Fox face package must contain exactly one hair_high.fmdl.");
+ const diffEntries=models.filter(file=>basename(file.name)==="face_diff.bin");
+ if(diffEntries.length>1)throw new Error("A Fox face package cannot contain multiple face_diff.bin payloads.");
+ const faceDiffDefaulted=diffEntries.length===0;
+ if(faceDiffDefaulted)models.push({name:nameRoot+"/face_diff.bin",data:createDefaultFaceDiffV5()});
+ const faceDiffInfo=inspectFaceDiff(models.find(file=>basename(file.name)==="face_diff.bin")!.data);
  if(!textures.length)throw new Error("A Fox face package must contain at least one validated texture dependency.");
  const fpk=writeFpkArchive("fpk",models),fpkd=writeFpkArchive("fpkd",textures);
  const fpkPath=base+".fpk",fpkdPath=base+".fpkd";
  await mkdir(path.dirname(base),{recursive:true});
  await writeFile(fpkPath,fpk,{flag:"wx"});
  try{await writeFile(fpkdPath,fpkd,{flag:"wx"});}catch(error){await unlink(fpkPath).catch(()=>{});throw new Error("FPKD write failed; the paired FPK was rolled back: "+(error instanceof Error?error.message:String(error)));}
- return {fpk:fpkPath,fpkd:fpkdPath,models:models.length,textures:textures.length,bytes:fpk.length+fpkd.length};
+ return {fpk:fpkPath,fpkd:fpkdPath,models:models.length,textures:textures.length,bytes:fpk.length+fpkd.length,faceDiffVersion:faceDiffInfo.version,faceDiffDefaulted};
 }

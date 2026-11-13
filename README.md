@@ -1,14 +1,14 @@
 # THEGODMODS FACE FORGE
 
-Free, bidirectional PES face conversion studio by KFC GODMODS.
+PES face conversion studio by KFC GODMODS.
 
-**Targets:** PES 2017 (MODEL/DDS) ↔ PES 2021 (FMDL/FTEX).
+**First-release target:** PES 2021 (FMDL/FTEX) → PES 2017 (MODEL/DDS). PES 2017 → PES 2021 is marked **In Development** and remains disabled until this direction is proven.
 
-> Status: engineering foundation. No conversion is reported as complete until its model, material, texture, skeleton and target-game validation gates pass.
+> Status: pre-release. The complete-folder pipeline is integrated with the pinned Unlimited Tool Works Team Compiler and independently checks the generated team CPK and nested player-face CPK. A complete real head-face fixture and PES 2017 in-game acceptance test are still required before claiming production readiness.
 
 ## Product principles
 - One clear drag-and-drop workflow for beginners; detailed diagnostics for advanced creators.
-- Bidirectional conversion is a first-class requirement, not a reverse-export afterthought.
+- Finish and validate PES 2021 → PES 2017 before starting reverse conversion.
 - Preserve originals; write to a new output folder; never silently overwrite.
 - Detect real source formats from content and structure, not filename extensions alone.
 - Report partial support honestly and fail closed on unsupported assets.
@@ -16,18 +16,20 @@ Free, bidirectional PES face conversion studio by KFC GODMODS.
 
 ## Current implementation status
 
-The initial desktop shell, local face-folder inventory, binary header inspection, PES 2017 MODEL section-container parser/writer (including ESYS compression), PES 2021 FMDL block-container parser/writer (preserving unknown blocks), FTEX ↔ DDS conversion for a supported format subset, FACE diff eye/oral placement inspection, single/batch/project workspaces, original KFC GODMODS branding and Windows icon pipeline, canonical face-scene validation contract, and initial CPK writer/validator are committed on the development branch.
+The desktop shell, face-folder inventory, binary inspection, PES 2017 MODEL and PES 2021 FMDL parsers, supported FTEX/DDS conversion, FACE diff inspection, FPK/FPKD extraction, native model conversion and Windows installer pipeline are implemented. The single-face route stages a PES 2021 folder, extracts paired Fox archives, validates FMDL/SKL/FTEX/FACE diff inputs, delegates the full player-folder conversion and package build to the pinned Team Compiler, then independently reopens the outer team CPK and nested player-face CPK and hashes their entries.
 
-**The complete face conversion is not ready yet.** A pinned native semantic converter now handles supported single-model FMDL ↔ MODEL/MTL conversion and version-specific skeleton retargeting, and the UI exposes that limited operation. It is not a whole-face converter: folder-wide model discovery, FPK/FPKD package assembly, texture/material dependency relinking, face_diff mapping, complete facial animation/morph preservation, textured preview, batch conversion, install/rollback and real in-game verification remain open. The CPK writer is an initial implementation and is not certified by independent CPK readers or either game.
+**Release status remains pre-release.** The repository's upstream `79205` archive fixture is hair-only and correctly fails the required-head check. CI also exercises a synthetic structural package fixture; this proves the conversion and packaging pipeline can run, not that the synthetic geometry is a usable face. A complete real head-face package and PES 2017 in-game validation are still outstanding. Textured/animated preview, batch execution, install/rollback and reverse conversion are not first-release capabilities.
 
 ## Product modes
 - **Single Face:** inspect one face project and review conversion readiness.
-- **Batch:** queue multiple face folders for independent inspection.
-- **Project:** maintain a local face collection and prepare a future combined CPK build.
+- **Batch:** queue multiple face folders for inspection; batch conversion is not enabled.
+- **Project:** maintain a local face collection for review; this is not a conversion queue.
 
-The current modes provide intake and review workflows; actual face conversion, 3D preview, persistent project database, batch execution and game installation are not yet complete.
+Only Single Face performs the first-release PES 2021 → PES 2017 conversion. Preview is static and does not prove material, animation or in-game fidelity. Batch execution, durable project storage and game installation/rollback remain future work.
 
 See the [face fidelity specification](docs/FACE_FIDELITY_SPEC.md) for the head/neck, eyes/eyelids, mouth, hair, beard, skin, rig, CPK and safe installation acceptance requirements.
+
+See the [full evidence-based implementation audit](docs/IMPLEMENTATION_AUDIT.md) for the current release blockers and acceptance checklist.
 
 ## Architecture
 - `app/`: React desktop UI.
@@ -37,14 +39,14 @@ See the [face fidelity specification](docs/FACE_FIDELITY_SPEC.md) for the head/n
 - `tests/`: fixtures and regression tests (only redistributable/original fixtures).
 
 ## Conversion pipeline
-1. Import folder/archive and build a bounded, safe inventory.
-2. Detect PES generation and face package structure.
-3. Validate required model, texture, material and auxiliary files.
-4. Build a conversion plan with explicit supported/unsupported operations.
-5. Decode textures and convert only supported encodings.
-6. Convert geometry/material data through versioned adapters.
-7. Validate output structure and hashes.
-8. Preview supported assets and package to CPK only after validation.
+1. Import the source face folder and build a bounded, safe inventory.
+2. Extract paired FPK/FPKD archives and validate the PES 2021 head model, other FMDLs, skeletons, textures and FACE diff.
+3. Stage the source into an isolated Team Compiler workspace.
+4. Convert the player folder's models, materials and textures through the pinned native engine.
+5. Build the PES 2017 player-face CPK inside the outer team CPK.
+6. Independently read both CPK levels, verify required head assets and preserved sidecars, and record per-entry SHA-256 hashes.
+7. Publish to a separate empty output folder only after validation.
+8. Validate the generated package in PES 2017 before treating it as game-ready.
 
 ## Development
 Requires Node.js 24+ and npm.
@@ -71,9 +73,4 @@ PES MODEL semantic import/export, a canonical model representation, material tra
 version-specific skeleton retargeting. Its upstream test suite includes real PES 2017 and PES
 2021 model fixtures. Licence notices are in `native/UPSTREAM_NOTICES.md`.
 
-The current FACE FORGE UI exposes **single model-pair conversion** only: choose one `.fmdl`
-or `.model`, supply its required companion material/skeleton data, and write the translated
-model into a separate empty output directory. This is not yet full face-folder conversion.
-FPK/FPKD extraction/repacking, FTEX/DDS package dependency resolution, face-diff mapping,
-complete multi-model face package assembly, and in-game verification remain separate release
-gates. Batch and CPK conversion stay locked until those gates pass.
+The current FACE FORGE UI exposes **single-face folder conversion** for PES 2021 → PES 2017. It uses the pinned Team Compiler for multi-model conversion and CPK package assembly, then performs independent archive read-back and hash verification. The reverse route is visibly marked **In Development** and remains disabled. The release still requires a complete real head-face fixture and target-game validation; the synthetic CI package test is structural only. Batch conversion, textured preview, game installation/rollback and reverse conversion are not enabled.

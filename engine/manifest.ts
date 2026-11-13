@@ -17,6 +17,10 @@ export type FaceProjectManifest={
 /** Builds a stable, portable inventory manifest. It describes inspected inputs; it does not certify convertibility. */
 export function buildFaceProjectManifest(project:FaceProject):FaceProjectManifest{
  const files=[...project.files].sort((a,b)=>a.path.localeCompare(b.path,"en"));
+ const coverage=project.coverage??[];
+ const dependencies=project.dependencies??[];
+ const warnings=project.warnings??[];
+ const missing=project.missing??[];
  const validFiles=files.filter(file=>file.formatValid===true).length;
  const invalidFiles=files.filter(file=>file.formatValid===false).length;
  return {
@@ -26,10 +30,10 @@ export function buildFaceProjectManifest(project:FaceProject):FaceProjectManifes
   source:{game:project.detectedGame,root:project.root.split(/[\\/]/).filter(Boolean).pop()??"face-project"},
   summary:{fileCount:files.length,totalBytes:project.totalBytes,models:project.models,textures:project.textures,validFiles,invalidFiles},
   files:files.map(file=>({path:file.path,bytes:file.bytes,kind:file.kind,sha256:file.sha256,...(file.formatValid===undefined?{}:{formatValid:file.formatValid}),...(file.formatDetails?.length?{formatDetails:[...file.formatDetails]}:{})})),
-  coverage:project.coverage.map(part=>({...part,files:[...part.files].sort((a,b)=>a.localeCompare(b,"en"))})),
-  dependencies:project.dependencies.map(item=>({...item,candidates:[...item.candidates].sort((a,b)=>a.localeCompare(b,"en"))})),
-  warnings:[...project.warnings],
-  missing:[...project.missing],
+  coverage:coverage.map(part=>({...part,files:[...part.files].sort((a,b)=>a.localeCompare(b,"en"))})),
+  dependencies:dependencies.map(item=>({...item,candidates:[...item.candidates].sort((a,b)=>a.localeCompare(b,"en"))})),
+  warnings:[...warnings],
+  missing:[...missing],
   integrity:{algorithm:"SHA-256",complete:files.length>0&&files.length===project.fileCount&&files.every(file=>/^[a-f0-9]{64}$/i.test(file.sha256))&&files.every(file=>Number.isSafeInteger(file.bytes)&&file.bytes>=0)&&files.reduce((sum,file)=>sum+file.bytes,0)===project.totalBytes}
  };
 }

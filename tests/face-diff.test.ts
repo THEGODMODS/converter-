@@ -1,95 +1,126 @@
+import {readFileSync} from "node:fs";
 import {describe,expect,it} from "vitest";
-import {inspectFaceDiff} from "../engine/formats/face-diff";
+import {createDefaultFaceDiffV5,inspectFaceDiff} from "../engine/formats/face-diff";
 
-function v5Fixture(){
- const data=Buffer.alloc(960);data.write("FACE",0,"ascii");data.writeUInt32LE(5,4);
- data.writeUInt32LE(33,0x48);data.writeUInt32LE(6,0x4c);
- for(let i=0;i<33;i++){
-  const offset=0xf0+i*0x10;data.writeUInt32LE(offset,0x50+i*4);
-  [i+0.1,i+0.2,i+0.3,0].forEach((v,j)=>data.writeFloatLE(v,offset+j*4));
- }
- for(let i=0;i<6;i++){
-  const offset=0x300+i*0x20;data.writeUInt32LE(offset,0x50+(33+i)*4);
-  [0,0,0,1,1,1,0,0].forEach((v,j)=>data.writeFloatLE(v,offset+j*4));
- }
- [1,1,1].forEach((v,i)=>data.writeFloatLE(v,0x08+i*4));
- [1.5,-2.5,3.5].forEach((v,i)=>data.writeFloatLE(v,0x14+i*4));
- [-1.5,2.5,-3.5].forEach((v,i)=>data.writeFloatLE(v,0x20+i*4));
- [20,-21,-5,6].forEach((v,i)=>data.writeFloatLE(v,0x2c+i*4));
- [0.01,-0.02,0.03].forEach((v,i)=>data.writeFloatLE(v,0x3c+i*4));
- return data;
+function realFixture(name:string):Buffer{
+ return Buffer.from(readFileSync(new URL("./fixtures/"+name,import.meta.url),"utf8").trim(),"base64");
 }
-
-// Synthetic v4-shaped fixture based on the independently observed 32/6 header variant.
-// Its record pointers remain opaque because v4 semantics are not established here.
-function v4LegacyFixture(){
- const data=Buffer.alloc(944);data.write("FACE",0,"ascii");data.writeUInt32LE(4,4);
- data.writeUInt32LE(32,0x48);data.writeUInt32LE(6,0x4c);
- const offsets=[...Array.from({length:33},(_,i)=>0xf0+i*0x10),...Array.from({length:5},(_,i)=>0x310+i*0x20)];
- offsets.forEach((offset,i)=>data.writeUInt32LE(offset,0x50+i*4));
- return data;
-}
+const v4Fixture=()=>realFixture("face-diff-real-v4.b64");
+const v5Fixture=()=>realFixture("face-diff-real-v5.b64");
 
 describe("PES face_diff metadata and records",()=>{
- it("decodes v5 eye scale, degree rotations, eyelid angles and jaw offset",()=>{
+ it("decodes scalar calibration from an independently sourced real PES 2021 v5 file",()=>{
   const parsed=inspectFaceDiff(v5Fixture());
   expect(parsed.version).toBe(5);
-  expect(parsed.eyeScale).toEqual([1,1,1]);
-  expect(parsed.rightEyeRotation).toEqual([1.5,-2.5,3.5]);
-  expect(parsed.leftEyeRotation).toEqual([-1.5,2.5,-3.5]);
-  expect(parsed.eyelidOffsets).toEqual({topLeft:20,topRight:-21,bottomLeft:-5,bottomRight:6});
-  parsed.jawOffset.forEach((value,index)=>expect(value).toBeCloseTo([0.01,-0.02,0.03][index],6));
-  expect(parsed.oralPosition).toEqual(parsed.jawOffset);
-  expect(parsed.mouthPosition).toEqual(parsed.jawOffset);
+  expect(parsed.declaredBlock1Records).toBe(32);
+  expect(parsed.declaredBlock2Records).toBe(6);
+  expect(parsed.eyeScale[0]).toBeCloseTo(1.1364505,5);
+  expect(parsed.eyeScale[1]).toBeCloseTo(1.1364505,5);
+  expect(parsed.eyeScale[2]).toBeCloseTo(1.1364505,5);
+  expect(parsed.rightEyeRotation).toEqual([0,0,0]);
+  expect(parsed.leftEyeRotation).toEqual([0,0,0]);
+  expect(parsed.eyelidOffsets.topLeft).toBeCloseTo(25.331575,4);
+  expect(parsed.eyelidOffsets.topRight).toBeCloseTo(26.508347,4);
+  expect(parsed.eyelidOffsets.bottomLeft).toBeCloseTo(-6.308459,4);
+  expect(parsed.eyelidOffsets.bottomRight).toBeCloseTo(-5.24513,4);
+  expect(parsed.jawOffset.every(Number.isFinite)).toBe(true);
  });
- it("maps all 33 bone offsets by the verified v5/v6 order",()=>{
+ it("decodes only the independently documented eye landmarks and keeps other real v5 records opaque",()=>{
   const parsed=inspectFaceDiff(v5Fixture());
-  expect(parsed.boneOffsets).toHaveLength(33);
-  expect(parsed.boneOffsets[0]).toMatchObject({boneName:"skf_brow_o_r",recordOffset:0xf0,w:0});\n  parsed.boneOffsets[0].position.forEach((value,index)=>expect(value).toBeCloseTo([0.1,0.2,0.3][index],6));
-  expect(parsed.boneOffsets[6].boneName).toBe("skf_eye_r");
-  expect(parsed.boneOffsets[7].boneName).toBe("skf_eye_l");
-  expect(parsed.rightEyePosition).toEqual(parsed.boneOffsets[6].position);
-  expect(parsed.leftEyePosition).toEqual(parsed.boneOffsets[7].position);
-  expect(parsed.boneOffsets[32].boneName).toBe("skf_lip_b_c");
+  expect(parsed.fileBytes).toBe(960);
+  expect(parsed.opaqueRecordOffsets).toHaveLength(36);
+  expect(parsed.boneOffsets).toHaveLength(2);
+  expect(parsed.boneOffsets[0]).toMatchObject({index:6,boneName:"skf_eye_r",recordOffset:0x150});
+  expect(parsed.boneOffsets[1]).toMatchObject({index:7,boneName:"skf_eye_l",recordOffset:0x160});
+  expect(parsed.rightEyePosition).toEqual([-1226.805908203125,0.0005901341210119426,0.0012315147323533893]);
+  expect(parsed.leftEyePosition).toEqual([-1226.8057861328125,0.0006091122631914914,-0.0016260736156255007]);
+  expect(parsed.earTransforms).toHaveLength(0);
  });
- it("decodes six ear translation and scale records",()=>{
-  const parsed=inspectFaceDiff(v5Fixture());
-  expect(parsed.earTransforms).toHaveLength(6);
-  expect(parsed.earTransforms[0]).toMatchObject({boneName:"dsk_ear_t_l",recordOffset:0x300,translation:[0,0,0],scale:[1,1,1],reserved:[0,0]});
-  expect(parsed.earTransforms[5].boneName).toBe("dsk_earlobe_r");
- });
- it("accepts a real legacy v4 fixture but does not invent v5/v6 landmark names",()=>{
-  const parsed=inspectFaceDiff(v4LegacyFixture());
+ it("accepts the independently sourced real legacy v4 fixture and validates its record ranges",()=>{
+  const parsed=inspectFaceDiff(v4Fixture());
   expect(parsed.fileBytes).toBe(944);
   expect(parsed.version).toBe(4);
   expect(parsed.declaredBlock1Records).toBe(32);
   expect(parsed.declaredBlock2Records).toBe(6);
-  expect(parsed.opaqueRecordOffsets).toHaveLength(38);
-  expect(parsed.boneOffsets).toHaveLength(0);
+  expect(parsed.opaqueRecordOffsets).toHaveLength(36);
+  expect(parsed.boneOffsets).toHaveLength(2);
   expect(parsed.earTransforms).toHaveLength(0);
-  expect(parsed.warnings.some(w=>w.includes("not the verified v5/v6 layout"))).toBe(true);
  });
  it("rejects invalid magic, truncated headers and count-derived truncation",()=>{
   const bad=v5Fixture();bad.write("NOPE",0,"ascii");
   expect(()=>inspectFaceDiff(bad)).toThrow(/magic/i);
   expect(()=>inspectFaceDiff(Buffer.alloc(0x4f))).toThrow(/header is truncated/i);
-  const short=Buffer.alloc(0x100);short.write("FACE",0,"ascii");short.writeUInt32LE(33,0x48);short.writeUInt32LE(6,0x4c);
+  const short=Buffer.alloc(0x100);short.write("FACE",0,"ascii");short.writeUInt32LE(32,0x48);short.writeUInt32LE(6,0x4c);
   expect(()=>inspectFaceDiff(short)).toThrow(/header requires at least/i);
  });
- it("rejects invalid, duplicate and overlapping v5/v6 record pointers",()=>{
+ it("rejects invalid, duplicate and out-of-range real v5 record pointers",()=>{
   const unaligned=v5Fixture();unaligned.writeUInt32LE(0xf1,0x50);
   expect(()=>inspectFaceDiff(unaligned)).toThrow(/unaligned absolute offset/i);
   const duplicate=v5Fixture();duplicate.writeUInt32LE(0xf0,0x54);
   expect(()=>inspectFaceDiff(duplicate)).toThrow(/duplicate pointer/i);
-  const overlap=v5Fixture();overlap.writeUInt32LE(0xf0,0x50+33*4);
-  expect(()=>inspectFaceDiff(overlap)).toThrow(/duplicate pointer|records overlap/i);
-  const trailing=Buffer.alloc(976);v5Fixture().copy(trailing);trailing.writeUInt32LE(0x3c0,0x50);
-  expect(()=>inspectFaceDiff(trailing)).toThrow(/invalid or unaligned absolute offset/i);
+  const outOfRange=v5Fixture();outOfRange.writeUInt32LE(0x3b0,0x50);
+  expect(()=>inspectFaceDiff(outOfRange)).toThrow(/out of range/i);
  });
- it("rejects non-finite values in scalar and record blocks",()=>{
-  for(const offset of [0x08,0x14,0x20,0x2c,0x3c,0xf0,0x300]){
+ it("decodes all 33 facial offsets and six ear transforms in the verified PES 2021 v5 layout",()=>{
+  const data=Buffer.alloc(0x3c0);data.write("FACE",0,"ascii");data.writeUInt32LE(5,4);
+  data.writeFloatLE(1,0x08);data.writeFloatLE(1,0x0c);data.writeFloatLE(1,0x10);
+  data.writeUInt32LE(33,0x48);data.writeUInt32LE(6,0x4c);
+  for(let i=0;i<33;i++){
+   const offset=0xf0+i*0x10;data.writeUInt32LE(offset,0x50+i*4);
+   data.writeFloatLE(i*0.001,offset);data.writeFloatLE(i*0.002,offset+4);data.writeFloatLE(i*0.003,offset+8);
+  }
+  for(let i=0;i<6;i++){
+   const offset=0x300+i*0x20;data.writeUInt32LE(offset,0x50+(33+i)*4);
+   data.writeFloatLE(i*0.01,offset);data.writeFloatLE(i*0.02,offset+4);data.writeFloatLE(i*0.03,offset+8);
+   data.writeFloatLE(1,offset+12);data.writeFloatLE(1,offset+16);data.writeFloatLE(1,offset+20);
+  }
+  // The runtime's model-space jaw offset is R_head * skf_jaw, where
+  // R_head maps [x,y,z] to [-z,x,-y].
+  const jaw=0xf0+28*0x10;
+  data.writeFloatLE(0.028,jaw);data.writeFloatLE(0.056,jaw+4);data.writeFloatLE(0.084,jaw+8);
+  data.writeFloatLE(-0.084,0x3c);data.writeFloatLE(0.028,0x40);data.writeFloatLE(-0.056,0x44);
+  const parsed=inspectFaceDiff(data);
+  expect(parsed.declaredBlock1Records).toBe(33);
+  expect(parsed.boneOffsets).toHaveLength(33);
+  expect(parsed.boneOffsets[15].boneName).toBe("skf_cheek_r");
+  expect(parsed.boneOffsets[28]?.boneName).toBe("skf_jaw");
+  expect(parsed.boneOffsets[28]?.position[0]).toBeCloseTo(0.028,6);
+  expect(parsed.boneOffsets[28]?.position[1]).toBeCloseTo(0.056,6);
+  expect(parsed.boneOffsets[28]?.position[2]).toBeCloseTo(0.084,6);
+  expect(parsed.boneOffsets[28]?.w).toBe(0);
+  expect(parsed.earTransforms).toHaveLength(6);
+  expect(parsed.earTransforms[0]).toMatchObject({boneName:"dsk_ear_t_l",translation:[0,0,0],scale:[1,1,1],reserved:[0,0]});
+  expect(parsed.earTransforms[5].boneName).toBe("dsk_earlobe_r");
+  expect(parsed.opaqueRecordOffsets).toHaveLength(0);
+  expect(parsed.warnings.some(w=>w.includes("Jaw scalar does not match"))).toBe(false);
+ });
+ it("rejects overlapping v4 record ranges without interpreting their semantics",()=>{
+  const bad=v4Fixture();
+  // First second-block record spans 0x2f0..0x310; this pointer overlaps it at 0x300.
+  bad.writeUInt32LE(0x300,0x50+31*4);
+  expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
+ });
+ it("rejects overlapping v5 record ranges instead of preserving malformed pointers",()=>{
+  const bad=v5Fixture();
+  // The last 16-byte entry is redirected into the first 32-byte entry.
+  bad.writeUInt32LE(0x310,0x50+31*4);
+  expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
+ });
+ it("rejects non-finite header calibration and v4 record values",()=>{
+  for(const offset of [0x08,0x14,0x20,0x2c,0x3c]){
    const bad=v5Fixture();bad.writeFloatLE(Number.NaN,offset);
    expect(()=>inspectFaceDiff(bad)).toThrow(/non-finite/i);
   }
+  const bad=v4Fixture();bad.writeFloatLE(Number.NaN,0xf0);
+  expect(()=>inspectFaceDiff(bad)).toThrow(/non-finite/i);
  });
+ it("creates a valid neutral v5 template and decodes the matching v6 record layout",()=>{
+  const data=createDefaultFaceDiffV5(),v5=inspectFaceDiff(data);
+  expect(v5.version).toBe(5);expect(v5.boneOffsets).toHaveLength(33);expect(v5.earTransforms).toHaveLength(6);
+  expect(v5.warnings.some(warning=>/jaw scalar/.test(warning))).toBe(false);
+  const v6Bytes=Buffer.from(data);v6Bytes.writeUInt32LE(6,4);
+  const v6=inspectFaceDiff(v6Bytes);
+  expect(v6.version).toBe(6);expect(v6.boneOffsets).toHaveLength(33);expect(v6.earTransforms).toHaveLength(6);
+ });
+
 });
