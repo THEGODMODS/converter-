@@ -22,6 +22,7 @@ jobs:
           package-manager-cache: false
       - run: npm install
       - run: npm audit --audit-level=high
+      - run: cargo test --manifest-path native/Cargo.toml
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
