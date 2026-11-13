@@ -12,7 +12,7 @@ export type FaceRigCalibrationAudit={
  unmatchedSceneBones:string[];
  duplicateSceneBoneNames:string[];
  matrixAudit:{checked:number;sourceMatricesMissing:number;inverseBindMatricesMissing:number;degenerateMatrices:string[];headFrame:MatrixHealth|null};
- hierarchyAudit:{matchedBones:number;withParentIndex:number;status:"available"|"partial"|"unavailable"};
+ hierarchyAudit:{matchedBones:number;withParentIndex:number;status:"available"|"partial"|"unavailable";invalidParentReferences:string[];cycles:string[]};
  scalarCalibration:{
   eyeScale:[number,number,number];
   rightEyeRotationDegrees:[number,number,number];
@@ -62,6 +62,28 @@ function matrixHealth(bone:FaceBone,boneIndex:number):MatrixHealth{
  return {boneName:bone.name,boneIndex,sourceMatrix:inspect(bone.sourceMatrix),normalizedDeterminant,inverseBindMatrix:inspect(bone.inverseBindMatrix)};
 }
 
+function auditHierarchy(scene:FaceScene,mappedCount:number):FaceRigCalibrationAudit["hierarchyAudit"]{
+ const invalidParentReferences:string[]=[];
+ scene.bones.forEach((bone,index)=>{
+  const parent=bone.parentIndex;
+  if(parent!==null&&(!Number.isInteger(parent)||parent<0||parent>=scene.bones.length||parent===index))invalidParentReferences.push(bone.name+" (index "+index+", parent "+String(parent)+")");
+ });
+ const state=new Uint8Array(scene.bones.length),cycles:string[]=[];
+ const visit=(index:number,path:number[])=>{
+  if(state[index]===2)return;
+  if(state[index]===1){const start=path.indexOf(index);const cycle=(start>=0?path.slice(start):path).concat(index).map(i=>scene.bones[i].name).join(" -> ");if(!cycles.includes(cycle))cycles.push(cycle);return;}
+  state[index]=1;
+  const parent=scene.bones[index].parentIndex;
+  if(parent!==null&&Number.isInteger(parent)&&parent>=0&&parent<scene.bones.length&&parent!==index)visit(parent,[...path,index]);
+  state[index]=2;
+ };
+ for(let i=0;i<scene.bones.length;i++)visit(i,[]);
+ const withParentIndex=scene.bones.filter((bone,index)=>bone.parentIndex!==null&&bone.parentIndex>=0&&bone.parentIndex<scene.bones.length&&bone.parentIndex!==index).length;
+ const graphInvalid=invalidParentReferences.length>0||cycles.length>0;
+ const status=mappedCount===0||withParentIndex===0?"unavailable":withParentIndex<mappedCount||graphInvalid?"partial":"available";
+ return {matchedBones:mappedCount,withParentIndex,status,invalidParentReferences,cycles};
+}
+
 /**
  * Audits FACE diff landmarks against the decoded scene skeleton.
  * This is deliberately read-only: matrix layout, coordinate convention, parent
@@ -90,8 +112,7 @@ export function auditFaceRigCalibration(scene:FaceScene,diff:FaceDiffInfo):FaceR
  const sourceMatricesMissing=allMatrices.filter(x=>x.sourceMatrix==="missing").length;
  const inverseBindMatricesMissing=allMatrices.filter(x=>x.inverseBindMatrix==="missing").length;
  const degenerateMatrices=allMatrices.filter(x=>x.sourceMatrix==="degenerate"||x.inverseBindMatrix==="degenerate"||x.sourceMatrix==="invalid"||x.inverseBindMatrix==="invalid").map(x=>x.boneName);
- const withParentIndex=mapped.filter(x=>x.bone.parentIndex!==null).length;
- const hierarchyStatus=withParentIndex===0?"unavailable":withParentIndex===mapped.length?"available":"partial";
+ const hierarchyAudit=auditHierarchy(scene,mapped.length);
  const blockers:string[]=[];
  if(headFrameStatus!=="matched")blockers.push(headFrameStatus==="missing"?"Required sk_head coordinate-frame bone was not found.":"Skeleton contains multiple sk_head bones; coordinate frame is ambiguous.");
  if(missing)blockers.push(missing+" FACE diff landmark(s) have no exact-name skeleton match.");
@@ -100,13 +121,15 @@ export function auditFaceRigCalibration(scene:FaceScene,diff:FaceDiffInfo):FaceR
  if(sourceMatricesMissing)blockers.push(sourceMatricesMissing+" required source/reference matrices are absent, including the head frame where applicable.");
  if(inverseBindMatricesMissing)blockers.push(inverseBindMatricesMissing+" inverse-bind matrices are absent; skinning-space equivalence cannot be checked.");
  if(degenerateMatrices.length)blockers.push("Degenerate or invalid matrices detected: "+degenerateMatrices.join(", ")+".");
- if(hierarchyStatus!=="available")blockers.push("Parent hierarchy is "+hierarchyStatus+" in the decoded scene; local-to-head transforms cannot be composed safely.");
+ if(hierarchyAudit.status!=="available")blockers.push("Parent hierarchy is "+hierarchyAudit.status+" in the decoded scene; local-to-head transforms cannot be composed safely.");
+ if(hierarchyAudit.invalidParentReferences.length)blockers.push("Invalid parent references: "+hierarchyAudit.invalidParentReferences.join(", ")+".");
+ if(hierarchyAudit.cycles.length)blockers.push("Parent cycles detected: "+hierarchyAudit.cycles.join("; ")+".");
  blockers.push("No offsets were applied: row/column convention, handedness, units, local/global interpretation and source/target bind-pose equivalence remain unverified.");
  return {
   sourceVersion:diff.version,headFrameBoneIndex:head.length===1?head[0]:null,headFrameStatus,
   facialOffsets,earTransforms,unmatchedSceneBones,duplicateSceneBoneNames,
   matrixAudit:{checked:allMatrices.length,sourceMatricesMissing,inverseBindMatricesMissing,degenerateMatrices,headFrame:headMatrix},
-  hierarchyAudit:{matchedBones:mapped.length,withParentIndex,status:hierarchyStatus},
+  hierarchyAudit,
   scalarCalibration:{eyeScale:diff.eyeScale,rightEyeRotationDegrees:diff.rightEyeRotation,leftEyeRotationDegrees:diff.leftEyeRotation,eyelidAnglesDegrees:diff.eyelidOffsets,jawOffset:diff.jawOffset},
   summary:{matched,missing,ambiguous,total:all.length},application:"inspection-only",blockers
  };
