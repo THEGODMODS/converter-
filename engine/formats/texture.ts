@@ -33,9 +33,9 @@ export function inspectFtex(data:Buffer):TextureInfo{
  if(version<2.025||version>2.045)throw new TextureFormatError("Unsupported FTEX version "+version.toFixed(3)+".");
  if(!formats[pixelFormat])throw new TextureFormatError("Unsupported FTEX pixel format "+pixelFormat+".");
  if(!width||!height||!depth||!mipCount||variants!==0)throw new TextureFormatError("Invalid dimensions, mip count or FTEX variant.");
- const cubeMap=(textureType&4)!==0,frames=(cubeMap?6:1)*mipCount;
- if(64+frames*16>data.length)throw new TextureFormatError("FTEX mipmap table is truncated.");
- for(let i=0;i<frames;i++){const p=64+i*16,offset=data.readUInt32LE(p),raw=data.readUInt32LE(p+4),compressed=data.readUInt32LE(p+8),index=data.readUInt8(p+12),chunks=data.readUInt16LE(p+14);if(index>=mipCount||raw>512*1024*1024||compressed>512*1024*1024||offset>=data.length||chunks>65535)throw new TextureFormatError("Invalid FTEX mipmap descriptor.");}
+ const cubeMap=(textureType&4)!==0,frames=(cubeMap?6:1)*mipCount,tableEnd=64+frames*16;
+ if(tableEnd>data.length)throw new TextureFormatError("FTEX mipmap table is truncated.");
+ for(let i=0;i<frames;i++){const p=64+i*16,offset=data.readUInt32LE(p),raw=data.readUInt32LE(p+4),compressed=data.readUInt32LE(p+8),index=data.readUInt8(p+12),chunks=data.readUInt16LE(p+14);if(index>=mipCount||raw>512*1024*1024||compressed>512*1024*1024||offset<tableEnd||offset>=data.length||chunks>0&&offset+chunks*8>data.length)throw new TextureFormatError("Invalid FTEX mipmap descriptor.");}
  const colorBits=textureType&0x0f,colorSpace:TextureColorSpace=colorBits===3?"SRGB":colorBits===9?"NORMAL":"LINEAR";
  return {width,height,depth,mipCount,pixelFormat,formatName:formats[pixelFormat].name,cubeMap,colorSpace};
 }
