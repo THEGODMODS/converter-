@@ -10,7 +10,9 @@ async function readBounded(response:Response,limit:number):Promise<Buffer>{
  if(!response.ok||!response.body)throw new Error("Package server returned HTTP "+response.status+".");
  const declared=Number(response.headers.get("content-length")??0);if(declared>limit)throw new Error("Package response exceeds its size limit.");
  const chunks:Buffer[]=[];let size=0;const reader=response.body.getReader();
- try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit)throw new Error("Package response exceeded its size limit while downloading.");chunks.push(Buffer.from(value));}}finally{reader.releaseLock();}
+ try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit)throw new Error("Package response exceeded its size limit while downloading.");chunks.push(Buffer.from(value));}}
+ catch(error){await reader.cancel(error).catch(()=>{});throw error;}
+ finally{reader.releaseLock();}
  return Buffer.concat(chunks,size);
 }
 export async function installSignedPackage(manifestUrl:string,packagesRoot:string,trust:PackageTrust){
