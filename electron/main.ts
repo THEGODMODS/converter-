@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { inspectFaceFolder } from "../engine/inventory";
+import { inspectFaceDatabase } from "../engine/database";
 import { ddsToFtex, ftexToDds, type TextureColorSpace } from "../engine/formats/texture";
 
 let mainWindow:BrowserWindow|null=null;
