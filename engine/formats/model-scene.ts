@@ -21,7 +21,7 @@ function readMaterialNames(section:Buffer):string[]{const root=view(section,0,"S
 export function decodePes2017Model(container:ModelContainer):FaceScene{
  const section=(index:number)=>container.sections[index]?.data;if(!section(1)||!section(4)||!section(5)||!section(6)||!section(0))throw new Error("MODEL is missing a required geometry, mesh, bone or material section.");
  const geometrySection=section(1)!,meshSection=section(4)!,boneSection=section(0)!,boneNameSection=section(5)!,materialSection=section(6)!;const fileOffset=(index:number)=>{const value=container.sections.find(s=>s.index===index)?.fileOffset;if(value===undefined)throw new Error("MODEL section "+index+" is missing its source file offset.");return value;};
- const boneNames=readBoneNames(boneNameSection),boneData=readSection0(boneSection,boneNames.length),bones:FaceBone[]=boneNames.map((name,index)=>({name,parentIndex:null,inverseBindMatrix:boneData.matrices[index]}));
+ const boneNames=readBoneNames(boneNameSection),boneData=readSection0(boneSection,boneNames.length),bones:FaceBone[]=boneNames.map((name,index)=>({name,parentIndex:null,sourceMatrix:boneData.matrices[index]}));
  const materialNames=readMaterialNames(materialSection),materials:FaceMaterial[]=materialNames.map(name=>({name,shader:null,textures:{},parameters:{}}));
  const meshRoot=view(meshSection,0,"Section4"),geometryRoot=view(geometrySection,0,"Section1"),geometries=decodePes2017Geometry(geometrySection);
  const geometryRecordOffsets=new Map<number,number>();for(let i=0;i<geometryRoot.count;i++)geometryRecordOffsets.set(fileOffset(1)+geometryRoot.records+i*geometryRoot.recordSize,i);
