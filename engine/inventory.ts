@@ -32,7 +32,7 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  const detectedGame=has21Model&&has17Model?"mixed":has21Model?"pes2021":has17Model?"pes2017":has21Texture&&has17Texture?"mixed":has21Texture?"pes2021":has17Texture?"pes2017":"unknown";
  const dependencies:FaceDependency[]=[];
  const textureFiles=files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
- const normalizeAsset=(value:string)=>value.split(String.fromCharCode(92)).join("/").replace(/^\\/+/, "").replace(/^Assets\\//i,"").replace(/\\.(ftex|dds)$/i,"").toLowerCase();
+ const normalizeAsset=(value:string)=>value.split(String.fromCharCode(92)).join("/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
  for(const model of files.filter(file=>file.kind==="model-pes2021"&&file.assetReferences?.length)){
   for(const reference of model.assetReferences??[]){
    const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
