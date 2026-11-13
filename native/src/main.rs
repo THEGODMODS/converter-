@@ -31,6 +31,7 @@ fn run()->Result<(),String>{
  let target:u16=target_text.parse().map_err(|_|"Target must be 2017 or 2021".to_string())?;if target!=2017&&target!=2021{return Err("Target must be 2017 or 2021".into());}
  for path in &model_paths{if !path.is_file(){return Err(format!("Source model does not exist: {}",path.display()));}}
  if source_format=="fpk"&&(model_paths.is_empty()||model_paths.len()>2){return Err("Supply one face FPK and optionally its paired FPKD archive.".into());}
+ let textures_managed_externally=args.iter().any(|arg|arg=="--textures-managed-externally");
  let mut package_textures:Vec<(String,Vec<u8>)>=Vec::new();
  let bundles:Vec<(String,NativeModelBundle)>=match source_format.as_str(){
   "fpk"=>{
@@ -136,21 +137,24 @@ fn run()->Result<(),String>{
   }
  }
 
- // Convert every FTEX package member and preserve its virtual directory so
- // the already-rewritten material sampler path resolves in the target output.
- let mut output_paths:std::collections::HashSet<String>=outputs.iter().map(|p|p.to_ascii_lowercase()).collect();
- for (source_path,source_bytes) in &package_textures {
-  let _=ftex_info(source_bytes).map_err(|e|format!("Validate packaged FTEX {source_path}: {e}"))?;
-  let target_path=ftex_target_path(source_path)?;
-  if !output_paths.insert(target_path.to_ascii_lowercase()) {
-   return Err(format!("Package conversion produces a duplicate target path: {target_path}"));
+ if !textures_managed_externally {
+  // Convert every FTEX package member and preserve its virtual directory so
+  // the already-rewritten material sampler path resolves in the target output.
+  let mut output_paths:std::collections::HashSet<String>=outputs.iter().map(|p|p.to_ascii_lowercase()).collect();
+  for (source_path,source_bytes) in &package_textures {
+   let _=ftex_info(source_bytes).map_err(|e|format!("Validate packaged FTEX {source_path}: {e}"))?;
+   let target_path=ftex_target_path(source_path)?;
+   if !output_paths.insert(target_path.to_ascii_lowercase()) {
+    return Err(format!("Package conversion produces a duplicate target path: {target_path}"));
+   }
+   let dds=ftex_to_dds(source_bytes).map_err(|e|format!("Convert packaged FTEX {source_path}: {e}"))?;
+   if dds.len()<128 || &dds[..4]!=b"DDS " {
+    return Err(format!("FTEX decoder produced an invalid DDS header for {source_path}"));
+   }
+   pending_outputs.push((target_path.clone(),dds));
+   outputs.push(target_path);
   }
-  let dds=ftex_to_dds(source_bytes).map_err(|e|format!("Convert packaged FTEX {source_path}: {e}"))?;
-  if dds.len()<128 || &dds[..4]!=b"DDS " {
-   return Err(format!("FTEX decoder produced an invalid DDS header for {source_path}"));
-  }
-  pending_outputs.push((target_path.clone(),dds));
-  outputs.push(target_path);
+ 
  }
  let stage=out.join(".faceforge-staging");fs::create_dir(&stage).map_err(|e|format!("Create staging directory: {e}"))?;
  for (name,data) in pending_outputs{if let Err(error)=write(&stage.join(&name),&data){let _=fs::remove_dir_all(&stage);return Err(error);}}
