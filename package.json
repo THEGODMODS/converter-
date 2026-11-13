@@ -11,7 +11,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "dist:win": "npm run build && npm run build:icon && npm run build:native && electron-builder --win nsis --publish never",
-    "predev": "npm run build:electron",
+    "predev": "npm run build:electron && npm run build:native",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:icon": "node scripts/build-icon.mjs",
     "build:native": "cargo build --release --manifest-path native/Cargo.toml"
