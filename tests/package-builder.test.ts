@@ -10,10 +10,11 @@ async function temp(){const root=await mkdtemp(path.join(os.tmpdir(),"face-forge
 describe("Fox face package builder",()=>{
  it("builds paired deterministic FPK and FPKD with model and texture assets separated",async()=>{
   const root=await temp(),converted=path.join(root,"converted"),out=path.join(root,"release","face");
-  await mkdir(path.join(converted,"Assets","sourceimages","#windx11"),{recursive:true});
+  const textureDirectory=path.join(converted,"Assets","pes16","model","character","face","real","12345","sourceimages","#windx11");
+  await mkdir(textureDirectory,{recursive:true});
   await writeFile(path.join(converted,"face_high.fmdl"),Buffer.from("valid-test-model"));
   await writeFile(path.join(converted,"face_high.skl"),Buffer.from("valid-test-skeleton"));
-  await writeFile(path.join(converted,"Assets","pes16","model","character","face","real","12345","sourceimages","#windx11","face_c.ftex"),Buffer.from("valid-test-texture"));
+  await writeFile(path.join(textureDirectory,"face_c.ftex"),Buffer.from("valid-test-texture"));
   const result=await buildFoxFacePackage(converted,out,"Assets/pes16/model/character/face/real/12345");
   const fpk=parseFpkArchive(await readFile(result.fpk)),fpkd=parseFpkArchive(await readFile(result.fpkd));
   expect(fpk.kind).toBe("fpk");expect(fpk.entries.map(x=>x.name)).toEqual(["Assets/pes16/model/character/face/real/12345/face_high.fmdl","Assets/pes16/model/character/face/real/12345/face_high.skl"]);
