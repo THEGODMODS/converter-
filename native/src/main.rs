@@ -413,14 +413,15 @@ fn companion_fmdl_for_skeleton(skeleton: &Path) -> PathBuf {
 }
 
 fn copy_face_source_tree(
-    source: &Path,
-    destination: &Path,
+    source_root: &Path,
+    source_dir: &Path,
+    destination_root: &Path,
     archive_paths: &mut Vec<PathBuf>,
     seen: &mut std::collections::HashSet<String>,
     file_count: &mut usize,
     total_bytes: &mut u64,
 ) -> Result<(), String> {
-    for entry in fs::read_dir(source).map_err(|e| format!("Read face source folder {}: {e}", source.display()))? {
+    for entry in fs::read_dir(source_dir).map_err(|e| format!("Read face source folder {}: {e}", source_dir.display()))? {
         let entry = entry.map_err(|e| format!("Read face source entry: {e}"))?;
         let from = entry.path();
         let metadata = fs::symlink_metadata(&from).map_err(|e| format!("Inspect face source entry {}: {e}", from.display()))?;
@@ -428,33 +429,42 @@ fn copy_face_source_tree(
             return Err(format!("Symbolic links are not accepted in face conversion input: {}", from.display()));
         }
         if metadata.is_dir() {
-            let relative = from.strip_prefix(source).map_err(|_| "Face source path escaped its root.")?;
-            let to = destination.join(relative);
+            let relative = from.strip_prefix(source_root).map_err(|_| "Face source path escaped its root.")?;
+            let to = destination_root.join(relative);
             fs::create_dir_all(&to).map_err(|e| format!("Create face staging folder {}: {e}", to.display()))?;
-            copy_face_source_tree(&from, &to, archive_paths, seen, file_count, total_bytes)?;
+            copy_face_source_tree(source_root, &from, destination_root, archive_paths, seen, file_count, total_bytes)?;
             continue;
         }
         if !metadata.is_file() {
             return Err(format!("Unsupported filesystem entry in face source: {}", from.display()));
+        }
+        // Windows Explorer metadata is not part of a PES face. Ignore it before
+        // inventory and path-collision checks, including copies in nested folders.
+        let file_name = from.file_name().and_then(|name| name.to_str()).unwrap_or("");
+        if ["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
+            .iter().any(|ignored| file_name.eq_ignore_ascii_case(ignored))
+        {
+            continue;
         }
         let extension = from.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
         if is_face_archive_extension(&extension) {
             archive_paths.push(from);
             continue;
         }
-        *file_count += 1;
-        *total_bytes = total_bytes.saturating_add(metadata.len());
-        if *file_count > 10_000 || *total_bytes > 2 * 1024 * 1024 * 1024 {
-            return Err("Face source exceeds the safety limit of 10,000 files or 2 GiB.".into());
-        }
-        let relative = from.strip_prefix(source).map_err(|_| "Face source path escaped its root.")?;
+        let relative = from.strip_prefix(source_root).map_err(|_| "Face source path escaped its root.")?;
         let relative_text = relative.to_string_lossy().replace('\\', "/");
         let normalized = normalize_fox_virtual_path(&relative_text)?;
         if !seen.insert(normalized.to_ascii_lowercase()) {
             return Err(format!("Duplicate case-insensitive face source path: {normalized}"));
         }
-        let to = destination.join(PathBuf::from(normalized));
-        if let Some(parent) = to.parent() {            fs::create_dir_all(parent).map_err(|e| format!("Create face asset folder {}: {e}", parent.display()))?;
+        *file_count += 1;
+        *total_bytes = total_bytes.saturating_add(metadata.len());
+        if *file_count > 10_000 || *total_bytes > 2 * 1024 * 1024 * 1024 {
+            return Err("Face source exceeds the safety limit of 10,000 files or 2 GiB.".into());
+        }
+        let to = destination_root.join(PathBuf::from(normalized));
+        if let Some(parent) = to.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("Create face asset folder {}: {e}", parent.display()))?;
         }
         fs::copy(&from, &to).map_err(|e| format!("Stage face asset {}: {e}", from.display()))?;
     }
@@ -630,7 +640,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let mut seen = std::collections::HashSet::new();
     let mut file_count = 0usize;
     let mut total_bytes = 0u64;
-    copy_face_source_tree(&input, &player, &mut archive_paths, &mut seen, &mut file_count, &mut total_bytes)?;
+    copy_face_source_tree(&input, &input, &player, &mut archive_paths, &mut seen, &mut file_count, &mut total_bytes)?;
     extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
     let normalized_texture_references = normalize_fox_face_model_paths(&player)?;
     let source_inventory = inspect_pes2021_face_source(&player)?;
