@@ -23,23 +23,30 @@ fn run()->Result<(),String>{
  if model_paths.is_empty(){return Err("At least one --model input is required.".into());}
  let target:u16=target_text.parse().map_err(|_|"Target must be 2017 or 2021".to_string())?;if target!=2017&&target!=2021{return Err("Target must be 2017 or 2021".into());}
  for path in &model_paths{if !path.is_file(){return Err(format!("Source model does not exist: {}",path.display()));}}
- if source_format=="fpk"&&model_paths.len()!=1{return Err("An FPK conversion accepts exactly one archive input; the archive may contain multiple FMDL models.".into());}
+ if source_format=="fpk"&&(model_paths.is_empty()||model_paths.len()>2){return Err("Supply one face FPK and optionally its paired FPKD archive.".into());}
  let bundles:Vec<(String,NativeModelBundle)>=match source_format.as_str(){
   "fpk"=>{
-   if target!=2017{return Err("An FPK source is a PES 2021 Fox package; choose PES 2017 as target.".into());}
-   let bytes=fs::read(&model_paths[0]).map_err(|e|format!("Read source FPK: {e}"))?;
-   let archive=FpkFile::read(&bytes).map_err(|e|format!("Decode FPK package: {e}"))?;
-   let candidates:Vec<_>=archive.entries().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".fmdl")).collect();
-   if candidates.is_empty(){return Err("The FPK contains no FMDL models.".into());}
+   if target!=2017{return Err("A PES 2021 Fox package source must target PES 2017.".into());}
+   let mut archive_entries:Vec<(String,Vec<u8>)>=Vec::new();let mut seen=std::collections::HashSet::new();
+   for archive_path in &model_paths{
+    let bytes=fs::read(archive_path).map_err(|e|format!("Read source Fox archive {}: {e}",archive_path.display()))?;
+    let archive=FpkFile::read(&bytes).map_err(|e|format!("Decode source FPK/FPKD {}: {e}",archive_path.display()))?;
+    for (name,data) in archive.entries(){
+     if !seen.insert(name.to_ascii_lowercase()){return Err(format!("The paired FPK/FPKD archives contain a duplicate virtual path: {name}"));}
+     archive_entries.push((name.to_owned(),data.to_vec()));
+    }
+   }
+   let candidates:Vec<_>=archive_entries.iter().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".fmdl")).collect();
+   if candidates.is_empty(){return Err("Neither the FPK nor its paired FPKD contains an FMDL model.".into());}
    let mut names=std::collections::HashSet::new();let mut converted=Vec::new();
    for (name,data) in candidates{
     let file_name=name.rsplit('/').next().unwrap_or(name);let stem=file_name.rsplit_once('.').map(|x|x.0).unwrap_or(file_name);
-    if stem.is_empty()||!stem.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'||c=='-'){return Err(format!("Unsafe or unsupported model name in FPK: {name}"));}
-    if !names.insert(stem.to_ascii_lowercase()){return Err(format!("Multiple FPK models collapse to the same output name: {stem}"));}
+    if stem.is_empty()||!stem.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'||c=='-'){return Err(format!("Unsafe or unsupported model name in Fox archive: {name}"));}
+    if !names.insert(stem.to_ascii_lowercase()){return Err(format!("Multiple archive models collapse to the same output name: {stem}"));}
     let skl_name=format!("{}.skl",&name[..name.len()-5]);
     let file=FmdlFile::read(data).map_err(|e|format!("Decode packaged FMDL {name}: {e}"))?;
     let model=FoxModel::from_file(&file).map_err(|e|format!("Resolve packaged FMDL references {name}: {e}"))?;
-    let skl_bytes=archive.entries().find(|(candidate,_)|candidate.eq_ignore_ascii_case(&skl_name)).map(|(_,bytes)|bytes);
+    let skl_bytes=archive_entries.iter().find(|(candidate,_)|candidate.eq_ignore_ascii_case(&skl_name)).map(|(_,bytes)|bytes);
     let skl=skl_bytes.map(|bytes|SklFile::read(bytes).map_err(|e|format!("Decode companion SKL {skl_name}: {e}"))).transpose()?;
     converted.push((stem.to_owned(),NativeModelBundle::Fox{model,skl}));
    }converted
