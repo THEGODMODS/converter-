@@ -13,7 +13,7 @@
 - [ ] Safe archive extraction (path traversal, symlink, size and file-count defenses).
 - [x] Identify MODEL/DDS and FMDL/FTEX by signatures, paths and companion metadata.
 - [ ] Face package report: models, textures, materials, IDs, missing dependencies.
-- [ ] Project manifest and reproducible diagnostics.
+- [x] Deterministic SHA-256 project manifest export with format inventory and coverage diagnostics.
 
 ## Phase 2 — texture conversion
 - [x] FTEX header/format research and initial decoder tests.
