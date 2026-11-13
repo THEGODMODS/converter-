@@ -34,7 +34,7 @@ describe("signed package download transaction",()=>{
   vi.stubGlobal("fetch",fetchMock);
   await expect(installSignedPackage("https://packages.example.test/manifest.json",path.join(f.root,"packages"),f.trust)).rejects.toThrow(/SHA-256/i);
   const packageRoot=path.join(f.root,"packages","example-face");
-  await expect(readdir(packageRoot)).rejects.toMatchObject({code:"ENOENT"});
+  expect(await readdir(packageRoot)).toEqual([]);
  });
  it("does not overwrite an already installed version",async()=>{
   const f=await setup();
