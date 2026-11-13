@@ -1,4 +1,3 @@
-import {createHash} from "node:crypto";
 import {describe,it,expect} from "vitest";
 import {parseFpkArchive,writeFpkArchive} from "../engine/formats/fpk";
 function fixture(kind:"fpk"|"fpkd"="fpk",files=[{name:"/Assets/pes/model/character/face/real/123/face_high.fmdl",data:Buffer.from("model")}],references:string[]=[]){
@@ -12,4 +11,5 @@ describe("Fox FPK v2 parser",()=>{
  it("rejects corrupted filename checksums",()=>{const data=fixture();data[48+32]^=0xff;expect(()=>parseFpkArchive(data)).toThrow(/checksum mismatch/);});
  it("rejects traversal paths",()=>{const data=fixture("fpk",[{name:"../escape.fmdl",data:Buffer.from("x")}]);expect(()=>parseFpkArchive(data)).toThrow(/unsafe path/);});
  it("rejects truncated or incorrect declared sizes",()=>{const data=fixture();data.writeUInt32LE(data.length-1,10);expect(()=>parseFpkArchive(data)).toThrow(/size does not match/);});
- it("round-trips deterministic FPK and FPKD archives",()=>{for(const kind of ["fpk","fpkd"] as const){const entries=[{name:"Assets/pes/model/face/z.fmdl",data:Buffer.from("z")},{name:"Assets/pes/model/face/a.skl",data:Buffer.from("skeleton")}];const bytes=writeFpkArchive(kind,entries);const parsed=parseFpkArchive(bytes);expect(parsed.entries.map(x=>x.name)).toEqual(["Assets/pes/model/face/a.skl","Assets/pes/model/face/z.fmdl"]);expect(writeFpkArchive(kind,parsed.entries)).toEqual(bytes);}});\n});
+ it("round-trips deterministic FPK and FPKD archives",()=>{for(const kind of ["fpk","fpkd"] as const){const entries=[{name:"Assets/pes/model/face/z.fmdl",data:Buffer.from("z")},{name:"Assets/pes/model/face/a.skl",data:Buffer.from("skeleton")}];const bytes=writeFpkArchive(kind,entries);const parsed=parseFpkArchive(bytes);expect(parsed.entries.map(x=>x.name)).toEqual(["Assets/pes/model/face/a.skl","Assets/pes/model/face/z.fmdl"]);expect(writeFpkArchive(kind,parsed.entries)).toEqual(bytes);}});
+});
