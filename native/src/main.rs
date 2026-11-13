@@ -613,31 +613,28 @@ fn extract_face_archives(
     Ok(())
 }
 
-fn split_pes2017_target_player_id(target_player_id: &str) -> Result<(&str, &str), String> {
-    // The Team Compiler's supported cup-team identity is a 701–920 team ID
-    // plus a PES 15–18 roster slot (01–32). A six-digit PES 2021 source face
-    // ID is not a valid PES 2017 destination identity.
-    if target_player_id.len() != 5 || !target_player_id.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err("Enter the player's five-digit PES 2017 ID. The six-digit folder ID belongs to the PES 2021 source.".into());
+fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
+    // Keep the real game-facing ID separate from the Team Compiler's
+    // temporary team/roster identity.
+    if target_player_id.is_empty() || target_player_id.len() > 6 || !target_player_id.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Enter the player's numeric PES 2017 ID (up to six digits).".into());
     }
-    let team_id = &target_player_id[..3];
-    let team_number = team_id.parse::<u16>().map_err(|_| "The PES 2017 team ID is invalid.")?;
-    if !(701..=920).contains(&team_number) {
-        return Err(format!("PES 2017 target ID {target_player_id} is outside the supported team range 701–920."));
+    if target_player_id.bytes().all(|byte| byte == b'0') {
+        return Err("The player ID cannot be zero.".into());
     }
-    let player_slot = &target_player_id[3..5];
-    let slot_number = player_slot.parse::<u8>().map_err(|_| "The PES 2017 roster slot is invalid.")?;
-    if !(1..=32).contains(&slot_number) {
-        return Err("The PES 2017 roster slot must be from 01 through 32.".into());
-    }
-    Ok((team_id, player_slot))
+    Ok(())
 }
 
 fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
     if target != 2017 {
         return Err("The first FACE FORGE release supports PES 2021 → PES 2017 only. PES 2017 → PES 2021 is deferred.".into());
     }
-    let (team_id, player_slot) = split_pes2017_target_player_id(target_player_id)?;
+    validate_target_player_id(target_player_id)?;
+    // Team Compiler only accepts its custom-team namespace. Use a private
+    // temporary identity and rename its nested CPK to the real player ID.
+    let team_id = "701";
+    let player_slot = "01";
+    let compiler_player_id = "70101";
     let input_metadata = fs::symlink_metadata(input).map_err(|e| format!("Inspect face input: {e}"))?;
     if input_metadata.file_type().is_symlink() || !input_metadata.is_dir() {
         return Err("Complete face conversion requires a real source folder.".into());
