@@ -34,7 +34,7 @@ export function decodePes2017Model(container:ModelContainer):FaceScene{
   meshes.push({name:geometry.name,materialIndex,vertices,indices:geometry.indices,lodRanges:geometry.lodRanges});warnings.push(...geometry.warnings);
  }
  if(materialNames.length===0)warnings.push("No MTL material names were found.");else warnings.push("MODEL material names were read, but external MTL shader and texture bindings are not yet decoded.");
- const scene:FaceScene={schemaVersion:1,sourceFormat:"PES2017_MODEL",meshes,materials,bones,morphTargets:[],metadata:{modelVersion:container.version,meshCount:meshes.length,boneCount:bones.length,materialCount:materials.length}};
+ const scene:FaceScene={schemaVersion:1,sourceFormat:"PES2017_MODEL",meshes,materials,bones,morphTargets:[],metadata:{modelVersion:container.version,meshCount:meshes.length,boneCount:bones.length,materialCount:materials.length,modelWarnings:warnings.join(" | ")}};
  const issues=validateFaceScene(scene),errors=issues.filter(x=>x.severity==="error");if(errors.length)throw new Error("Decoded MODEL scene failed validation: "+errors.slice(0,5).map(x=>x.message).join(" "));
  return scene;
 }
