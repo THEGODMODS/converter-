@@ -1,7 +1,7 @@
 # FACE FORGE implementation audit
 
 Audit date: 2026-11-13  
-Audited ref: `feature/face-rig-calibration-audit`  
+Audited ref: `fix/real-face-fixture-gate` (repository head checked 2026-11-13)  
 First release target: Windows desktop, PES 2021 FMDL/FTEX → PES 2017 MODEL/DDS (reverse direction deferred)
 
 This audit describes the implementation in the repository, not the product ambition. A visible screen, parser, package writer or successful binary round-trip is not evidence that the game accepts a converted face.
@@ -67,7 +67,7 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 | FPK/FPKD parsing and writer | `engine/formats/fpk.ts` | Reference tables are rejected; full archive metadata preservation unproven |
 | Fox package output | `electron/package-builder.ts` | PES 2021 output only; requires already-converted files and does not prove game readiness |
 | CPK writer/validator | `engine/packaging/cpk.ts` | Not independently certified by CRI tooling or target game |
-| Geometry preview | `app/FacePreview.tsx` | Untextured geometry; no material/texture-semantic rendering |
+| Geometry + texture preview | `app/FacePreview.tsx`, `electron/main.ts` | Loads supported DDS/FTEX-derived textures and maps likely material slots; shader semantics, UV orientation, alpha conventions and real-face appearance remain unvalidated |
 | Manifest and project scan | `engine/manifest.ts`, `engine/database.ts` | Local UI persistence is not a complete durable conversion database |
 | Rig analysis | `engine/model/rig-analysis.ts`, `engine/model/face-rig-calibration.ts` | Audit/reporting; no proven facial rig retargeter |
 
@@ -86,7 +86,7 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 
 7. **Batch is not a conversion queue yet.** It needs bounded concurrency, per-item progress, cancellation, retry, resume, isolated failures, output validation and machine-readable reports.
 8. **Project database is not production persistence.** Current renderer storage keeps a limited summary. A durable versioned database needs file hashes, conversion jobs, provenance, source/target versions, notes, statuses, output references, migrations and recovery.
-9. **Preview is not fidelity QA.** Add texture loading, material/shader preview, alpha handling, channel inspection, face-part visibility, camera presets and before/after comparison. Facial animation playback needs actual animation data and rig support.
+9. **Preview is not fidelity QA.** Texture payload loading and basic material-slot mapping are now present, but are heuristic and have no genuine head/material fixture proving correct skin, normal, alpha, eye or hair rendering. Add per-channel inspection, face-part visibility, camera presets and before/after comparison. Facial animation playback needs actual animation data and rig support.
 10. **Install and rollback are absent.** Add explicit game-root confirmation, path and version checks, install plan preview, timestamped backups, verified DpFileList adapter, atomic file replacement and tested rollback.
 
 ### P2 — packaging and release
@@ -101,7 +101,7 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 - `createConversionPlan` in `engine/model/adapters.ts` deliberately sets `executable: false` and adds a whole-face assembly blocker. This is correct; do not remove the gate merely to enable a button.
 - The renderer's Batch mode queues scanned folders; it does not call a per-item conversion executor with progress/cancel/retry.
 - The project-library summary is stored in renderer localStorage. It is not the full durable database described in the product spec.
-- `FacePreview.tsx` creates a neutral untextured material for every mesh. It cannot judge skin/hair/material fidelity.
+- `FacePreview.tsx` now attempts DDS-backed base-colour, normal and alpha maps. This improves visual inspection but is not a Fox Engine shader emulator; slot-name heuristics, DX10/compressed DDS handling, UV conventions and alpha treatment still need real face-package comparisons.
 - The current package builder creates paired FPK/FPKD from already-converted files. It does not perform the conversion or validate the face's complete semantic dependency closure.
 - The CPK builder is not an installation wizard and has no verified DpFileList transaction/rollback.
 - The complete-folder Electron path now independently reopens the Team Compiler's outer CPK and nested player-face CPK before publishing. It requires face.xml, oral_face_high_win32.model and face_high.mtl in the nested archive and records entry hashes for both archive levels. This is structural/core-asset verification; it does not prove all model/material references resolve or that PES 2017 accepts the face in-game.
@@ -113,7 +113,7 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 
 - Native Fox-package conversion now validates the complete member set, converts FMDL/SKL models and resolves FTEX dependencies through the Electron texture stage (including embedded FPK members), and rejects XML, face-diff, FOX scene and unknown sidecars instead of silently dropping them. It normalizes the format's canonical `/Assets/...` entry prefix before writing, and rejects other absolute/traversal paths, orphan skeletons and case-insensitive duplicate virtual paths. Regression coverage now exercises embedded FPK texture extraction and conversion. Package-wide material-reference equivalence still needs real face fixtures and target-game validation.
 - Rig calibration audit now detects invalid parent references and cycles, and measures hierarchy coverage over mapped landmarks.
-- Synthetic regression tests cover the rig-audit cases. CI is pending for the current feature branch; no passing result is claimed here.
+- Synthetic regression tests cover the rig-audit cases. The CI package smoke test currently aliases `fcl_hair.fmdl` to `face_high.fmdl`; it is explicitly a hair-geometry/package-plumbing test, not a genuine head conversion test. CI status must be read from the active workflow run; no passing result is claimed here.
 
 ## Release acceptance checklist
 
@@ -124,7 +124,7 @@ A release candidate remains blocked until every applicable item is evidenced:
 - [ ] Both directions decode → convert → encode → re-decode every supported asset.
 - [ ] Texture references and material bindings all resolve after conversion.
 - [ ] No unsupported source asset is silently skipped.
-- [ ] Textured preview and part-by-part fidelity review.
+- [ ] Validate textured preview against a genuine PES 2021 head package, including skin, normal, eye and hair channels; add part-by-part fidelity review.
 - [ ] Batch execution with cancellation, retry and recovery.
 - [ ] Durable project database and conversion history.
 - [ ] CPK/FPK/FPKD independent read-back and entry-hash verification.
