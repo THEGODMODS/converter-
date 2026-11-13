@@ -26,7 +26,7 @@ export function writeModelContainer(container:ModelContainer,compress=container.
  if(container.version<16||container.version>19)throw new Error("Unsupported PES MODEL version.");
  if(container.sections.length===0||container.sections.length>64)throw new Error("MODEL requires between 1 and 64 sections.");
  if(container.arrayHeaderExtra.length>1024*1024)throw new Error("MODEL section-array extension exceeds its safety limit.");
- const tocOffset=24,arrayStart=tocOffset+8,recordOffset=12+container.arrayHeaderExtra.length,records=Buffer.alloc(container.sections.length*4),sections:Buffer[]=[];let relative=recordOffset+records.length;
+ const tocOffset=24,recordOffset=12+container.arrayHeaderExtra.length,records=Buffer.alloc(container.sections.length*4),sections:Buffer[]=[];let relative=recordOffset+records.length;
  for(let i=0;i<container.sections.length;i++){const section=container.sections[i];if(section.index!==i)throw new Error("MODEL section indices must be contiguous and ordered.");records.writeUInt32LE(relative,i*4);sections.push(Buffer.from(section.data));relative+=section.data.length;}
  const arrayHeader=Buffer.alloc(12);arrayHeader.writeUInt32LE(recordOffset,0);arrayHeader.writeUInt32LE(container.sections.length,4);arrayHeader.writeUInt32LE(4,8);
  const header=Buffer.alloc(24);header.write("MODEL\0\0\0",0,"binary");header.writeUInt32LE(tocOffset,8);header.writeUInt16LE(container.unknown1,12);header.writeUInt16LE(container.version,14);header.writeUInt32LE(container.unknown2,16);header.writeUInt32LE(container.flags,20);
