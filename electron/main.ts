@@ -33,9 +33,14 @@ function registerIpc(){
   if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid source project folder.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source project is not a safe directory.");
-  const realRoot=await fs.promises.realpath(root),picked=await dialog.showOpenDialog(mainWindow!,{title:"Select the face model to convert",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model","fpk"]}]});
-  if(picked.canceled||!picked.filePaths[0])return null;
-  const modelPath=path.resolve(picked.filePaths[0]),realModel=await fs.promises.realpath(modelPath),prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+  const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
+  const packages=inventory.files.filter(file=>file.kind==="container-fpk"&&!file.path.includes("!/"));
+  const looseModels=inventory.files.filter(file=>["model-pes2017","model-pes2017-compressed","model-pes2021"].includes(file.kind)&&!file.path.includes("!/"));
+  let selectedPath:string|undefined;
+  if(packages.length===1)selectedPath=path.resolve(root,...packages[0].path.split("/"));
+  else if(packages.length===0&&looseModels.length===1)selectedPath=path.resolve(root,...looseModels[0].path.split("/"));
+  else{const picked=await dialog.showOpenDialog(mainWindow!,{title:"Select a face model package (or choose one model)",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model","fpk"]}]});if(picked.canceled||!picked.filePaths[0])return null;selectedPath=picked.filePaths[0];}
+  const modelPath=path.resolve(selectedPath),realModel=await fs.promises.realpath(modelPath),prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
   if(!realModel.startsWith(prefix))throw new Error("The selected model must be inside the inspected source folder.");
   const stat=await fs.promises.lstat(modelPath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("The selected model is not a safe supported file.");
   const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"?"fpk":null;
