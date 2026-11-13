@@ -105,24 +105,18 @@ function registerIpc(){
   }
   const conversionProject={...inventory,dependencies:inventory.dependencies.filter(item=>dependencySources.has(item.source))};
   const stageParent=await fs.promises.mkdtemp(path.join(path.dirname(realOutput),".face-forge-stage-"));
-  const stageOutput=path.join(stageParent,"output"),backupOutput=path.join(stageParent,"empty-output-backup");
+  const stageOutput=path.join(stageParent,"output");
   await fs.promises.mkdir(stageOutput);
   args.push("--out",stageOutput);
-  let outputMoved=false;
   try{
    const result=await execFileAsync(binary,args,{timeout:180000,maxBuffer:4*1024*1024,windowsHide:true});
    let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("Native converter returned an invalid result report.");}
    const textures=await convertFaceTextureDependencies(conversionProject,root,stageOutput,target);
    const published=await publishStagedOutput(stageOutput,realOutput);
-   outputMoved=false;
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
    return {destination:published,report,textures};
   }catch(error){
-   if(outputMoved){
-    try{if(!(await fs.promises.lstat(realOutput)).isSymbolicLink())await fs.promises.rm(realOutput,{recursive:true,force:true});}catch{}
-    try{await fs.promises.rename(backupOutput,realOutput);}catch{}
-   }
-   await fs.promises.rm(stageParent,{recursive:true,force:true});
+   try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
    const detail=error instanceof Error?error.message:String(error);
    throw new Error("Native PES conversion failed; the selected output folder was not intentionally cleared: "+detail);
   }
