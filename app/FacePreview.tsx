@@ -9,14 +9,16 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   const element=host.current;if(!element)return;
   const scene=new THREE.Scene();scene.background=new THREE.Color("#0b111a");
   const camera=new THREE.PerspectiveCamera(42,1,0.01,1000);camera.position.set(2.6,1.8,3.2);
-  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;element.appendChild(renderer.domElement);
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;element.appendChild(renderer.domElement);
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=.5;controls.maxDistance=20;
-  scene.add(new THREE.HemisphereLight(0xcbdcff,0x27313b,2.1));const key=new THREE.DirectionalLight(0xffffff,3.2);key.position.set(3,5,4);scene.add(key);const rim=new THREE.DirectionalLight(0x9edbff,1.5);rim.position.set(-4,2,-3);scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0xcbdcff,0x27313b,1.15));const key=new THREE.DirectionalLight(0xffffff,1.55);key.position.set(3,5,4);scene.add(key);const rim=new THREE.DirectionalLight(0x9edbff,.55);rim.position.set(-4,2,-3);scene.add(rim);
   const grid=new THREE.GridHelper(4,20,0x354657,0x1b2936);grid.position.y=-1.15;scene.add(grid);
   const group=new THREE.Group();scene.add(group);let min=new THREE.Vector3(Infinity,Infinity,Infinity),max=new THREE.Vector3(-Infinity,-Infinity,-Infinity);
   const ddsLoader=new DDSLoader(),builtMaterials=preview.materials.map(source=>{
    const isHair=/hair/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:0xc7a18e,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
+   let fallbackColorTexture:THREE.Texture|null=null;
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
+    const semantic=slot+" "+(source.textures[slot]??"");
     try{
      const binary=atob(encoded),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
      const view=new DataView(bytes.buffer),fourCC=String.fromCharCode(bytes[84]??0,bytes[85]??0,bytes[86]??0,bytes[87]??0);let texture:THREE.Texture;
@@ -31,10 +33,13 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
        const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format as THREE.CompressedPixelFormat);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
       }
      }
-     texture.colorSpace=/base|diffuse|albedo|color/i.test(slot)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
-     if(/normal/i.test(slot))material.normalMap=texture;
-     else if(/base|diffuse|albedo|color/i.test(slot)&&!material.map)material.map=texture;
-     else if(/roughness/i.test(slot)){material.roughnessMap=texture;material.roughness=1;}else if(/metallic|metalness/i.test(slot)){material.metalnessMap=texture;material.metalness=1;}else if(/opacity|alpha/i.test(slot)){material.alphaMap=texture;material.transparent=true;}
+     texture.colorSpace=/base|diff|albedo|color/i.test(semantic)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
+     if(/normal|nrm/i.test(semantic))material.normalMap=texture;
+     else if(/base|diff|albedo|color/i.test(semantic)&&!material.map)material.map=texture;
+     else if(/roughness|specular|srm/i.test(semantic)){material.roughnessMap=texture;material.roughness=1;}
+     else if(/metallic|metalness/i.test(semantic)){material.metalnessMap=texture;material.metalness=1;}
+     else if(/opacity|alpha/i.test(semantic)){material.alphaMap=texture;material.transparent=true;}
+     else if(!fallbackColorTexture)fallbackColorTexture=texture;
     }catch(error){console.warn("FACE FORGE could not decode preview texture",source.name,slot,error);}
    }
    if(material.map)material.color.set(0xffffff);return material;
