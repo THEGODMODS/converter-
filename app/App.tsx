@@ -62,7 +62,8 @@ export default function App() {
     </aside>
     <main className="main">
       <header className="topbar"><div><div className="eyebrow">THE MODDING WORKSHOP</div><h1>Face Converter</h1><p>Move face projects between PES generations. Cleanly. Safely. Freely.</p></div><div className="top-status"><span className="status-led"/> LOCAL WORKSPACE <ChevronDown size={14}/></div></header>
-      {textureResult && <div className="texture-toast">{textureResult}</div>}\n      <section className="direction-card">
+      {textureResult && <div className="texture-toast">{textureResult}</div>}
+      <section className="direction-card">
         <div className="direction-head"><div><span className="eyebrow">CONVERSION ROUTE</span><h2>Choose your direction</h2></div><div className="route-tag"><ArrowDownUp size={14}/> TWO-WAY ENGINE</div></div>
         <div className="routes">
           <button className={direction==="pes2021-to-pes2017"?"route selected":"route"} onClick={()=>{setDirection("pes2021-to-pes2017");setProject(null)}}><div className="game-icon newer">21</div><div className="route-copy"><strong>PES 2021</strong><span>FMDL · FTEX</span></div><ArrowRight className="route-arrow" size={20}/><div className="game-icon older">17</div><div className="route-copy"><strong>PES 2017</strong><span>MODEL · DDS</span></div><div className="route-radio"/></button>
