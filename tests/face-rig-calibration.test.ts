@@ -9,20 +9,40 @@ function fixture(){
  for(let i=0;i<33;i++){const o=0xf0+i*0x10;data.writeUInt32LE(o,0x50+i*4);}
  for(let i=0;i<6;i++){const o=0x300+i*0x20;data.writeUInt32LE(o,0x50+(33+i)*4);[1,1,1].forEach((v,j)=>data.writeFloatLE(v,o+12+j*4));}
  const bones=["sk_head",...names,"dsk_ear_t_l","dsk_ear_t_r","dsk_ear_b_l","dsk_ear_b_r","dsk_earlobe_l","dsk_earlobe_r"];
- const scene:FaceScene={schemaVersion:1,sourceFormat:"PES2021_FMDL",meshes:[],materials:[],bones:bones.map(name=>({name,parentIndex:null})),morphTargets:[],metadata:{}};
+ const scene:FaceScene={schemaVersion:1,sourceFormat:"PES2021_FMDL",meshes:[],materials:[],bones:bones.map((name,index)=>({name,parentIndex:index===0?null:0,sourceMatrix:[1,0,0,0,0,1,0,0,0,0,1,0],inverseBindMatrix:[1,0,0,0,0,1,0,0,0,0,1,0]})),morphTargets:[],metadata:{}};
  return {scene,diff:inspectFaceDiff(data)};
 }
 describe("FACE diff to skeleton calibration audit",()=>{
- it("maps verified facial and ear records by exact bone name without mutating scene",()=>{
+ it("maps landmarks and audits matrices and hierarchy without mutating scene",()=>{
   const {scene,diff}=fixture();const before=JSON.stringify(scene);
   const audit=auditFaceRigCalibration(scene,diff);
   expect(audit.headFrameStatus).toBe("matched");
   expect(audit.summary).toEqual({matched:39,missing:0,ambiguous:0,total:39});
   expect(audit.facialOffsets[6]).toMatchObject({boneIndex:7,status:"matched",record:{boneName:"skf_eye_r"}});
   expect(audit.earTransforms[0]).toMatchObject({boneIndex:34,status:"matched",record:{boneName:"dsk_ear_t_l"}});
+  expect(audit.matrixAudit.sourceMatricesMissing).toBe(0);
+  expect(audit.matrixAudit.inverseBindMatricesMissing).toBe(0);
+  expect(audit.matrixAudit.headFrame?.sourceMatrix).toBe("invertible");
+  expect(audit.hierarchyAudit.status).toBe("available");
   expect(audit.application).toBe("inspection-only");
   expect(audit.blockers.some(x=>x.includes("No offsets were applied"))).toBe(true);
   expect(JSON.stringify(scene)).toBe(before);
+ });
+ it("reports absent matrices and missing parent hierarchy as blockers",()=>{
+  const {scene,diff}=fixture();
+  scene.bones=scene.bones.map(b=>({...b,parentIndex:null,sourceMatrix:undefined,inverseBindMatrix:undefined}));
+  const audit=auditFaceRigCalibration(scene,diff);
+  expect(audit.matrixAudit.sourceMatricesMissing).toBe(40);
+  expect(audit.matrixAudit.inverseBindMatricesMissing).toBe(40);
+  expect(audit.hierarchyAudit.status).toBe("unavailable");
+  expect(audit.blockers.some(x=>x.includes("Parent hierarchy is unavailable"))).toBe(true);
+ });
+ it("detects degenerate matrices instead of accepting them as usable transforms",()=>{
+  const {scene,diff}=fixture();
+  scene.bones[0].sourceMatrix=[1,0,0,0,0,0,0,0,0,0,1,0];
+  const audit=auditFaceRigCalibration(scene,diff);
+  expect(audit.matrixAudit.headFrame?.sourceMatrix).toBe("degenerate");
+  expect(audit.matrixAudit.degenerateMatrices).toContain("sk_head");
  });
  it("reports missing frame and unmatched landmarks instead of guessing aliases",()=>{
   const {scene,diff}=fixture();scene.bones=scene.bones.filter(b=>b.name!=="sk_head"&&b.name!=="skf_eye_r");
