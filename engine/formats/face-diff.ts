@@ -72,8 +72,10 @@ function checkedOffsetTable(data:Buffer,count:number,recordLimit:number):number[
  const seen=new Set<number>();
  for(let i=0;i<count;i++){
   const offset=data.readUInt32LE(FACE_DIFF_HEADER_BYTES+i*4);
-  if(offset<FACE_DIFF_RECORDS_START||offset+4>recordLimit||(offset&0x0f)!==0)
-   throw new Error("FACE diff record "+i+" has an invalid or unaligned absolute offset.");
+  if(offset<FACE_DIFF_RECORDS_START||offset+4>recordLimit)
+   throw new Error("FACE diff record "+i+" pointer is out of range.");
+  if((offset&0x0f)!==0)
+   throw new Error("FACE diff record "+i+" has an unaligned absolute offset.");
   if(seen.has(offset))throw new Error("FACE diff record-offset table contains a duplicate pointer.");
   seen.add(offset);
   offsets.push(offset);
