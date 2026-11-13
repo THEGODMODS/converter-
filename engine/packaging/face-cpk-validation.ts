@@ -105,7 +105,7 @@ function verifyFaceXmlReferences(
 
 /** Verify the Team Compiler's outer team CPK and requested nested player-face CPK. */
 export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): Pes2017FaceCpkVerification {
-  if (!/^[0-9]{5}$/.test(expectedPlayerId)) throw new Error("Expected PES 2017 player ID must contain exactly five digits.");
+  if (!/^[0-9]{1,6}$/.test(expectedPlayerId) || /^0+$/.test(expectedPlayerId)) throw new Error("Expected PES 2017 player ID must be a non-zero numeric ID of up to six digits.");
   const outerInspection = inspectCpk(bytes);
   if (!outerInspection.valid || outerInspection.fileCount === 0) {
     throw new Error("Independent outer CPK read-back failed: " + outerInspection.errors.join("; "));
