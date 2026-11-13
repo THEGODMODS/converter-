@@ -9,6 +9,9 @@ Community format references describe PES 2014–2017 face assets as MODEL + DDS 
 - Texture naming conventions vary; examples include face diffuse/alpha, normal, specular/roughness, hair and oral maps.
 - Face packages may include `face_diff.bin` with a `FACE` signature. The current reader validates and extracts stable eye-scale, mouth-position, and left/right eye-position vectors at documented offsets. These values are retained in PES-native component order; coordinate conversion and any eyelid/facial-rig rewrite remain separate, fixture-gated work.
 
+## PES 2021 face-folder layout and FPK boundary
+A common unpacked face-folder layout is `#Win/face.fpk` with an optional `face.fpkd` sidecar, alongside `sourceimages/#windx11/*.ftex`. The FPK is an archive containing face model assets; the FTEX files in the sibling sourceimages tree are texture resources, not the complete face. The inventory walker recurses into nested folders and validates FTEX headers, but it does not yet extract FPK archives. Therefore a folder can correctly report valid textures and zero decoded models until FPK extraction is implemented. FPKD/KPFD sidecars are catalogued as package companions, not models. Never infer that the FPK contents are valid or convertible from its filename alone.
+
 ## Conversion is not extension renaming
 A working adapter must understand the binary model schema and translate mesh buffers, vertex layouts, indices, UVs, normals, tangents, materials, skeleton/bone weights and any face-specific auxiliary data. Texture conversion must preserve supported compression, channel order, alpha semantics and mip levels. A CPK is only a delivery container.
 
