@@ -324,16 +324,16 @@ fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
 fn inject_preserved_sidecars(
     outer_path: &Path,
     player_root: &Path,
-    player_id: &str,
+    compiler_player_id: &str,
+    target_player_id: &str,
     sidecars: &[String],
 ) -> Result<(), String> {
-    if sidecars.is_empty() { return Ok(()); }
     let outer_bytes = fs::read(outer_path).map_err(|e| format!("Read Team Compiler CPK before sidecar preservation: {e}"))?;
     let mut outer = cpk::CpkArchive::open(Cursor::new(outer_bytes))
         .map_err(|e| format!("Open Team Compiler CPK for sidecar preservation: {e}"))?;
     let outer_entries = outer.entries().to_vec();
     let nested_index = outer_entries.iter().position(|entry| {
-        entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{player_id}.cpk")))
+        entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{compiler_player_id}.cpk")))
     }).ok_or_else(|| format!("Team Compiler CPK has no nested face archive for player {player_id}."))?;
     let nested_entry = &outer_entries[nested_index];
     let nested_bytes = outer.read(nested_entry)
@@ -382,8 +382,14 @@ fn inject_preserved_sidecars(
                 .map_err(|e| format!("Copy outer CPK entry {}: {e}", entry.path))?;
             continue;
         };
-        outer_writer.add(&entry.path, bytes, None)
-            .map_err(|e| format!("Replace nested face CPK {}: {e}", entry.path))?;
+        let output_path = if index == nested_index {
+            let prefix = entry.path.rsplit_once('/').map(|(parent, _)| format!("{parent}/")).unwrap_or_default();
+            format!("{prefix}{target_player_id}.cpk")
+        } else {
+            entry.path.clone()
+        };
+        outer_writer.add(&output_path, bytes, None)
+            .map_err(|e| format!("Write face CPK member {}: {e}", output_path))?;
     }
     let rebuilt_outer = outer_writer.finish().map_err(|e| format!("Finish rebuilt Team CPK: {e}"))?.into_inner();
     // Read-back both archive levels and require every sidecar to be present.
@@ -738,7 +744,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         return Err("Upstream Team compiler reported success but produced no CPK archive.".into());
     }
     for archive_name in &cpk_files {
-        inject_preserved_sidecars(&output.join(archive_name), &player, target_player_id, &source_inventory.preserved_sidecars)?;
+        inject_preserved_sidecars(&output.join(archive_name), &player, compiler_player_id, target_player_id, &source_inventory.preserved_sidecars)?;
     }
     let report = serde_json::json!({
         "ok": true,
