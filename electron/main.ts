@@ -151,17 +151,27 @@ function registerIpc(){
    let parsedReport:unknown;try{parsedReport=JSON.parse(result.stdout.trim());}catch{throw new Error("The upstream face compiler returned an invalid conversion report.");}
    if(!parsedReport||typeof parsedReport!=="object"||(parsedReport as {ok?:unknown}).ok!==true||!Array.isArray((parsedReport as {cpkFiles?:unknown}).cpkFiles)||(parsedReport as {cpkFiles:string[]}).cpkFiles.length===0)throw new Error("The upstream compiler did not produce a conversion report with CPK outputs.");
    const cpkNames=(parsedReport as {cpkFiles:string[]}).cpkFiles;
-   const archiveVerification:Array<{archive:string;fileCount:number;entries:Array<{path:string;size:number;sha256:string}>;faceCpkPath:string;faceFileCount:number;faceEntries:Array<{path:string;size:number;sha256:string}>}> = [];
+   const archiveVerification:Array<{archive:string;fileCount:number;entries:Array<{path:string;size:number;sha256:string}>;faceCpkPath:string;faceFileCount:number;faceEntries:Array<{path:string;size:number;sha256:string}>;preservedSidecars:string[]}> = [];
    for(const archiveName of cpkNames){
     if(typeof archiveName!=="string"||!archiveName||path.basename(archiveName)!==archiveName||!archiveName.toLowerCase().endsWith(".cpk"))throw new Error("The native report contains an unsafe CPK output name.");
     const archivePath=path.join(stageOutput,archiveName),archiveStat=await fs.promises.lstat(archivePath);
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
     const archiveBytes=await readFile(archivePath),verification=verifyPes2017FaceCpk(archiveBytes,playerId),inspection=verification.outerInspection;
-    const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
+    const verification=verifyPes2017FaceCpk(archiveBytes,playerId);
+     const reportRecord=parsedReport as Record<string,unknown>;
+     const preservedSidecars=Array.isArray(reportRecord.preservedSidecars)?reportRecord.preservedSidecars as string[]:[];
+     for(const sidecar of preservedSidecars){
+      if(typeof sidecar!=="string"||!sidecar.trim())throw new Error("The native report contains an invalid preserved face sidecar path.");
+      const basename=path.posix.basename(sidecar.replaceAll("\\\\","/")).toLowerCase();
+      if(!basename||basename==="."||basename==="..")throw new Error("The native report contains an unsafe preserved face sidecar path.");
+      if(!verification.faceInspection.files.some(entry=>path.posix.basename(entry.path).toLowerCase()===basename))throw new Error("The generated PES 2017 face CPK is missing preserved source sidecar "+sidecar+".");
+     }
+     
+     const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
     const nestedEntry=inspection.files.find(entry=>entry.path===verification.faceCpkPath)!;
     const nestedBytes=archiveBytes.subarray(nestedEntry.offset,nestedEntry.offset+nestedEntry.size);
     const faceEntries=verification.faceInspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(nestedBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
-    archiveVerification.push({archive:archiveName,fileCount:inspection.fileCount,entries,faceCpkPath:verification.faceCpkPath,faceFileCount:verification.faceInspection.fileCount,faceEntries});
+    archiveVerification.push({archive:archiveName,fileCount:inspection.fileCount,entries,faceCpkPath:verification.faceCpkPath,faceFileCount:verification.faceInspection.fileCount,faceEntries,preservedSidecars});
    }
    const report={...(parsedReport as Record<string,unknown>),archiveVerification:{method:"independent FACE FORGE CPK TOC/range read-back with per-entry SHA-256",archives:archiveVerification}};
    const published=await publishStagedOutput(stageOutput,realOutput);
