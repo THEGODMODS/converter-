@@ -121,6 +121,40 @@ function registerIpc(){
    throw new Error("Native PES conversion failed; the selected output folder was not intentionally cleared: "+detail);
   }
  });
+ ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown)=>{
+  trusted(event);
+  if(typeof folder!=="string"||!path.isAbsolute(folder)||(target!==2017&&target!==2021))throw new Error("Invalid complete-face conversion request.");
+  const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
+  if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
+  const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
+  const expected=target===2017?"pes2021":"pes2017";
+  if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
+  if(inventory.files.some(file=>(file.packageReferences?.length??0)>0))throw new Error("This face package declares inter-package references. The current single-face export cannot safely resolve those external package links.");
+  const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for the complete converted face CPK",properties:["openDirectory"]});
+  if(destination.canceled||!destination.filePaths[0])return null;
+  const output=path.resolve(destination.filePaths[0]),outputStat=await fs.promises.lstat(output);
+  if(outputStat.isSymbolicLink()||!outputStat.isDirectory())throw new Error("Choose a real output directory, not a symbolic link.");
+  const realOutput=await fs.promises.realpath(output),rootPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep,outputPrefix=realOutput.endsWith(path.sep)?realOutput:realOutput+path.sep;
+  if(realOutput===realRoot||realOutput.startsWith(rootPrefix)||realRoot.startsWith(outputPrefix))throw new Error("Source and output folders must be separate and cannot contain one another.");
+  if((await fs.promises.readdir(realOutput)).length)throw new Error("Choose an empty output folder; existing files will never be overwritten.");
+  const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
+  if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the upstream Team compiler enabled.");
+  const stageParent=await fs.promises.mkdtemp(path.join(path.dirname(realOutput),".face-forge-complete-stage-"));
+  const stageOutput=path.join(stageParent,"output");
+  try{
+   await fs.promises.mkdir(stageOutput);
+   const result=await execFileAsync(binary,["convert-face-folder","--input",realRoot,"--target",String(target),"--out",stageOutput],{timeout:600000,maxBuffer:16*1024*1024,windowsHide:true});
+   let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("The upstream face compiler returned an invalid conversion report.");}
+   if(!report||typeof report!=="object"||(report as {ok?:unknown}).ok!==true||!Array.isArray((report as {cpkFiles?:unknown}).cpkFiles)||(report as {cpkFiles:string[]}).cpkFiles.length===0)throw new Error("The upstream compiler did not produce a verified CPK output.");
+   const published=await publishStagedOutput(stageOutput,realOutput);
+   try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
+   return {destination:published,report};
+  }catch(error){
+   try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
+   const detail=error instanceof Error?error.message:String(error);
+   throw new Error("Complete face conversion failed. The selected output folder was not intentionally cleared: "+detail);
+  }
+ });
  ipcMain.handle("face:build-fox-package",async(event,folder:unknown,virtualRoot:unknown)=>{
   trusted(event);
   if(typeof folder!=="string"||!path.isAbsolute(folder)||typeof virtualRoot!=="string"||virtualRoot.length>512)throw new Error("Invalid package source or virtual root.");
