@@ -4,6 +4,6 @@ function fixture(){const data=Buffer.alloc(0x16c);data.write("FACE",0,"ascii");f
 describe("PES face_diff metadata",()=>{
  it("reads stable eye scale, oral and eye placement vectors",()=>{const parsed=inspectFaceDiff(fixture());expect(parsed.eyeScale).toEqual([1,1,1]);for(const [actual,expected] of [[parsed.mouthPosition,[0.1,0.2,0.3]],[parsed.rightEyePosition,[0.4,0.5,0.6]],[parsed.leftEyePosition,[-0.4,0.5,0.6]]] as Array<[number[],number[]]>)actual.forEach((value,index)=>expect(value).toBeCloseTo(expected[index],6));});
  it("rejects invalid magic and truncated files",()=>{const bad=fixture();bad.write("NOPE",0,"ascii");expect(()=>inspectFaceDiff(bad)).toThrow(/invalid/i);expect(()=>inspectFaceDiff(Buffer.alloc(0x100))).toThrow(/invalid/i);});
- it("rejects record tables shorter than the counts declared in the header",()=>{const bad=fixture();bad.writeUInt32LE(4,0x48);expect(()=>inspectFaceDiff(bad)).toThrow(/header requires at least/i);});
+ it("rejects record tables shorter than the counts declared in the header",()=>{const bad=fixture();bad.writeUInt32LE(20,0x48);expect(()=>inspectFaceDiff(bad)).toThrow(/header requires at least/i);});
  it("rejects non-finite coordinates",()=>{const bad=fixture();bad.writeFloatLE(Number.NaN,0x150);expect(()=>inspectFaceDiff(bad)).toThrow(/non-finite/i);});
 });
