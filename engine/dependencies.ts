@@ -13,7 +13,8 @@ export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]
    const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
    const relative=model.kind==="material-pes2017"?normalizeAsset(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference)):normalized;
    const exact=textures.filter(file=>{const candidate=normalizeAsset(file.path.split("!/").pop()??file.path);return candidate===relative||candidate===normalized;});
-   const candidates=exact.length?exact:textures.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
+   const escapesRoot=relative===".."||relative.startsWith("../");
+   const candidates=exact.length?exact:escapesRoot?[]:textures.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
    dependencies.push({source:model.path,reference,status:candidates.length===1?"resolved":candidates.length===0?"missing":"ambiguous",candidates:candidates.map(file=>file.path)});
   }
  }
