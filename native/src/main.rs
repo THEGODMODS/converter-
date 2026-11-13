@@ -550,6 +550,40 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
     Ok(inventory)
 }
 
+fn write_face_archive_member(
+    destination: &Path,
+    normalized: &str,
+    data: &[u8],
+    seen: &mut std::collections::HashSet<String>,
+    file_count: &mut usize,
+    total_bytes: &mut u64,
+) -> Result<(), String> {
+    let key = normalized.to_ascii_lowercase();
+    let target = destination.join(PathBuf::from(normalized));
+    if seen.contains(&key) {
+        let existing = fs::read(&target).map_err(|e| format!(
+            "Duplicate face asset path {normalized} was already staged, but its existing copy could not be read: {e}"
+        ))?;
+        if existing == data {
+            return Ok(());
+        }
+        return Err(format!(
+            "Conflicting duplicate face asset {normalized}: the loose file and Fox archive contain different data. Keep one authoritative copy."
+        ));
+    }
+    *file_count += 1;
+    *total_bytes = total_bytes.saturating_add(data.len() as u64);
+    if *file_count > 10_000 || *total_bytes > 2 * 1024 * 1024 * 1024 {
+        return Err("Expanded face source exceeds the safety limit of 10,000 files or 2 GiB.".into());
+    }
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Create extracted asset folder {}: {e}", parent.display()))?;
+    }
+    fs::write(&target, data).map_err(|e| format!("Extract Fox package member {}: {e}", target.display()))?;
+    seen.insert(key);
+    Ok(())
+}
+
 fn extract_face_archives(
     archive_paths: &[PathBuf],
     destination: &Path,
@@ -573,19 +607,7 @@ fn extract_face_archives(
         let archive = FpkFile::read(&bytes).map_err(|e| format!("Decode Fox archive {}: {e}", path.display()))?;
         for (name, data) in archive.entries() {
             let normalized = normalize_fox_virtual_path(name)?;
-            if !seen.insert(normalized.to_ascii_lowercase()) {
-                return Err(format!("Duplicate case-insensitive path across loose files and Fox archives: {normalized}"));
-            }
-            *file_count += 1;
-            *total_bytes = total_bytes.saturating_add(data.len() as u64);
-            if *file_count > 10_000 || *total_bytes > 2 * 1024 * 1024 * 1024 {
-                return Err("Expanded face source exceeds the safety limit of 10,000 files or 2 GiB.".into());
-            }
-            let target = destination.join(PathBuf::from(normalized));
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).map_err(|e| format!("Create extracted asset folder {}: {e}", parent.display()))?;
-            }
-            fs::write(&target, data).map_err(|e| format!("Extract Fox package member {}: {e}", target.display()))?;
+            write_face_archive_member(destination, &normalized, data, seen, file_count, total_bytes)?;
         }
     }
     Ok(())
@@ -1089,6 +1111,35 @@ mod face_source_path_tests {
 #[cfg(test)]
 mod pes2017_target_id_tests {
     use super::split_pes2017_target_player_id;
+
+    #[test]
+    fn identical_loose_and_archive_face_diff_is_deduplicated() {
+        let root = std::env::temp_dir().join(format!("face-forge-duplicate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("face_diff.bin"), b"same-face-diff").unwrap();
+        let mut seen = std::collections::HashSet::from(["face_diff.bin".to_string()]);
+        let (mut count, mut bytes) = (1usize, 14u64);
+        let result = super::write_face_archive_member(&root, "face_diff.bin", b"same-face-diff", &mut seen, &mut count, &mut bytes);
+        assert!(result.is_ok());
+        assert_eq!(count, 1);
+        assert_eq!(bytes, 14);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn conflicting_loose_and_archive_face_diff_is_rejected() {
+        let root = std::env::temp_dir().join(format!("face-forge-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("face_diff.bin"), b"loose-version").unwrap();
+        let mut seen = std::collections::HashSet::from(["face_diff.bin".to_string()]);
+        let (mut count, mut bytes) = (1usize, 13u64);
+        let result = super::write_face_archive_member(&root, "face_diff.bin", b"archive-version", &mut seen, &mut count, &mut bytes);
+        assert!(result.unwrap_err().contains("different data"));
+        assert_eq!(std::fs::read(root.join("face_diff.bin")).unwrap(), b"loose-version");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn accepts_valid_pes2017_team_and_slot_ids() {
