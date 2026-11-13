@@ -65,6 +65,12 @@ describe("PES face_diff metadata and records",()=>{
   bad.writeUInt32LE(0x300,0x50+31*4);
   expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
  });
+ it("rejects overlapping v5 record ranges instead of preserving malformed pointers",()=>{
+  const bad=v5Fixture();
+  // The last 16-byte entry is redirected into the first 32-byte entry.
+  bad.writeUInt32LE(0x300,0x50+31*4);
+  expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
+ });
  it("rejects non-finite header calibration and v4 record values",()=>{
   for(const offset of [0x08,0x14,0x20,0x2c,0x3c]){
    const bad=v5Fixture();bad.writeFloatLE(Number.NaN,offset);
