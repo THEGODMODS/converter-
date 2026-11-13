@@ -32,7 +32,7 @@ function registerIpc(){
  ipcMain.handle("face:choose-folder",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose PES face project folder",properties:["openDirectory"]});return result.canceled?null:result.filePaths[0]??null;});
  ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose face folders for batch or project",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
- ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);inspectedFaceProjects.set(project.root,project);return project;});
+ ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);inspectedFaceProjects.clear();inspectedFaceProjects.set(project.root,project);return project;});
  ipcMain.handle("face:export-manifest",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");const project=await inspectFaceFolder(folder);const manifest=buildFaceProjectManifest(project);if(!manifest.integrity.complete)throw new Error("Manifest integrity check failed; export was stopped.");const suggested=path.join(path.dirname(folder),path.basename(folder)+"-FACE-FORGE-manifest.json");const picked=await dialog.showSaveDialog(mainWindow!,{title:"Export face project manifest",defaultPath:suggested,filters:[{name:"FACE FORGE manifest",extensions:["json"]}]});if(picked.canceled||!picked.filePath)return null;if(path.extname(picked.filePath).toLowerCase()!==".json")throw new Error("Choose a .json manifest destination.");const payload=JSON.stringify(manifest,null,2)+"\n";await writeFile(picked.filePath,payload,{flag:"wx"});return {destination:picked.filePath,files:manifest.summary.fileCount,bytes:Buffer.byteLength(payload)};});
  ipcMain.handle("face:convert-native-model",async(event,folder:unknown)=>{
   trusted(event);
@@ -196,7 +196,7 @@ function registerIpc(){
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The selected face folder is no longer a safe directory.");
   const realRoot=await fs.promises.realpath(root);
-  let data:Buffer,extension:string,companionMtl:Buffer|undefined,archiveEntries:Array<{name:string;data:Buffer}>=[];
+  let data:Buffer,extension:string,companionMtl:Buffer|undefined;
   const parsedArchives=new Map<string,ReturnType<typeof parseFpkArchive>>();
   const readArchiveCached=async(archivePath:string)=>{const key=path.resolve(archivePath).toLowerCase();const cached=parsedArchives.get(key);if(cached)return cached;const parsed=parseFpkArchive(await readFile(archivePath));parsedArchives.set(key,parsed);return parsed;};
   const archiveMarker=relativePath.indexOf("!/");
@@ -241,7 +241,6 @@ function registerIpc(){
     const textureData:Record<string,string>={};
     for(const [slot,reference] of Object.entries(material.textures)){
      const wanted=normalize(reference);
-     const textureFiles=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
      const scorePath=(candidate:string,requested:string)=>{const a=candidate.split("/"),b=requested.split("/");let score=0;while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;return score;};
      // FMDL paths may be absolute game virtual paths while extracted folders
      // and FPK members may start at different roots. Match the longest suffix.
