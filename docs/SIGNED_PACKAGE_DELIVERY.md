@@ -33,7 +33,13 @@ Every URL host must be on the exact approved-host list. Paths are relative to th
 
 ## Publisher key and signing
 
-Generate an Ed25519 key pair in a secure offline directory outside the repository. The included utility writes a PKCS#8 private key with restrictive file permissions and an SPKI public key:\n\n\`\`\`sh\nnpm run package:keygen -- godmods-2026 /secure/offline/face-forge-keys\n\`\`\`\n\nKeep the private key offline and never distribute it with FACE FORGE. Provision the public key through a separately reviewed application update. The key ID is a short stable identifier.
+Generate an Ed25519 key pair in a secure offline directory outside the repository. The included utility writes a PKCS#8 private key with restrictive file permissions and an SPKI public key:
+
+```sh
+npm run package:keygen -- godmods-2026 /secure/offline/face-forge-keys
+```
+
+Keep the private key offline and never distribute it with FACE FORGE. Provision the public key through a separately reviewed application update. The key ID is a short stable identifier.
 
 ```sh
 npm run package:sign -- unsigned-manifest.json /secure/offline/face-forge-keys/godmods-2026.private.pem godmods-2026
