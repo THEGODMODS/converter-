@@ -36,7 +36,7 @@ describe("inspectFaceFolder",()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
     try{
       await mkdir(path.join(root,"materials"));
-      await writeFile(path.join(root,"materials","face.mtl"),Buffer.from('<materialset><material name="Face_Game_mat" shader="Face"><sampler name="DiffuseMap" path="../face_c.dds" srgb="1"/></material></materialset>'));
+      await writeFile(path.join(root,"materials","face.mtl"),Buffer.from('<materialset><material name="Face_Game_mat" shader="Face"><sampler name="DiffuseMap" path="face_c.dds" srgb="1"/></material></materialset>'));
       const result=await inspectFaceFolder(root);
       expect(result.files[0].kind).toBe("material-pes2017");
       expect(result.files[0].assetReferences).toEqual(["face_c.dds"]);
