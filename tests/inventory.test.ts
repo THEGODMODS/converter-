@@ -2,6 +2,7 @@ import { describe,expect,it } from "vitest";
 import { mkdtemp,mkdir,writeFile,rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { deflateSync } from "node:zlib";
 import { inspectFaceFolder } from "../engine/inventory";
 
 describe("inspectFaceFolder",()=>{
@@ -26,6 +27,19 @@ describe("inspectFaceFolder",()=>{
       const result=await inspectFaceFolder(root);
       expect(result.files[0].kind).toBe("invalid-dds");
       expect(result.detectedGame).toBe("unknown");
+    }finally{await rm(root,{recursive:true,force:true});}
+  });
+
+  it("detects ESYS-compressed PES 2017 MODEL files",async()=>{
+    const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
+    try{
+      const model=Buffer.alloc(36);model.write("MODEL\\0\\0\\0",0,"binary");model.writeUInt32LE(24,8);model.writeUInt16LE(19,14);model.writeUInt32LE(12,24);model.writeUInt32LE(0,28);model.writeUInt32LE(4,32);
+      const header=Buffer.alloc(16);header.write("ESYS",4,"ascii");
+      await writeFile(path.join(root,"face.model"),Buffer.concat([header,deflateSync(model)]));
+      const result=await inspectFaceFolder(root);
+      expect(result.detectedGame).toBe("pes2017");
+      expect(result.models).toBe(1);
+      expect(result.files[0].kind).toBe("model-pes2017-compressed");
     }finally{await rm(root,{recursive:true,force:true});}
   });
 });
