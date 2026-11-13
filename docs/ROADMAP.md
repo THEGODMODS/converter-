@@ -3,20 +3,22 @@
 ## Phase 0 — foundations
 - [x] Establish clean repository and product contract.
 - [x] Define bidirectional PES 2017 ↔ PES 2021 scope.
-- [ ] Desktop shell, typed IPC, safe file intake and project inventory.
+- [x] Desktop shell, typed IPC, safe folder intake and project inventory.
+- [x] Binary header recognition for PES 2017 MODEL/DDS and PES 2021 FMDL/FTEX.
+- [ ] Green Windows CI run and security audit sign-off.
 - [ ] Automated tests and Windows CI.
 
 ## Phase 1 — reliable intake and inspection
 - [ ] Drag/drop folders and ZIP archives.
 - [ ] Safe archive extraction (path traversal, symlink, size and file-count defenses).
-- [ ] Identify MODEL/DDS and FMDL/FTEX by signatures, paths and companion metadata.
+- [x] Identify MODEL/DDS and FMDL/FTEX by signatures, paths and companion metadata.
 - [ ] Face package report: models, textures, materials, IDs, missing dependencies.
 - [ ] Project manifest and reproducible diagnostics.
 
 ## Phase 2 — texture conversion
 - [ ] FTEX header/format research and independent decoder tests.
-- [ ] DDS format/mipmap/alpha inspection.
-- [ ] FTEX ↔ DDS conversion with channel, alpha and mip preservation where possible.
+- [x] DDS header inspection for common legacy and DX10 formats.
+- [x] Initial FTEX ↔ DDS container conversion for supported formats, mip levels and compressed payloads (needs broad fixture coverage and game testing).
 - [ ] Explicit unsupported-format reporting.
 
 ## Phase 3 — model conversion adapters
@@ -28,7 +30,7 @@
 
 ## Phase 4 — preview and packaging
 - [ ] Embedded 3D viewer with texture/material inspection.
-- [ ] CPK writer, directory validation and manifest.
+- [x] Initial deterministic CPK writer and structural TOC/payload validator (needs independent tool and game validation).
 - [ ] Export profiles for both target games.
 - [ ] Optional user-configured external tool adapters.
 
