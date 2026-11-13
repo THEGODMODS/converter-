@@ -620,7 +620,13 @@ fn run()->Result<(),String>{
  }
  if source_format=="fpk" {
   if let Some(face_diff)=package_face_diff.as_deref() {
-   validate_face_diff_generation(face_diff,target)?;
+   // PES 2017's face.xml stores the face diff as a <dif> payload. The pinned
+   // upstream Team Compiler validates the FACE header/count-derived length and
+   // preserves the payload byte-for-byte when compiling Fox FMDL faces to
+   // pre-Fox packages; it does not reject the payload by the FACE version word.
+   // Keep the same lossless rule here: validate structure, never invent a
+   // guessed 33-to-32 facial-bone remap.
+   validate_face_diff_payload(face_diff)?;
   }
   let xml=legacy_face_xml(package_face_diff.as_deref(),&model_stems)?;
   outputs.push("face.xml".into());
@@ -683,6 +689,16 @@ mod face_diff_xml_tests {
         assert!(validate_face_diff_generation(&v4, 2021).is_err());
         assert!(validate_face_diff_generation(&v5, 2017).is_err());
         assert!(validate_face_diff_generation(&v5, 2021).is_ok());
+    }
+
+    #[test]
+    fn fox_face_diff_is_preserved_byte_for_byte_in_pes2017_legacy_xml() {
+        let source = v5_fixture();
+        validate_face_diff_payload(&source).unwrap();
+        // The pre-Fox compiler's face.xml <dif> is a transport representation,
+        // not a reason to rewrite the opaque facial calibration payload.
+        let xml = legacy_face_xml(Some(&source), &["face_high".into()]).unwrap();
+        assert_eq!(legacy_face_diff_from_xml(&xml).unwrap(), Some(source));
     }
 
     #[test]
