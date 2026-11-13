@@ -9,9 +9,10 @@ describe("inspectFaceFolder",()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
     try{
       await mkdir(path.join(root,"sourceimages"));
-      await writeFile(path.join(root,"face_high.fmdl"),Buffer.from("FMDL"));
-      const dds=Buffer.alloc(128);dds.write("DDS ",0,"ascii");
-      await writeFile(path.join(root,"sourceimages","face.dds"),dds);
+      const fmdl=Buffer.alloc(56);fmdl.write("FMDL",0);fmdl.writeUInt32LE(0x4001eb85,4);fmdl.writeBigUInt64LE(56n,8);fmdl.writeBigUInt64LE(0n,16);fmdl.writeBigUInt64LE(0n,24);fmdl.writeUInt32LE(56,40);fmdl.writeUInt32LE(56,48);
+      await writeFile(path.join(root,"face_high.fmdl"),fmdl);
+      const ftex=Buffer.alloc(84);ftex.write("FTEX",0);ftex.writeFloatLE(2.03,4);ftex.writeUInt16LE(0,8);ftex.writeUInt16LE(1,10);ftex.writeUInt16LE(1,12);ftex.writeUInt16LE(1,14);ftex.writeUInt8(1,16);ftex.writeUInt32LE(3,28);ftex.writeUInt32LE(80,64);ftex.writeUInt32LE(4,68);
+      await writeFile(path.join(root,"sourceimages","face.ftex"),ftex);
       const result=await inspectFaceFolder(root);
       expect(result.detectedGame).toBe("pes2021");
       expect(result.models).toBe(1);
