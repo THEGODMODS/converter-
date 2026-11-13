@@ -3,6 +3,7 @@ use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
 use model_convert::{convert, NativeModelBundle, Subject};
 use fpk::FpkFile;
+use wezlib::decompress_if_wrapped;
 use ftex::{ColorSpace,dds_to_ftex,ftex_to_dds,info as ftex_info};
 
 fn required(args:&[String], name:&str)->Result<String,String>{let i=args.iter().position(|x|x==name).ok_or_else(||format!("Missing required argument {name}"))?;args.get(i+1).cloned().ok_or_else(||format!("Missing value for {name}"))}
@@ -61,7 +62,8 @@ fn run()->Result<(),String>{
    let mut converted=Vec::new();
    for model_path in &model_paths{
     let bytes=fs::read(model_path).map_err(|e|format!("Read MODEL {}: {e}",model_path.display()))?;
-    let file=PreFoxModel::read(&bytes).map_err(|e|format!("Decode MODEL {}: {e}",model_path.display()))?;
+    let model_payload=decompress_if_wrapped(&bytes).map_err(|e|format!("Decode WESYS wrapper {}: {e}",model_path.display()))?;
+    let file=PreFoxModel::read(&model_payload).map_err(|e|format!("Decode MODEL {}: {e}",model_path.display()))?;
     let model=PreFoxSemanticModel::from_file(&file).map_err(|e|format!("Resolve MODEL geometry {}: {e}",model_path.display()))?;
     let mtl_path=model_path.with_extension("mtl");
     if !mtl_path.is_file(){return Err(format!("PES 2017 MODEL {} requires its companion .mtl file",model_path.display()));}
