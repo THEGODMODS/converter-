@@ -11,7 +11,8 @@ const gameName=(game:FaceProject["detectedGame"])=>game==="pes2021"?"PES 2021":g
 export default function App(){
  const [mode,setMode]=useState<WorkMode>("single");const direction:Direction="pes2021-to-pes2017";
  const [project,setProject]=useState<FaceProject|null>(null),[batch,setBatch]=useState<FaceProject[]>([]),[library,setLibrary]=useState<FaceProject[]>(()=>{try{return (JSON.parse(localStorage.getItem("face-forge-library-v1")||"[]") as Partial<FaceProject>[]).map(p=>({...p,files:[],warnings:[],missing:[],coverage:p.coverage??[]}) as FaceProject);}catch{return [];}});
- const [libraryRoot,setLibraryRoot]=useState(()=>localStorage.getItem("face-forge-database-root")||""),[databaseWarnings,setDatabaseWarnings]=useState<string[]>([]);\n const [playerId,setPlayerId]=useState("");
+ const [libraryRoot,setLibraryRoot]=useState(()=>localStorage.getItem("face-forge-database-root")||""),[databaseWarnings,setDatabaseWarnings]=useState<string[]>([]);
+ const [playerId,setPlayerId]=useState("");
  const [preview,setPreview]=useState<FacePreviewData|null>(null),[previewBusy,setPreviewBusy]=useState(false);
  useEffect(()=>{try{localStorage.setItem("face-forge-library-v1",JSON.stringify(library.map(p=>({root:p.root,detectedGame:p.detectedGame,fileCount:p.fileCount,totalBytes:p.totalBytes,models:p.models,textures:p.textures,coverage:p.coverage??[]}))));}catch{setError("Project database could not be saved. Check available disk space.");}},[library]);
  useEffect(()=>{if(libraryRoot)localStorage.setItem("face-forge-database-root",libraryRoot);},[libraryRoot]);
