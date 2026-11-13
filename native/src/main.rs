@@ -1,4 +1,6 @@
 use std::{env, fs, path::{Path,PathBuf}, process};
+mod package_policy;
+use package_policy::is_supported_face_package_member;
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
 use model_convert::{convert, NativeModelBundle, Subject};
@@ -45,9 +47,7 @@ fn run()->Result<(),String>{
    // current model/texture pipeline. FACE diff, XML, FOX scene and unknown
    // sidecars may carry player identity, animation or rig data.
    let unsupported:Vec<_>=archive_entries.iter().filter_map(|(name,_)|{
-    let lower=name.to_ascii_lowercase();
-    let supported=lower.ends_with(".fmdl")||lower.ends_with(".skl")||lower.ends_with(".ftex");
-    if supported{None}else{Some(name.as_str())}
+    if is_supported_face_package_member(name){None}else{Some(name.as_str())}
    }).collect();
    if !unsupported.is_empty(){
     let examples=unsupported.iter().take(8).copied().collect::<Vec<_>>().join(", ");
