@@ -72,6 +72,24 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
+/// Reject byte-preserving FACE-diff copies when the source generation's
+/// record layout does not match the target generation. A real semantic rig
+/// retargeter is required; copying v4 into Fox or v5/v6 into legacy XML is unsafe.
+fn validate_face_diff_generation(bytes: &[u8], target: u16) -> Result<(), String> {
+    if bytes.len() < 8 || &bytes[..4] != b"FACE" {
+        return Err("FACE diff has an invalid or truncated version header.".into());
+    }
+    let version = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    let supported = if target == 2017 { version == 4 } else { version == 5 || version == 6 };
+    if !supported {
+        let expected = if target == 2017 { "v4" } else { "v5 or v6" };
+        return Err(format!(
+            "FACE diff v{version} cannot be copied to PES {target} (expected {expected}). Semantic facial-rig retargeting is required; conversion was stopped to prevent a broken face."
+        ));
+    }
+    Ok(())
+}
+
 fn legacy_face_diff_from_xml(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
     let text = std::str::from_utf8(bytes).map_err(|_| "Legacy face.xml is not UTF-8.")?;
     let document = roxmltree::Document::parse(text).map_err(|error| format!("Legacy face.xml is malformed: {error}"))?;
@@ -327,11 +345,15 @@ fn run()->Result<(),String>{
  
  }
  if source_format=="fpk" {
+  if let Some(face_diff)=package_face_diff.as_deref() {
+   validate_face_diff_generation(face_diff, target)?;
+  }
   let xml=legacy_face_xml(package_face_diff.as_deref(),&model_stems)?;
   outputs.push("face.xml".into());
   pending_outputs.push(("face.xml".into(),xml));
  }
  if let Some(face_diff)=source_face_diff.as_deref() {
+  validate_face_diff_generation(face_diff, target)?;
   let _validated=legacy_face_xml(Some(face_diff),&model_stems)?;
   outputs.push("face_diff.bin".into());
   pending_outputs.push(("face_diff.bin".into(),face_diff.to_vec()));
@@ -365,6 +387,17 @@ mod face_diff_xml_tests {
             data[0x50 + i * 4..0x54 + i * 4].copy_from_slice(&(offset as u32).to_le_bytes());
         }
         data
+    }
+
+    #[test]
+    fn refuses_to_copy_face_diff_between_incompatible_generation_layouts() {
+        use super::validate_face_diff_generation;
+        let mut v5 = fixture();
+        assert!(validate_face_diff_generation(&v5, 2017).is_err());
+        assert!(validate_face_diff_generation(&v5, 2021).is_ok());
+        v5[4..8].copy_from_slice(&4u32.to_le_bytes());
+        assert!(validate_face_diff_generation(&v5, 2017).is_ok());
+        assert!(validate_face_diff_generation(&v5, 2021).is_err());
     }
 
     #[test]
