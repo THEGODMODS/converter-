@@ -22,6 +22,7 @@ export function inspectFmdlHeader(data:Buffer):FormatInspection{
   if(section0Count>4096||section1Count>4096)return fail("FMDL","Unreasonable block descriptor count.");
   const descriptorBytes=section0Count*8+section1Count*12;
   if(descriptorsOffset+descriptorBytes>data.length)return fail("FMDL","Block descriptor table is truncated.");
+  if(section0Offset<descriptorsOffset+descriptorBytes||section1Offset<section0Offset+section0Length)return fail("FMDL","FMDL sections overlap their descriptor table or each other.");
   if(section0Offset+section0Length>data.length||section1Offset+section1Length>data.length)return fail("FMDL","Declared section range exceeds file length.");
   const knownEntrySizes:Record<number,number>={0:48,1:8,2:32,3:48,4:16,5:68,6:4,7:4,8:4,9:8,10:8,11:4,12:8,13:32,14:16,16:16,17:8,18:8,20:128};
   const seen0=new Set<number>(),seen1=new Set<number>();let cursor=descriptorsOffset;
