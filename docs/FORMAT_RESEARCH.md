@@ -39,22 +39,31 @@ The package reference table matters: FPK and FPKD can depend on sibling packages
 
 Reference: [FoxRe FPK / FPKD format layout](https://wannabecoderluc.github.io/foxre-wiki/formats/fpk/), [Atvaark GzsTool](https://github.com/Atvaark/GzsTool).
 
-### FACE diff controls currently understood
+### FACE diff calibration records now decoded
 
-Community tooling documents a FACE diff block-1 control region beginning at `0x08`. FACE FORGE's inspector exposes these little-endian float values without applying them to model geometry:
+The PES 2021 real-face reverse-engineering notes establish a versioned calibration layout. The v5/v6 header has 33 facial-bone offsets and six ear transforms. The fixed header ends at `0x50`; its offset table stores absolute file offsets for each record. The records begin at `0xF0`. The engine applies facial offsets in the `sk_head` local frame; these are rig calibration offsets, not vertex morph deltas.
 
-| Offset | Values | Meaning |
-|---|---:|---|
-| `0x08` | 3 floats | Eye scale X/Y/Z |
-| `0x14` | 3 floats | Right-eye rotation: down/up, left/right, spin (spin reported untested by source) |
-| `0x20` | 3 floats | Left-eye rotation: down/up, left/right, spin (spin reported untested by source) |
-| `0x2C` | 4 floats | Top-left, top-right, bottom-left, bottom-right eyelid offsets |
-| `0x3C` | 3 floats | Oral interior position X/Y/Z |
+| Offset | Type | Meaning |
+|---|---|---|
+| `0x04` | u32 | Format version (v5/v6 layout decoded) |
+| `0x08` | f32[3] | Eyeball scale |
+| `0x14` | f32[3] | Right-eye rotation in degrees |
+| `0x20` | f32[3] | Left-eye rotation in degrees |
+| `0x2C` | f32[4] | Upper-left, upper-right, lower-left, lower-right eyelid angles in degrees |
+| `0x3C` | f32[3] | Jaw/oral offset in the head frame |
+| `0x48` | u32 | Facial-bone record count (33 in v5/v6) |
+| `0x4C` | u32 | Ear-transform record count (6 in v5/v6) |
+| `0x50` | u32[countA + countB] | Absolute record-offset table |
+| `0xF0` | f32[4] × 33 | Named facial-bone offsets; W is expected to be zero |
+| after bone records | f32[8] × 6 | Ear `{translation.xyz, scale.xyz, reserved[2]}` records |
 
-The inspector also reads the established eye-position vectors at `0x150` and `0x160`. Header counts at `0x48` and `0x4C` are used for a minimum-length check. The auxiliary block-1/block-2 record tables are **not** decoded into facial-bone transforms yet: a community field list names many `skf_*` landmarks, but does not by itself establish record stride, coordinate convention, transform semantics or a safe write-back algorithm. No rotation unit or coordinate-system conversion is assumed. The current feature is inspection only, not a FACE diff editor or cross-generation converter.
+The verified v5/v6 facial-bone order is `skf_brow_o_r, skf_brow_i_r, skf_brow_i_l, skf_brow_o_l, skf_orbicularisoculi_b_r, skf_orbicularisoculi_b_l, skf_eye_r, skf_eye_l, skf_eyelid_b_r, skf_eyelid_b_l, skf_eyelid_t_r, skf_eyelid_t_l, skf_glabella, skf_nosewing_r, skf_nosewing_l, skf_cheek_r, skf_nasolabialfold_t_r, skf_nasolabialfold_t_l, skf_cheek_l, skf_cheek_s_r, skf_cheek_s_l, skf_lip_t_r, skf_lip_s_r, skf_lip_s_l, skf_lip_t_l, skf_nose, skf_lip_t_c, skf_lip_volume, skf_jaw, skf_lip_b_l, skf_lip_b_r, skf_doublechin, skf_lip_b_c`. Ear order is `dsk_ear_t_l, dsk_ear_t_r, dsk_ear_b_l, dsk_ear_b_r, dsk_earlobe_l, dsk_earlobe_r`.
 
-Reference: [PES-FMDL-Blender face_diff.bin issue and field notes](https://github.com/the4chancup/pes-fmdl-blender/issues/1), [PES Face/Hair Modifier source](https://github.com/MjTs140914/PES_Face_Hair_Modifier/blob/master/Blender%202.79/PES_Face_Hair_Modifier.py).
+The old fixed reads at `0x150` and `0x160` are the 7th and 8th facial-bone records in the v5/v6 offset table (`skf_eye_r` and `skf_eye_l`), not separate top-level fields. The `0x3C` vector is a jaw/oral model offset, not a generic oral interior position. The inspector now reports these semantics correctly and validates offset-table pointers, alignment, duplicate pointers, record bounds, record overlap, finite values, and documented W/reserved values.
 
+Legacy version-4 real data is also covered by a real 944-byte fixture. Its header declares a 32/6 count combination; because that differs from the verified v5/v6 layout, FACE FORGE validates the count-derived minimum size and pointer table but leaves those records opaque rather than attaching speculative names. Unknown versions are handled the same way. No write-back or cross-generation conversion is enabled by this decoder.
+
+References: [PES 2021 face rig and face_diff reverse-engineering notes](https://github.com/zocram4cc/GodotFootball/blob/986303d57edbaf901a25ffa98ba1a574e1e68538/docs/re/pes-re-face-rig.md), [independent face_diff format validation and real fixtures](https://github.com/the4chancup/unlimited-tool-works/blob/ca4fe4a32500ffc2d932a1a669a42a6f932d571a/crates/tools/team_compiler/src/face_diff.rs), [community face bone field list](https://github.com/the4chancup/pes-fmdl-blender/issues/1).
 ## Bidirectional translation requirements
 
 ### PES 2021 → PES 2017
