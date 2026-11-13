@@ -89,24 +89,19 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  const earTransforms:FaceDiffEarTransform[]=[];
  let opaqueRecordOffsets:number[]=offsets;
  warnings.push("FACE diff auxiliary records are preserved opaquely; no unverified bone/ear semantics are assigned.");
- // Validate physical record extents for every generation, including legacy v4.
- // Unknown layouts stay semantically opaque, but malformed pointers must never
- // be accepted merely because their record meanings are not yet decoded.
- if(version===4&&declaredBlock1Records===32&&declaredBlock2Records===6){
-  const structuralRanges=offsets.map((start,index)=>{
-   const size=index<declaredBlock1Records?0x10:0x20;
-   const end=start+size;
-   if(end>expected)throw new Error("FACE diff record "+index+" exceeds the count-derived record area.");
-   for(let at=start;at<end;at+=4)readFiniteFloat(data,at,"legacy record "+index);
-   return {start,end,index};
-  }).sort((a,b)=>a.start-b.start);
-  for(let i=1;i<structuralRanges.length;i++){
-   if(structuralRanges[i].start<structuralRanges[i-1].end)
-    throw new Error("FACE diff records overlap: "+structuralRanges[i-1].index+" and "+structuralRanges[i].index+".");
-  }
- }else{
-  opaqueRecordOffsets=offsets;
-  warnings.push("FACE diff auxiliary records are retained as opaque offsets; this version/count layout has not been semantically decoded.");
+ // The header declares two physical record classes: 16-byte entries in block one
+ // and 32-byte entries in block two. Validate every version, not just legacy v4.
+ // Record meaning remains opaque until a version-specific mapping is proven.
+ const structuralRanges=offsets.map((start,index)=>{
+  const size=index<declaredBlock1Records?0x10:0x20;
+  const end=start+size;
+  if(end>expected)throw new Error("FACE diff record "+index+" exceeds the count-derived record area.");
+  for(let at=start;at<end;at+=4)readFiniteFloat(data,at,"record "+index);
+  return {start,end,index};
+ }).sort((a,b)=>a.start-b.start);
+ for(let i=1;i<structuralRanges.length;i++){
+  if(structuralRanges[i].start<structuralRanges[i-1].end)
+   throw new Error("FACE diff records overlap: "+structuralRanges[i-1].index+" and "+structuralRanges[i].index+".");
  }
  const eyeScale=readFiniteVec3(data,0x08,"eye scale");
  const rightEyeRotation=readFiniteVec3(data,0x14,"right-eye rotation");
