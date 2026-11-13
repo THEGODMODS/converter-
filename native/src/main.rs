@@ -381,30 +381,31 @@ fn main(){if let Err(error)=run(){eprintln!("FACE_FORGE_CONVERSION_ERROR: {error
 
 #[cfg(test)]
 mod face_diff_xml_tests {
-    use super::{base64_encode, legacy_face_diff_from_xml, legacy_face_xml};
+    use super::{base64_encode, decode_base64, legacy_face_diff_from_xml, legacy_face_xml, validate_face_diff_payload};
 
-    fn fixture() -> Vec<u8> {
-        let mut data = vec![0u8; 960];
-        data[..4].copy_from_slice(b"FACE");
-        data[4..8].copy_from_slice(&5u32.to_le_bytes());
-        data[0x48..0x4c].copy_from_slice(&33u32.to_le_bytes());
-        data[0x4c..0x50].copy_from_slice(&6u32.to_le_bytes());
-        for i in 0..39 {
-            let offset = if i < 33 { 0xf0 + i * 0x10 } else { 0x300 + (i - 33) * 0x20 };
-            data[0x50 + i * 4..0x54 + i * 4].copy_from_slice(&(offset as u32).to_le_bytes());
-        }
-        data
+    fn v4_fixture() -> Vec<u8> {
+        decode_base64(include_str!("../../tests/fixtures/face-diff-real-v4.b64")).unwrap()
+    }
+
+    fn v5_fixture() -> Vec<u8> {
+        decode_base64(include_str!("../../tests/fixtures/face-diff-real-v5.b64")).unwrap()
     }
 
     #[test]
-    fn refuses_to_copy_face_diff_between_incompatible_generation_layouts() {
-        use super::validate_face_diff_generation;
-        let mut v5 = fixture();
-        assert!(validate_face_diff_generation(&v5, 2017).is_err());
-        assert!(validate_face_diff_generation(&v5, 2021).is_ok());
-        v5[4..8].copy_from_slice(&4u32.to_le_bytes());
-        assert!(validate_face_diff_generation(&v5, 2017).is_ok());
-        assert!(validate_face_diff_generation(&v5, 2021).is_err());
+    fn validates_real_v4_and_v5_face_diffs_without_generation_specific_copy_guards() {
+        let v4 = v4_fixture();
+        let v5 = v5_fixture();
+        assert_eq!(v4.len(), 944);
+        assert_eq!(v5.len(), 960);
+        validate_face_diff_payload(&v4).unwrap();
+        validate_face_diff_payload(&v5).unwrap();
+
+        // The same source payload survives either package representation byte-for-byte:
+        // pre-Fox face.xml <dif>, or a Fox face_diff.bin sidecar.
+        for payload in [&v4, &v5] {
+            let xml = legacy_face_xml(Some(payload), &["face_high".into()]).unwrap();
+            assert_eq!(legacy_face_diff_from_xml(&xml).unwrap(), Some(payload.to_vec()));
+        }
     }
 
     #[test]
@@ -414,9 +415,10 @@ mod face_diff_xml_tests {
 
     #[test]
     fn reads_legacy_xml_dif_payload_for_reverse_conversion() {
-        let encoded = base64_encode(&fixture());
-        let xml = format!("<?xml version=\"1.0\"?><config><dif>\n{encoded}\n</dif></config>");
-        assert_eq!(legacy_face_diff_from_xml(xml.as_bytes()).unwrap(), Some(fixture()));
+        let source = v4_fixture();
+        let encoded = base64_encode(&source);
+        let xml = format!("<?xml version=\\"1.0\\"?><config><dif>\\n{encoded}\\n</dif></config>");
+        assert_eq!(legacy_face_diff_from_xml(xml.as_bytes()).unwrap(), Some(source));
         assert_eq!(legacy_face_diff_from_xml(b"<config/>").unwrap(), None);
     }
 
@@ -428,11 +430,12 @@ mod face_diff_xml_tests {
     }
 
     #[test]
-    fn wraps_v5_face_diff_and_registers_supported_face_models() {
-        let xml = legacy_face_xml(Some(&fixture()), &["face_high".into(), "hair_high".into(), "oral".into()]).unwrap();
+    fn wraps_face_diff_and_registers_supported_face_models() {
+        let source = v5_fixture();
+        let xml = legacy_face_xml(Some(&source), &["face_high".into(), "hair_high".into(), "oral".into()]).unwrap();
         let text = String::from_utf8(xml).unwrap();
-        assert!(text.contains("type=\"face_neck\""));
-        assert!(text.contains("type=\"parts\""));
+        assert!(text.contains("type=\\"face_neck\\""));
+        assert!(text.contains("type=\\"parts\\""));
         assert!(text.contains("oral_hair_high_*.model"));
         assert!(text.contains("oral_oral_*.model"));
         assert!(text.contains("<dif>"));
@@ -442,11 +445,12 @@ mod face_diff_xml_tests {
     }
 
     #[test]
-    fn rejects_unknown_models_and_truncated_or_unknown_face_diff() {
-        assert!(legacy_face_xml(Some(&fixture()), &["head".into()]).is_err());
-        assert!(legacy_face_xml(Some(&fixture()[..100]), &["face_high".into()]).is_err());
-        let mut bad = fixture();
+    fn rejects_unknown_models_truncated_payloads_and_unknown_versions() {
+        assert!(legacy_face_xml(Some(&v4_fixture()), &["head".into()]).is_err());
+        let source = v5_fixture();
+        assert!(legacy_face_xml(Some(&source[..100]), &["face_high".into()]).is_err());
+        let mut bad = source;
         bad[4..8].copy_from_slice(&9u32.to_le_bytes());
-        assert!(legacy_face_xml(Some(&bad), &["face_high".into()]).is_err());
+        assert!(validate_face_diff_payload(&bad).is_err());
     }
 }
