@@ -2,9 +2,21 @@
 
 Audit date: 2026-11-13  
 Audited ref: `feature/face-rig-calibration-audit`  
-Product target: Windows desktop, PES 2017 MODEL/DDS ↔ PES 2021 FMDL/FTEX
+First release target: Windows desktop, PES 2021 FMDL/FTEX → PES 2017 MODEL/DDS (reverse direction deferred)
 
 This audit describes the implementation in the repository, not the product ambition. A visible screen, parser, package writer or successful binary round-trip is not evidence that the game accepts a converted face.
+
+## First-release scope: PES 2021 → PES 2017
+
+The reverse PES 2017 → PES 2021 route is intentionally disabled in the UI and rejected at the complete-folder IPC/native boundary. Work is focused on one route until it has real-package and in-game evidence.
+
+The complete-folder path stages a single source face for the pinned Unlimited Tool Works Team Compiler. Before compilation, FACE FORGE now requires a valid `face_high.fmdl`, parses every FMDL and its internal references, validates supplied SKL and FTEX files, rejects legacy MODEL/MTL inputs and structurally validates an optional `face_diff.bin`. The report records model paths, texture count, whether a source FACE diff was supplied, and sidecars such as `.fclo` that the pre-Fox target does not represent.
+
+The compiler's PES 2017 output is a team CPK containing a nested player-face CPK. The Electron publish gate independently reopens both archive levels and requires `face.xml`, `oral_face_high_win32.model` and `face_high.mtl` inside the nested face CPK. It records SHA-256 hashes for entries at both levels. This is archive and core-asset verification, not proof of every dependency or target-game acceptance.
+
+### FACE diff correction from upstream test evidence
+
+The earlier assumption that every PES 2021 FACE v5 payload must be semantically rewritten into a v4 payload before PES 2017 packaging is not supported by the pinned Team Compiler's implementation. At revision `ca4fe4a32500ffc2d932a1a669a42a6f932d571a`, `crates/tools/team_compiler/src/face_diff.rs` validates the FACE magic and count-derived minimum length without gating on the version word. Its `tests/cli/prefox_faces.rs::a_player_s_face_model_compiles_into_its_face_cpk_with_the_generated_face_xml` test compiles a Fox-source player face for PES 2017 and asserts that the source `face_diff.bin` is preserved byte-for-byte inside the generated `face.xml` `<dif>`. FACE FORGE follows that proven upstream packaging behavior: structural validation, then lossless Base64 wrapping. No invented bone remap is applied. Actual PES 2017 in-game acceptance of our assembled output still must be tested.
 
 ## FACE diff handling update
 
@@ -63,9 +75,9 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 
 ### P0 — conversion correctness and data loss
 
-1. **Whole-face package orchestration is incomplete.** The converter must treat head, neck, hair, beard, eyes, eyelids, oral/teeth/tongue, skeleton, face diff, XML/config and all referenced textures as one dependency graph. Current native conversion translates model candidates, not every semantic asset in the face.
-2. **Package sidecar semantics are incomplete.** XML, face_diff, FOX scene and unknown members need explicit parse/map/write or safe preservation. The native package path previously accepted an archive and emitted only converted model outputs, risking silent loss of unhandled members. The Fox-to-PES 2017 package path accepts FMDL, same-virtual-path companion SKL and FTEX members. In the Electron workflow, the native bridge converts models and the dependency-aware texture stage converts each resolved FTEX dependency to DDS at the material sampler's rewritten target path; the native CLI can also convert embedded FTEX members directly when not using the external texture stage. The package guard rejects unsafe paths, orphan SKL members, case-insensitive duplicate paths and all unhandled members (including FACE diff, XML and FOX scene data). This is still not a complete face package: FACE diff and metadata semantics remain unsupported and intentionally block conversion.
-3. **Face-diff conversion is not implemented.** The v5/v6 inspector is not a target writer. Eye placement, eyelid values, jaw/oral values, facial bone offsets and ear transforms cannot be copied or reinterpreted without verified coordinate and bind-pose conventions.
+1. **Whole-face package orchestration is integrated for the first direction but not yet proven complete.** The single-face route stages the source through the pinned Team Compiler, which converts FMDL models/materials and FTEX textures, builds the PES 2017 nested face CPK and writes face.xml. FACE FORGE now checks the head model, companion formats and both archive levels. It still needs real-package dependency-closure tests and in-game validation for hair, oral, beard, eyes and all optional assets.
+2. **Package sidecar semantics are incomplete.** XML, face_diff, FOX scene and unknown members need explicit parse/map/write or safe preservation. The dedicated first-direction folder route extracts FPK/FPKD members, validates FMDL/SKL/FTEX and FACE diff, and delegates model/material/texture/package conversion to Team Compiler. The generic low-level FPK path remains narrower and rejects unhandled sidecars. The complete-folder report identifies .fclo sidecars that the pre-Fox target does not represent; the app surfaces these as losses instead of claiming they were preserved.
+3. **FACE diff semantic retargeting is not required by the current PES 2021 → PES 2017 Team Compiler route.** The pinned upstream compiler preserves the source FACE payload byte-for-byte as the legacy XML `<dif>` and has a PES 2017 compile regression test for this behavior. FACE FORGE validates structure and preserves the payload; target-game acceptance of the generated package remains unverified. Do not generalize this behavior to the reverse direction.
 4. **Target serializers and semantic coverage are incomplete.** The upstream bridge covers supported model structures, but FACE FORGE has not demonstrated round-trip preservation for every mesh split, LOD, vertex channel, bone group, material, auxiliary face payload and morph/blendshape.
 5. **Dependency rewriting needs package-wide guarantees.** Every material sampler and model reference must resolve to exactly one output asset after conversion. Case-insensitive collisions, shared references, package-relative paths, common-folder references and texture semantic conflicts must be reported and validated.
 6. **No end-to-end real face fixture suite.** Current tests are mostly synthetic format fixtures and upstream model tests. FACE FORGE needs legally supplied, anonymized/redistributable real face-package fixtures for both generations, including hair/oral/auxiliary assets.
@@ -92,12 +104,12 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 - `FacePreview.tsx` creates a neutral untextured material for every mesh. It cannot judge skin/hair/material fidelity.
 - The current package builder creates paired FPK/FPKD from already-converted files. It does not perform the conversion or validate the face's complete semantic dependency closure.
 - The CPK builder is not an installation wizard and has no verified DpFileList transaction/rollback.
-- The complete-folder Electron conversion path now independently reopens each Team Compiler CPK before publishing it, validates its TOC and entry ranges, requires at least one face model entry, and records SHA-256 hashes for every extracted entry range in the conversion report. This is archive-structure/read-back verification only; it does not prove model semantics, dependency closure or game acceptance.
+- The complete-folder Electron path now independently reopens the Team Compiler's outer CPK and nested player-face CPK before publishing. It requires face.xml, oral_face_high_win32.model and face_high.mtl in the nested archive and records entry hashes for both archive levels. This is structural/core-asset verification; it does not prove all model/material references resolve or that PES 2017 accepts the face in-game.
 - The native bridge's model read-back is valuable structural validation, but it is not a substitute for an independent game parser or in-game test.
 
 ## Work added during this audit
 
-- Added independent CPK read-back to the complete-folder conversion gate. Invalid/truncated archives, unsafe archive names, empty TOCs and archives without a recognizable face model are rejected before output publishing; conversion reports include per-entry SHA-256 values. Added damaged-TOC and truncated-archive regression tests. These changes are awaiting CI and do not certify target-game compatibility.
+- Added nested CPK verification for the Team Compiler's real output shape and regression tests for missing nested archives, face.xml, head model and head MTL. Both outer and nested entries receive SHA-256 hashes. These changes are awaiting CI and do not certify target-game compatibility. The UI, IPC and native complete-folder command now expose only PES 2021 → PES 2017 for the first release.
 
 - Native Fox-package conversion now validates the complete member set, converts FMDL/SKL models and resolves FTEX dependencies through the Electron texture stage (including embedded FPK members), and rejects XML, face-diff, FOX scene and unknown sidecars instead of silently dropping them. It normalizes the format's canonical `/Assets/...` entry prefix before writing, and rejects other absolute/traversal paths, orphan skeletons and case-insensitive duplicate virtual paths. Regression coverage now exercises embedded FPK texture extraction and conversion. Package-wide material-reference equivalence still needs real face fixtures and target-game validation.
 - Rig calibration audit now detects invalid parent references and cycles, and measures hierarchy coverage over mapped landmarks.
