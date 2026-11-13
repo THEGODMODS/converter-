@@ -33,20 +33,20 @@ function registerIpc(){
   if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid source project folder.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source project is not a safe directory.");
-  const realRoot=await fs.promises.realpath(root),picked=await dialog.showOpenDialog(mainWindow!,{title:"Select the face model to convert",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model"]}]});
+  const realRoot=await fs.promises.realpath(root),picked=await dialog.showOpenDialog(mainWindow!,{title:"Select the face model to convert",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model","fpk","fpkd"]}]});
   if(picked.canceled||!picked.filePaths[0])return null;
   const modelPath=path.resolve(picked.filePaths[0]),realModel=await fs.promises.realpath(modelPath),prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
   if(!realModel.startsWith(prefix))throw new Error("The selected model must be inside the inspected source folder.");
   const stat=await fs.promises.lstat(modelPath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("The selected model is not a safe supported file.");
-  const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":null;
+  const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"||extension===".fpkd"?"fpk":null;
   if(!sourceFormat)throw new Error("Select a .fmdl or .model file.");
-  const target=sourceFormat==="fmdl"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target,"--model",modelPath];
+  const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target,"--model",modelPath];
   const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
   if(sourceFormat==="model"){
    const mtlPath=sibling(".mtl");if(!fs.existsSync(mtlPath))throw new Error("The PES 2017 .model needs its matching .mtl material file beside it.");
    const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile())throw new Error("The companion MTL is not a safe regular file.");
    args.push("--material",mtlPath);
-  }else{
+  }else if(sourceFormat==="fmdl"){
    const sklPath=sibling(".skl");if(fs.existsSync(sklPath)){const sklStat=await fs.promises.lstat(sklPath);if(sklStat.isSymbolicLink()||!sklStat.isFile())throw new Error("The companion SKL is not a safe regular file.");args.push("--skeleton",sklPath);}
   }
   const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for converted model files",properties:["openDirectory"]});
