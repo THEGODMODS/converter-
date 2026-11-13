@@ -2,6 +2,7 @@ import {useState} from "react";
 import type {DragEvent} from "react";
 import {CheckCircle2,FolderOpen,LoaderCircle,ShieldCheck,Sparkles,UploadCloud,XCircle} from "lucide-react";
 import type {FaceProject,FacePreviewData} from "./types";
+import {inferPesPlayerIdFromPath} from "../engine/player-id";
 import FacePreview from "./FacePreview";
 const validTarget=/^[0-9]{1,6}$/;
 export default function SingleFaceApp(){
@@ -11,7 +12,7 @@ export default function SingleFaceApp(){
  const loadFolder=async(folder:string)=>{
   setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setTargetId("");
   try{
-   const scanned=await window.faceForge.inspectFolder(folder);setProject(scanned);const sourceId=scanned.root.split(/[\\/]/).filter(Boolean).pop()??"";if(/^[0-9]{1,6}$/.test(sourceId)&&/[1-9]/.test(sourceId))setTargetId(sourceId);
+   const scanned=await window.faceForge.inspectFolder(folder);setProject(scanned);const sourceId=inferPesPlayerIdFromPath(scanned.root);if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
    const models=scanned.files.filter(file=>file.kind==="model-pes2021"),head=models.find(file=>/face_high\.fmdl$/i.test(file.path));
    if(!head)throw new Error("The source folder does not contain a valid face_high.fmdl head model.");
@@ -25,7 +26,7 @@ export default function SingleFaceApp(){
  const onDrop=async(event:DragEvent)=>{event.preventDefault();setDragging(false);const file=event.dataTransfer.files[0];if(!file)return;const folder=window.faceForge.getPathForDrop(file);if(!folder){setError("Drop a face folder from Windows Explorer, not an individual file.");return;}await loadFolder(folder);};
  const convert=async()=>{
   if(!project||!preview)return;
-  if(!validTarget.test(targetId)||!/[1-9]/.test(targetId)){setError("Enter the player ID from your PES 2017 patch.");return;}
+  if(!validTarget.test(targetId)||!/[1-9]/.test(targetId)){setError("Enter the player ID belonging to this face.");return;}
   setConverting(true);setError("");setResult("");
   try{const converted=await window.faceForge.convertCompleteFaceFolder(project.root,2017,targetId);if(converted){setResult("Face converted successfully. Your PES 2017 files are saved in the folder you selected.");}}
   catch(e){console.error("FACE FORGE conversion failed",e);setError("Conversion could not complete. Your source files were left untouched. Check the PES 2017 player ID and face package, then try again.");}
@@ -44,7 +45,7 @@ export default function SingleFaceApp(){
     </div>
     <div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">PREVIEW</span><h2>Review the actual face</h2></div><span className="step-number">02</span></div>
      {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE</span></div><FacePreview preview={preview}/></>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>Your face preview will appear here.</p></div>}
-     <div className="convert-footer"><div><span className="eyebrow">OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">PLAYER ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Player ID" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>Your PES 2017 player ID. We’ll use the folder ID automatically when possible.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a valid player ID.</small>}</div>}<p></p></div><button className="convert-btn" onClick={convert} disabled={!project||!preview||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
+     <div className="convert-footer"><div><span className="eyebrow">OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">FACE PLAYER ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Player ID" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>The ID is detected from the face folder when possible.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a valid player ID.</small>}</div>}<p></p></div><button className="convert-btn" onClick={convert} disabled={!project||!preview||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
      {result&&<div className="texture-toast">{result}</div>}
     </div>
    </section>
