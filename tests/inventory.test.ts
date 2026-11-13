@@ -61,13 +61,13 @@ describe("inspectFaceFolder",()=>{
       await mkdir(path.join(root,"sourceimages","#windx11"),{recursive:true});
       const fmdl=Buffer.alloc(56);fmdl.write("FMDL",0);fmdl.writeUInt32LE(0x4001eb85,4);fmdl.writeBigUInt64LE(56n,8);fmdl.writeBigUInt64LE(0n,16);fmdl.writeBigUInt64LE(0n,24);fmdl.writeUInt32LE(56,40);fmdl.writeUInt32LE(56,48);
       await writeFile(path.join(root,"#Win","face.fpk"),makeFpk([{name:"face_high.fmdl",data:fmdl},{name:"hair_high.fmdl",data:fmdl}]));
-      await writeFile(path.join(root,"#Win","face.fpkd"),Buffer.from("FPKD sidecar fixture"));
+      await writeFile(path.join(root,"#Win","face.fpkd"),makeFpk([{name:"scene.fox2",data:Buffer.from("scene") }],true));
       await writeFile(path.join(root,"#Win","face.kpfd"),Buffer.from("KPFD sidecar fixture"));
       const ftex=Buffer.alloc(84);ftex.write("FTEX",0);ftex.writeFloatLE(2.03,4);ftex.writeUInt16LE(0,8);ftex.writeUInt16LE(1,10);ftex.writeUInt16LE(1,12);ftex.writeUInt16LE(1,14);ftex.writeUInt8(1,16);ftex.writeUInt32LE(3,28);ftex.writeUInt32LE(80,64);ftex.writeUInt32LE(4,68);
       await writeFile(path.join(root,"sourceimages","#windx11","face_bsm_alp.ftex"),ftex);
       const result=await inspectFaceFolder(root);
       expect(result.files.map(file=>file.kind)).toContain("container-fpk");
-      expect(result.files.filter(file=>file.kind==="container-fpkd")).toHaveLength(2);
+      expect(result.files.filter(file=>file.kind==="container-fpkd")).toHaveLength(1);\n      expect(result.files.filter(file=>file.kind==="container-kpfd-unknown")).toHaveLength(1);\n      expect(result.files.some(file=>file.path.endsWith("face.fpkd!/scene.fox2"))).toBe(false);
       expect(result.textures).toBe(1);
       expect(result.models).toBe(2);
       expect(result.files.some(file=>file.path.endsWith("!/face_high.fmdl")&&file.kind==="model-pes2021")).toBe(true);
