@@ -64,7 +64,7 @@ function readFiniteFloat(data:Buffer,offset:number,label:string):number{
  if(!Number.isFinite(value))throw new Error("FACE diff "+label+" contains a non-finite value.");
  return value;
 }
-function checkedOffsetTable(data:Buffer,count:number):number[]{
+function checkedOffsetTable(data:Buffer,count:number,recordLimit:number):number[]{
  const tableEnd=FACE_DIFF_HEADER_BYTES+count*4;
  if(!Number.isSafeInteger(tableEnd)||tableEnd>FACE_DIFF_RECORDS_START||tableEnd>data.length)
   throw new Error("FACE diff record-offset table exceeds its fixed header.");
@@ -72,7 +72,7 @@ function checkedOffsetTable(data:Buffer,count:number):number[]{
  const seen=new Set<number>();
  for(let i=0;i<count;i++){
   const offset=data.readUInt32LE(FACE_DIFF_HEADER_BYTES+i*4);
-  if(offset<FACE_DIFF_RECORDS_START||offset>=data.length||(offset&0x0f)!==0)
+  if(offset<FACE_DIFF_RECORDS_START||offset+4>recordLimit||(offset&0x0f)!==0)
    throw new Error("FACE diff record "+i+" has an invalid or unaligned absolute offset.");
   if(seen.has(offset))throw new Error("FACE diff record-offset table contains a duplicate pointer.");
   seen.add(offset);
@@ -96,7 +96,7 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  const offsetCount=declaredBlock1Records+declaredBlock2Records;
  if(!Number.isSafeInteger(offsetCount)||offsetCount>10000)
   throw new Error("FACE diff declares an unreasonable number of records.");
- const offsets=checkedOffsetTable(data,offsetCount);
+ const offsets=checkedOffsetTable(data,offsetCount,expected);
  const eyeScale=readFiniteVec3(data,0x08,"eye scale");
  const rightEyeRotation=readFiniteVec3(data,0x14,"right-eye rotation");
  const leftEyeRotation=readFiniteVec3(data,0x20,"left-eye rotation");
@@ -116,7 +116,7 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
   const ranges:Array<{start:number;end:number;label:string}>=[];
   for(let i=0;i<33;i++){
    const recordOffset=offsets[i],end=recordOffset+0x10;
-   if(end>data.length)throw new Error("FACE diff bone-offset record "+i+" is truncated.");
+   if(end>expected)throw new Error("FACE diff bone-offset record "+i+" exceeds the count-derived record area.");
    ranges.push({start:recordOffset,end,label:FACE_BONE_ORDER[i]});
    const position=readFiniteVec3(data,recordOffset,FACE_BONE_ORDER[i]+" offset");
    const w=readFiniteFloat(data,recordOffset+12,FACE_BONE_ORDER[i]+" offset W");
@@ -125,7 +125,7 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
   }
   for(let i=0;i<6;i++){
    const recordOffset=offsets[33+i],end=recordOffset+0x20;
-   if(end>data.length)throw new Error("FACE diff ear-transform record "+i+" is truncated.");
+   if(end>expected)throw new Error("FACE diff ear-transform record "+i+" exceeds the count-derived record area.");
    ranges.push({start:recordOffset,end,label:FACE_EAR_ORDER[i]});
    const translation=readFiniteVec3(data,recordOffset,FACE_EAR_ORDER[i]+" translation");
    const scale=readFiniteVec3(data,recordOffset+12,FACE_EAR_ORDER[i]+" scale");
