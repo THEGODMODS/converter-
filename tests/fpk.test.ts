@@ -11,6 +11,7 @@ function fixture(kind:"fpk"|"fpkd"="fpk",files=[{name:"/Assets/pes/model/charact
 describe("Fox FPK v2 parser",()=>{
  it("reads 32-bit entry records, names, checksums and aligned payloads",()=>{const archive=parseFpkArchive(fixture());expect(archive.kind).toBe("fpk");expect(archive.entries[0].name).toContain("face_high.fmdl");expect(archive.entries[0].data.toString()).toBe("model");});
  it("reads FPKD kind and package references",()=>{const archive=parseFpkArchive(fixture("fpkd",[{name:"scene.fox2",data:Buffer.from("data")}],["Assets/pes/model/character/face/real/123/face.fpk"]));expect(archive.kind).toBe("fpkd");expect(archive.references).toEqual(["Assets/pes/model/character/face/real/123/face.fpk"]);});
+ it("normalizes Windows separators in virtual asset paths",()=>{const archive=parseFpkArchive(fixture("fpk",[{name:"\\\\Assets\\\\pes\\\\model\\\\face.fmdl",data:Buffer.from("mesh")}]));expect(archive.entries[0].name).toBe("Assets/pes/model/face.fmdl");});
  it("rejects corrupted filename checksums",()=>{const data=fixture();data[48+32]^=0xff;expect(()=>parseFpkArchive(data)).toThrow(/checksum mismatch/);});
  it("rejects traversal paths",()=>{const data=fixture("fpk",[{name:"../escape.fmdl",data:Buffer.from("x")}]);expect(()=>parseFpkArchive(data)).toThrow(/unsafe path/);});
  it("rejects truncated or incorrect declared sizes",()=>{const data=fixture();data.writeUInt32LE(data.length-1,10);expect(()=>parseFpkArchive(data)).toThrow(/size does not match/);});
