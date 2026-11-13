@@ -28,7 +28,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
       if(parsed.format===THREE.RGBAFormat){
        const mip=parsed.mipmaps[0];texture=new THREE.DataTexture(mip.data as Uint8Array,parsed.width,parsed.height,THREE.RGBAFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.flipY=false;
       }else{
-       const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
+       const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format as THREE.CompressedPixelFormat);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
       }
      }
      texture.colorSpace=/base|diffuse|albedo|color/i.test(slot)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
