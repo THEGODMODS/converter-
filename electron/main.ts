@@ -130,7 +130,7 @@ function registerIpc(){
   if(typeof playerId!=="string"||!/^[0-9]{1,6}$/.test(playerId)||/^0+$/.test(playerId))throw new Error("Enter the numeric player ID from your PES 2017 patch.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
-  const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
+  const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
   if(inventory.files.some(file=>(file.packageReferences?.length??0)>0))throw new Error("This face package declares inter-package references. The current single-face export cannot safely resolve those external package links.");
