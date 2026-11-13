@@ -55,11 +55,39 @@ fn legacy_face_xml(face_diff: &[u8], model_stems: &[String]) -> Result<Vec<u8>, 
     }
     let offset_count = count_a + count_b;
     let mut seen = std::collections::HashSet::new();
+    let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(offset_count);
     for i in 0..offset_count {
         let at = 0x50 + i * 4;
         let offset = u32::from_le_bytes(face_diff[at..at + 4].try_into().unwrap()) as usize;
-        if offset < 0xf0 || offset % 16 != 0 || offset + 4 > required || !seen.insert(offset) {
+        let record_size = if i < count_a { 0x10 } else { 0x20 };
+        let end = offset.checked_add(record_size).ok_or("FACE diff record range overflow.")?;
+        if offset < 0xf0 || offset % 16 != 0 || end > required || !seen.insert(offset) {
             return Err(format!("FACE diff record pointer {i} is invalid, unaligned, out of range or duplicated."));
+        }
+        ranges.push((offset, end));
+    }
+    ranges.sort_unstable_by_key(|range| range.0);
+    for pair in ranges.windows(2) {
+        if pair[1].0 < pair[0].1 {
+            return Err("FACE diff records overlap.".into());
+        }
+    }
+    for at in (0x08..0x48).step_by(4) {
+        let value = f32::from_le_bytes(face_diff[at..at + 4].try_into().unwrap());
+        if !value.is_finite() {
+            return Err("FACE diff header contains a non-finite calibration value.".into());
+        }
+    }
+    for i in 0..offset_count {
+        let offset_at = 0x50 + i * 4;
+        let offset = u32::from_le_bytes(face_diff[offset_at..offset_at + 4].try_into().unwrap()) as usize;
+        let float_count = if i < count_a { 4 } else { 8 };
+        for j in 0..float_count {
+            let at = offset + j * 4;
+            let value = f32::from_le_bytes(face_diff[at..at + 4].try_into().unwrap());
+            if !value.is_finite() {
+                return Err(format!("FACE diff record {i} contains a non-finite value."));
+            }
         }
     }
     let has_face = model_stems.iter().any(|s| s.eq_ignore_ascii_case("face_high"));
