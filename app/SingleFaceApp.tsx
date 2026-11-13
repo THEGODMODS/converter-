@@ -1,6 +1,6 @@
 import {useState} from "react";
 import type {DragEvent} from "react";
-import {ArrowRight,CheckCircle2,FolderOpen,LoaderCircle,ShieldCheck,Sparkles,UploadCloud,XCircle} from "lucide-react";
+import {CheckCircle2,FolderOpen,LoaderCircle,ShieldCheck,Sparkles,UploadCloud,XCircle} from "lucide-react";
 import type {FaceProject,FacePreviewData} from "./types";
 import FacePreview from "./FacePreview";
 const validTarget=/^(70[1-9]|7[1-9][0-9]|8[0-9]{2}|9[01][0-9]|920)(0[1-9]|1[0-9]|2[0-3])$/;
