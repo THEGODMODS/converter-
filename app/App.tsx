@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { DragEvent } from "react";
-import { ArrowDownUp, ArrowRight, BadgeCheck, Box, CheckCircle2, ChevronDown, CircleHelp, FileArchive, FileImage, FileSearch, FolderOpen, Gauge, HardDrive, History, Layers3, Package, ScanFace, ShieldCheck, Sparkles, UploadCloud, XCircle, Users, Database, Trash2 } from "lucide-react";
+import { ArrowDownUp, ArrowRight, BadgeCheck, Box, CheckCircle2, ChevronDown, CircleHelp, FileArchive, FileImage, FileSearch, FolderOpen, Gauge, HardDrive, Layers3, Package, ScanFace, ShieldCheck, Sparkles, UploadCloud, XCircle, Users, Database, Trash2 } from "lucide-react";
 import type { FaceProject, TextureColorSpace } from "./types";
 type Direction="pes2021-to-pes2017"|"pes2017-to-pes2021";type WorkMode="single"|"batch"|"project";
 const formatBytes=(bytes:number)=>bytes<1024?bytes+" B":bytes<1024*1024?(bytes/1024).toFixed(1)+" KB":(bytes/1024/1024).toFixed(1)+" MB";
@@ -10,7 +10,7 @@ export default function App(){
  const [project,setProject]=useState<FaceProject|null>(null),[batch,setBatch]=useState<FaceProject[]>([]),[library,setLibrary]=useState<FaceProject[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[dragging,setDragging]=useState(false);
  const [textureColorSpace,setTextureColorSpace]=useState<TextureColorSpace>("SRGB"),[textureBusy,setTextureBusy]=useState(false),[textureResult,setTextureResult]=useState("");
- const source=direction==="pes2021-to-pes2017"?"PES 2021":"PES 2017",target=direction==="pes2021-to-pes2017"?"PES 2017":"PES 2021",expected=direction==="pes2021-to-pes2017"?"pes2021":"pes2017";
+ const source=direction==="pes2021-to-pes2017"?"PES 2021":"PES 2017",expected=direction==="pes2021-to-pes2017"?"pes2021":"pes2017";
  const inspect=useCallback(async(folder:string)=>window.faceForge.inspectFolder(folder),[]);
  const chooseSingle=async()=>{setBusy(true);setError("");try{const folder=await window.faceForge.chooseFolder();if(folder)setProject(await inspect(folder));}catch(e){setError(e instanceof Error?e.message:"Could not inspect folder.");}finally{setBusy(false);}};
  const chooseMany=async(destination:"batch"|"project")=>{setBusy(true);setError("");try{const folders=await window.faceForge.chooseFolders();if(!folders.length)return;const scanned:FaceProject[]=[];for(const folder of folders){try{scanned.push(await inspect(folder));}catch(e){setError(e instanceof Error?e.message:"A folder could not be scanned.");}}if(destination==="batch")setBatch(old=>[...old,...scanned]);else setLibrary(old=>{const seen=new Set(old.map(x=>x.root.toLowerCase()));return [...old,...scanned.filter(x=>!seen.has(x.root.toLowerCase()))];});}catch(e){setError(e instanceof Error?e.message:"Could not scan selected folders.");}finally{setBusy(false);}};
