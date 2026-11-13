@@ -92,16 +92,25 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  // The header declares two physical record classes: 16-byte entries in block one
  // and 32-byte entries in block two. Validate every version, not just legacy v4.
  // Record meaning remains opaque until a version-specific mapping is proven.
- const structuralRanges=offsets.map((start,index)=>{
-  const size=index<declaredBlock1Records?0x10:0x20;
-  const end=start+size;
-  if(end>expected)throw new Error("FACE diff record "+index+" exceeds the count-derived record area.");
-  for(let at=start;at<end;at+=4)readFiniteFloat(data,at,"record "+index);
-  return {start,end,index};
- }).sort((a,b)=>a.start-b.start);
- for(let i=1;i<structuralRanges.length;i++){
-  if(structuralRanges[i].start<structuralRanges[i-1].end)
-   throw new Error("FACE diff records overlap: "+structuralRanges[i-1].index+" and "+structuralRanges[i].index+".");
+ const v4Layout=version===4&&declaredBlock1Records===32&&declaredBlock2Records===6;
+ const v5FullLayout=version===5&&declaredBlock1Records===33&&declaredBlock2Records===6;
+ const v5SplitLayout=version===5&&declaredBlock1Records===32&&declaredBlock2Records===6&&
+  offsets[declaredBlock1Records+1]-offsets[declaredBlock1Records]===0x10;
+ if(v4Layout||v5FullLayout||v5SplitLayout){
+  const structuralRanges=offsets.map((start,index)=>{
+   const isSplitExtraBone=v5SplitLayout&&index===declaredBlock1Records;
+   const size=index<declaredBlock1Records||isSplitExtraBone?0x10:0x20;
+   const end=start+size;
+   if(end>data.length)throw new Error("FACE diff record "+index+" exceeds the file boundary.");
+   for(let at=start;at<end;at+=4)readFiniteFloat(data,at,"record "+index);
+   return {start,end,index};
+  }).sort((a,b)=>a.start-b.start);
+  for(let i=1;i<structuralRanges.length;i++){
+   if(structuralRanges[i].start<structuralRanges[i-1].end)
+    throw new Error("FACE diff records overlap: "+structuralRanges[i-1].index+" and "+structuralRanges[i].index+".");
+  }
+ }else{
+  warnings.push("This FACE diff record-count profile has not been structurally characterized; auxiliary records remain opaque.");
  }
  const eyeScale=readFiniteVec3(data,0x08,"eye scale");
  const rightEyeRotation=readFiniteVec3(data,0x14,"right-eye rotation");
@@ -116,8 +125,20 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  if(eyeScale.some(n=>n<=0||n>10))warnings.push("Eye scale contains an unusual value; inspect eye sizing before applying it.");
  if([rightEyeRotation,leftEyeRotation].some(rotation=>rotation.some(n=>Math.abs(n)>180)))
   warnings.push("Eye rotation exceeds 180 degrees; inspect the source value before applying it.");
- const rightEyePosition=boneOffsets[6]?.position??null;
- const leftEyePosition=boneOffsets[7]?.position??null;
+ // The face modifier reference reads the right/left eye-position vectors at
+ // 0x150 and 0x160. Decode only those two records when the offset table confirms
+ // those exact positions; all other facial/ear records remain byte-preserved.
+ if(offsets.length>7&&offsets[6]===0x150&&offsets[7]===0x160){
+  for(const [index,boneName] of [[6,"skf_eye_r"],[7,"skf_eye_l"]] as const){
+   const recordOffset=offsets[index];
+   boneOffsets.push({index,boneName,recordOffset,position:readFiniteVec3(data,recordOffset,boneName+" position"),w:readFiniteFloat(data,recordOffset+12,boneName+" weight")});
+  }
+  opaqueRecordOffsets=offsets.filter((_,index)=>index!==6&&index!==7);
+ }else{
+  warnings.push("Eye-position record pointers do not match the independently documented 0x150/0x160 locations; those records remain opaque.");
+ }
+ const rightEyePosition=boneOffsets.find(record=>record.boneName==="skf_eye_r")?.position??null;
+ const leftEyePosition=boneOffsets.find(record=>record.boneName==="skf_eye_l")?.position??null;
  return {
   version,eyeScale,rightEyeRotation,leftEyeRotation,eyelidOffsets,jawOffset,
   oralPosition:jawOffset,mouthPosition:jawOffset,boneOffsets,earTransforms,
