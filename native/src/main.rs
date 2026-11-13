@@ -243,6 +243,18 @@ fn create_temp_workspace() -> Result<TempWorkspace, String> {
     Err("Could not allocate a unique temporary Team compiler workspace.".into())
 }
 
+fn is_face_archive_extension(extension: &str) -> bool {
+    matches!(extension, "fpk" | "fpkd" | "kpfd")
+}
+
+fn companion_fmdl_for_skeleton(skeleton: &Path) -> PathBuf {
+    if skeleton.file_stem().and_then(|value| value.to_str()).is_some_and(|stem| stem.eq_ignore_ascii_case("fcl_hair_sim")) {
+        skeleton.with_file_name("fcl_hair.fmdl")
+    } else {
+        skeleton.with_extension("fmdl")
+    }
+}
+
 fn copy_face_source_tree(
     source: &Path,
     destination: &Path,
@@ -269,7 +281,7 @@ fn copy_face_source_tree(
             return Err(format!("Unsupported filesystem entry in face source: {}", from.display()));
         }
         let extension = from.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
-        if extension == "fpk" || extension == "fpkd" {
+        if is_face_archive_extension(&extension) {
             archive_paths.push(from);
             continue;
         }
@@ -298,7 +310,7 @@ struct Pes2021FaceInventory {
     models: Vec<String>,
     texture_count: usize,
     face_diff: Option<String>,
-    unsupported_sidecars: Vec<String>,
+    preserved_sidecars: Vec<String>,
 }
 
 fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, String> {
@@ -340,7 +352,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                     inventory.texture_count += 1;
                 }
                 "dds" => inventory.texture_count += 1,
-                "fclo" => inventory.unsupported_sidecars.push(relative_text),
+                "fclo" => inventory.preserved_sidecars.push(relative_text),
                 _ => {
                     if lower == "face_diff.bin" {
                         if inventory.face_diff.is_some() { return Err("The source face contains multiple face_diff.bin files.".into()); }
@@ -361,14 +373,14 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
         return Err("A PES 2021 face source must contain face_high.fmdl; no head model was found.".into());
     }
     for skeleton in skeleton_paths {
-        let model = skeleton.with_extension("fmdl");
+        let model = companion_fmdl_for_skeleton(&skeleton);
         let relative = model.strip_prefix(root).map_err(|_| "PES 2021 SKL path escaped its source root.")?.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
         if !model_paths.contains(&relative) {
-            return Err(format!("Orphan PES 2021 skeleton {} has no matching FMDL.", skeleton.display()));
+            return Err(format!("Orphan PES 2021 skeleton {} has no matching FMDL (expected {}).", skeleton.display(), model.display()));
         }
     }
     inventory.models.sort();
-    inventory.unsupported_sidecars.sort();
+    inventory.preserved_sidecars.sort();
     Ok(inventory)
 }
 
@@ -380,12 +392,12 @@ fn extract_face_archives(
     total_bytes: &mut u64,
 ) -> Result<(), String> {
     let fpk: Vec<_> = archive_paths.iter().filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("fpk"))).collect();
-    let fpkd: Vec<_> = archive_paths.iter().filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("fpkd"))).collect();
+    let fpkd: Vec<_> = archive_paths.iter().filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("fpkd") || x.eq_ignore_ascii_case("kpfd"))).collect();
     if fpk.len() > 1 || fpkd.len() > 1 {
-        return Err("A face folder must contain at most one face.fpk and one paired face.fpkd archive.".into());
+        return Err("A face folder must contain at most one face.fpk and one paired face.fpkd/.kpfd archive.".into());
     }
     if fpk.is_empty() && !fpkd.is_empty() {
-        return Err("A face.fpkd was found without its face.fpk companion.".into());
+        return Err("A face.fpkd/.kpfd archive was found without its face.fpk companion.".into());
     }
     for path in fpk.iter().chain(fpkd.iter()) {
         let metadata = fs::symlink_metadata(path).map_err(|e| format!("Inspect Fox archive {}: {e}", path.display()))?;
@@ -529,7 +541,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "sourceModels": source_inventory.models,
         "sourceTextureCount": source_inventory.texture_count,
         "sourceFaceDiff": source_inventory.face_diff,
-        "unsupportedSidecars": source_inventory.unsupported_sidecars,
+        "preservedSidecars": source_inventory.preserved_sidecars,
         "outputFiles": output_files,
         "cpkFiles": cpk_files,
         "events": event_summaries.iter().take(500).collect::<Vec<_>>(),
@@ -846,5 +858,35 @@ mod face_diff_xml_tests {
         let mut bad = source;
         bad[4..8].copy_from_slice(&9u32.to_le_bytes());
         assert!(validate_face_diff_payload(&bad).is_err());
+    }
+}
+
+#[cfg(test)]
+mod face_source_path_tests {
+    use super::{companion_fmdl_for_skeleton, is_face_archive_extension};
+
+    #[test]
+    fn accepts_fpk_fpkd_and_kpfd_archive_extensions() {
+        assert!(is_face_archive_extension("fpk"));
+        assert!(is_face_archive_extension("fpkd"));
+        assert!(is_face_archive_extension("kpfd"));
+        assert!(!is_face_archive_extension("cpk"));
+        assert!(!is_face_archive_extension("fmdl"));
+    }
+
+    #[test]
+    fn pairs_hair_simulation_skeleton_with_fcl_hair_model() {
+        assert_eq!(
+            companion_fmdl_for_skeleton(std::path::Path::new("Players/05 - A/fcl_hair_sim.skl")),
+            std::path::PathBuf::from("Players/05 - A/fcl_hair.fmdl")
+        );
+    }
+
+    #[test]
+    fn pairs_ordinary_skeleton_with_same_stem_model() {
+        assert_eq!(
+            companion_fmdl_for_skeleton(std::path::Path::new("Players/05 - A/face_high.skl")),
+            std::path::PathBuf::from("Players/05 - A/face_high.fmdl")
+        );
     }
 }
