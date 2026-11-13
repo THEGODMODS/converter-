@@ -1,8 +1,8 @@
 {
   "name": "thegodmods-face-forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Free bidirectional PES 2017 and PES 2021 face conversion studio",
+  "description": "Free bidirectional PES face conversion studio by KFC GODMODS",
   "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && electron .\"",
@@ -39,7 +39,7 @@
   },
   "build": {
     "appId": "com.thegodmods.faceforge",
-    "productName": "THEGODMODS FACE FORGE",
+    "productName": "KFC GODMODS FACE FORGE",
     "directories": {
       "output": "release"
     },
@@ -65,7 +65,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
-    "artifactName": "THEGODMODS-FACE-FORGE-${version}-Setup.${ext}",
+    "artifactName": "KFC-GODMODS-FACE-FORGE-${version}-Setup.${ext}",
     "extraResources": [
       {
         "from": "assets/face-forge.ico",
