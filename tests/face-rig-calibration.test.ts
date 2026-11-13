@@ -4,7 +4,7 @@ import {inspectFaceDiff} from "../engine/formats/face-diff";
 import type {FaceScene} from "../engine/model/ir";
 
 function fixture(){
- const data=Buffer.alloc(0x3f0);data.write("FACE",0,"ascii");data.writeUInt32LE(6,4);data.writeUInt32LE(33,0x48);data.writeUInt32LE(6,0x4c);
+ const data=Buffer.alloc(0x3c0);data.write("FACE",0,"ascii");data.writeUInt32LE(5,4);data.writeUInt32LE(33,0x48);data.writeUInt32LE(6,0x4c);
  const names=["skf_brow_o_r","skf_brow_i_r","skf_brow_i_l","skf_brow_o_l","skf_orbicularisoculi_b_r","skf_orbicularisoculi_b_l","skf_eye_r","skf_eye_l","skf_eyelid_b_r","skf_eyelid_b_l","skf_eyelid_t_r","skf_eyelid_t_l","skf_glabella","skf_nosewing_r","skf_nosewing_l","skf_cheek_r","skf_nasolabialfold_t_r","skf_nasolabialfold_t_l","skf_cheek_l","skf_cheek_s_r","skf_cheek_s_l","skf_lip_t_r","skf_lip_s_r","skf_lip_s_l","skf_lip_t_l","skf_nose","skf_lip_t_c","skf_lip_volume","skf_jaw","skf_lip_b_l","skf_lip_b_r","skf_doublechin","skf_lip_b_c"];
  for(let i=0;i<33;i++){const o=0xf0+i*0x10;data.writeUInt32LE(o,0x50+i*4);}
  for(let i=0;i<6;i++){const o=0x300+i*0x20;data.writeUInt32LE(o,0x50+(33+i)*4);[1,1,1].forEach((v,j)=>data.writeFloatLE(v,o+12+j*4));}
