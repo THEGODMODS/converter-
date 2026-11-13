@@ -1067,7 +1067,7 @@ mod pes2017_target_id_tests {
     #[test]
     fn accepts_valid_pes2017_team_and_slot_ids() {
         assert_eq!(split_pes2017_target_player_id("70105").unwrap(), ("701", "05"));
-        assert_eq!(split_pes2017_target_player_id("92099").unwrap(), ("920", "99"));
+        assert_eq!(split_pes2017_target_player_id("92023").unwrap(), ("920", "23"));
     }
 
     #[test]
