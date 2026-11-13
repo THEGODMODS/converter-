@@ -1,3 +1,22 @@
+/// Normalize the canonical Fox archive name form `/Assets/...` into a
+/// safe project-relative virtual path before writing into the output directory.
+pub fn normalize_fox_virtual_path(path: &str) -> Result<String, String> {
+    let normalized = if let Some(rest) = path.strip_prefix("/Assets/") {
+        format!("Assets/{rest}")
+    } else if path.starts_with('/') {
+        return Err(format!("Unsafe absolute Fox package virtual path: {path}"));
+    } else {
+        path.to_string()
+    };
+    if normalized.is_empty()
+        || normalized.contains('\\')
+        || normalized.split('/').any(|part| part.is_empty() || part == "." || part == ".." || part.contains(':'))
+    {
+        return Err(format!("Unsafe Fox package virtual path: {path}"));
+    }
+    Ok(normalized)
+}
+
 /// Validates every Fox package member before any conversion output is written.
 /// Accepted extensions must have an explicit conversion and output path below.
 pub fn validate_face_package_members(paths: &[String]) -> Result<(), String> {
@@ -48,7 +67,13 @@ pub fn ftex_target_path(path: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ftex_target_path, validate_face_package_members};
+    use super::{ftex_target_path, normalize_fox_virtual_path, validate_face_package_members};
+
+    #[test]
+    fn normalizes_canonical_fox_assets_root_without_accepting_other_absolute_paths() {
+        assert_eq!(normalize_fox_virtual_path("/Assets/face/head.fmdl").unwrap(), "Assets/face/head.fmdl");
+        assert!(normalize_fox_virtual_path("/root/head.fmdl").is_err());
+    }
 
     #[test]
     fn accepts_model_skeleton_and_texture_members() {
