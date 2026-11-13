@@ -17,7 +17,8 @@ describe("staged conversion publishing",()=>{
  it("publishes a complete staged result into an empty destination",async()=>{
   const {destination,stage}=await fixture();
   await writeFile(path.join(stage,"face.model"),Buffer.from("converted"));
-  expect(await publishStagedOutput(stage,destination)).toBe(destination);
+  const published=await publishStagedOutput(stage,destination);
+  expect(process.platform==="win32"?published.toLowerCase():published).toBe(process.platform==="win32"?destination.toLowerCase():destination);
   expect((await readFile(path.join(destination,"face.model"))).toString()).toBe("converted");
   expect(await readdir(stage).catch(()=>[])).toEqual([]);
  });
