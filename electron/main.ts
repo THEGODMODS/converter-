@@ -38,6 +38,9 @@ function registerIpc(){
   const packageFiles=inventory.files.filter(file=>(file.kind==="container-fpk"||file.kind==="container-fpkd")&&!file.path.includes("!/"));
   const referencedPackages=packageFiles.filter(file=>(file.packageReferences?.length??0)>0);
   if(referencedPackages.length)throw new Error("This face package declares inter-package references. The current native conversion bridge cannot yet preserve or remap referenced package paths; conversion was stopped rather than silently dropping them.");
+  const unresolvedTextureDependencies=inventory.dependencies.filter(item=>item.status!=="resolved"&&inventory.files.some(file=>file.path===item.source&&file.kind==="model-pes2021"));
+  if(unresolvedTextureDependencies.length){const examples=unresolvedTextureDependencies.slice(0,5).map(item=>item.reference).join(", ");throw new Error("Conversion stopped: "+unresolvedTextureDependencies.length+" FMDL texture reference(s) are missing or ambiguous. Resolve these dependencies before model export. Examples: "+examples);}
+  if(inventory.files.some(file=>file.kind==="model-pes2021"&&(file.assetReferences?.length??0)===0))throw new Error("Conversion stopped: at least one FMDL has no semantically decoded material/texture references. The current inspector cannot prove that its external dependencies are preserved.");
   const looseModels=inventory.files.filter(file=>["model-pes2017","model-pes2017-compressed","model-pes2021"].includes(file.kind)&&!file.path.includes("!/"));
   let selectedPaths:string[]=[];
   if(packages.length===1){
