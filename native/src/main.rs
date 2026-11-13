@@ -719,6 +719,15 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "cpkFiles": cpk_files,
         "events": event_summaries.iter().take(500).collect::<Vec<_>>(),
         "eventCount": event_summaries.len(),
+        // Keep non-fatal compiler findings visible to the caller. A successful
+        // Team Compiler run can still contain fidelity warnings (for example,
+        // mesh_flags_dropped means the legacy MTL cannot represent no_shadow_cast).
+        // Do not silently equate compiler success with a loss-free conversion.
+        "warnings": event_summaries.iter()
+            .filter(|event| event.contains("Warning"))
+            .take(500)
+            .collect::<Vec<_>>(),
+        "warningCount": event_summaries.iter().filter(|event| event.contains("Warning")).count(),
         "complete": complete.map(|(success, files_written)| serde_json::json!({"success":success,"filesWritten":files_written}))
     });
     let report_path = output.join("face-forge-report.json");
