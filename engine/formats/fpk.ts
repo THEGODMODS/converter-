@@ -51,14 +51,21 @@ export function parseFpkArchive(data:Buffer):FpkArchive{
  }
  const references:Array<{nameOffset:number;nameLength:number}>=[];const refBase=HEADER_SIZE+count*ENTRY_SIZE;
  for(let i=0;i<referenceCount;i++){const at=refBase+i*REFERENCE_SIZE,nameOffset=data.readInt32LE(at),reserved0=data.readUInt32LE(at+4),nameLength=data.readInt32LE(at+8),reserved1=data.readUInt32LE(at+12);if(reserved0||reserved1||nameOffset<0||nameLength<=0)fail("package reference "+i+" is malformed.");references.push({nameOffset,nameLength});}
+ const entryNames=rawEntries.map((entry,i)=>readName(data,entry.nameOffset,entry.nameLength,"entry "+i));
+ const referenceNames=references.map((ref,i)=>readName(data,ref.nameOffset,ref.nameLength,"package reference "+i).name);
+ const nameEnd=Math.max(tableEnd,...rawEntries.map(entry=>entry.nameOffset+entry.nameLength+1),...references.map(ref=>ref.nameOffset+ref.nameLength+1));
+ const minimumDataOffset=Math.ceil(nameEnd/16)*16;
+ const payloadRanges:Array<{start:number;end:number;index:number}>=[];
  const entries:FpkEntry[]=rawEntries.map((entry,i)=>{
-  const {name,bytes}=readName(data,entry.nameOffset,entry.nameLength,"entry "+i);
+  const {name,bytes}=entryNames[i];
   if(names.has(name.toLowerCase()))fail("duplicate entry path "+name+".");names.add(name.toLowerCase());
   if(!createHash("md5").update(bytes).digest().equals(entry.hash))fail("filename checksum mismatch for "+name+".");
-  if(entry.offset<tableEnd||entry.offset%16!==0)fail("entry "+i+" payload offset is invalid or not 16-byte aligned.");
+  if(entry.offset<minimumDataOffset||entry.offset%16!==0)fail("entry "+i+" payload overlaps metadata or is not 16-byte aligned.");
   const payload=safeRange(data,entry.offset,entry.size,"entry "+i+" payload");
+  payloadRanges.push({start:entry.offset,end:entry.offset+entry.size,index:i});
   return {name,data:Buffer.from(payload),offset:entry.offset,size:entry.size};
  });
- const referenceNames=references.map((ref,i)=>readName(data,ref.nameOffset,ref.nameLength,"package reference "+i).name);
+ payloadRanges.sort((a,b)=>a.start-b.start);
+ for(let i=1;i<payloadRanges.length;i++)if(payloadRanges[i].start<payloadRanges[i-1].end)fail("entry payloads overlap (entries "+payloadRanges[i-1].index+" and "+payloadRanges[i].index+").");
  return {kind,platform,version,entries,references:referenceNames};
 }
