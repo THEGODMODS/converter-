@@ -1,5 +1,5 @@
 import { deflateSync, inflateSync } from "node:zlib";
-export type ModelSection={index:number;data:Buffer};
+export type ModelSection={index:number;data:Buffer;fileOffset?:number};
 export type ModelContainer={version:number;unknown1:number;unknown2:number;flags:number;arrayHeaderExtra:Buffer;sections:ModelSection[];wasCompressed:boolean;wrapperVersion?:Buffer;warnings:string[]};
 const MAX_MODEL_BYTES=1024*1024*1024;
 export function decodeWesysModel(input:Buffer):{data:Buffer;wrapperVersion:Buffer|null}{
@@ -25,7 +25,7 @@ export function parseModelContainer(input:Buffer):ModelContainer{
  const extraLength=arrayOffset-12,arrayHeaderExtra=Buffer.from(boundedSlice(data,arrayStart+12,extraLength,"MODEL section array extension")),recordsStart=arrayStart+arrayOffset;
  const offsets:number[]=[];for(let i=0;i<count;i++){const relative=data.readUInt32LE(recordsStart+i*4);if(relative<arrayOffset+count*4||arrayStart+relative>data.length)throw new Error("MODEL section pointer is outside its data area.");offsets.push(relative);}
  const sorted=[...offsets].sort((a,b)=>a-b);if(new Set(offsets).size!==offsets.length)throw new Error("MODEL sections contain duplicate offsets.");
- const sections:ModelSection[]=offsets.map((relative,index)=>{const next=sorted.find(offset=>offset>relative)??(data.length-arrayStart),length=next-relative;return {index,data:Buffer.from(boundedSlice(data,arrayStart+relative,length,"MODEL section "+index))};});
+ const sections:ModelSection[]=offsets.map((relative,index)=>{const next=sorted.find(offset=>offset>relative)??(data.length-arrayStart),length=next-relative;return {index,fileOffset:arrayStart+relative,data:Buffer.from(boundedSlice(data,arrayStart+relative,length,"MODEL section "+index))};});
  const warnings:string[]=[];if(unknown1!==0)warnings.push("MODEL header unknown1 is non-zero.");if(unknown2!==9)warnings.push("MODEL header unknown2 differs from the common value 9.");if(flags!==0)warnings.push("MODEL header flags are non-zero.");
  return {version,unknown1,unknown2,flags,arrayHeaderExtra,sections,wasCompressed:decoded.wrapperVersion!==null,wrapperVersion:decoded.wrapperVersion??undefined,warnings};
 }
