@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { inspectDdsHeader, inspectFmdlHeader, inspectFtexHeader, inspectModelHeader } from "./formats/headers";
@@ -9,7 +10,7 @@ const RELEVANT=new Set([".fmdl",".model",".ftex",".dds",".xml",".mtl",".bin",".f
 async function inspectFile(rel:string,absolute:string,size:number):Promise<FaceFile>{
  const data=await readFile(absolute),ext=path.extname(rel).toLowerCase();let kind="other",valid:boolean|undefined,details:string[]|undefined;
  if(ext===".fmdl"){const x=inspectFmdlHeader(data);kind=x.valid?"model-pes2021":"invalid-fmdl";valid=x.valid;details=x.details;}
- else if(ext===".model"){const x=inspectModelHeader(data);kind=x.valid?"model-pes2017":data.subarray(0,5).toString("ascii")==="WESYS"?"compressed-model-pes2017":"invalid-model";valid=x.valid;details=x.details;}
+ else if(ext===".model"){let modelData=data;let compressed=false;if(data.subarray(0,5).toString("ascii")==="WESYS"){try{modelData=inflateSync(data.subarray(16),{maxOutputLength:MAX_FILE_BYTES});compressed=true;}catch{throw new Error("WESYS-compressed MODEL could not be safely decompressed: "+rel);}}const x=inspectModelHeader(modelData);kind=x.valid?(compressed?"model-pes2017-compressed":"model-pes2017"):"invalid-model";valid=x.valid;details=x.details;}
  else if(ext===".ftex"){const x=inspectFtexHeader(data);kind=x.valid?"texture-pes2021":"invalid-ftex";valid=x.valid;details=x.details;}
  else if(ext===".dds"){const x=inspectDdsHeader(data);kind=x.valid?"texture-pes2017":"invalid-dds";valid=x.valid;details=x.details;}
  else if([".xml",".mtl"].includes(ext))kind="material-metadata";else if(ext===".bin")kind="auxiliary";else if([".fpk",".cpk"].includes(ext))kind="container";else if([".png",".jpg",".jpeg"].includes(ext))kind="image-source";
@@ -21,7 +22,7 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  async function walk(dir:string,relative=""):Promise<void>{const entries=await readdir(dir,{withFileTypes:true});for(const entry of entries){const absolute=path.join(dir,entry.name),rel=path.posix.join(relative,entry.name),stat=await lstat(absolute);if(stat.isSymbolicLink()){warnings.push("Skipped symbolic link: "+rel);continue;}if(stat.isDirectory()){await walk(absolute,rel);continue;}if(!stat.isFile())continue;if(files.length>=MAX_FILES)throw new Error("This project exceeds the 5,000-file safety limit.");if(stat.size>MAX_FILE_BYTES){warnings.push("Skipped oversized file: "+rel);continue;}if(!RELEVANT.has(path.extname(entry.name).toLowerCase()))continue;totalBytes+=stat.size;if(totalBytes>MAX_TOTAL_BYTES)throw new Error("This project exceeds the 1 GiB inspection limit.");files.push(await inspectFile(rel,absolute,stat.size));}}
  await walk(root);const has21=files.some(f=>f.kind==="model-pes2021"||f.kind==="texture-pes2021"),has17=files.some(f=>f.kind==="model-pes2017"||f.kind==="texture-pes2017");
  const detectedGame=has21&&has17?"mixed":has21?"pes2021":has17?"pes2017":"unknown",models=files.filter(f=>f.kind.startsWith("model-")).length,textures=files.filter(f=>f.kind.startsWith("texture-")).length;
- if(!models)warnings.push("No valid supported face model was found. A file extension alone is not enough.");if(!textures)warnings.push("No valid DDS or FTEX texture was found.");if(detectedGame==="mixed")warnings.push("Both generation formats are present. Check whether this is a hybrid or previously converted project.");if(detectedGame==="unknown")warnings.push("The source game could not be identified from validated model and texture signatures.");
+ if(!models)warnings.push("No valid supported face model was found. A file extension alone is not enough.");if(!textures)warnings.push("No valid DDS or FTEX texture was found.");if(detectedGame==="mixed")warnings.push("Both generation formats are present. Check whether this is a hybrid or previously converted project.");\n if(has21Model&&has17Texture||has17Model&&has21Texture)warnings.push("Model and texture generations do not match. Verify companion textures before conversion.");if(detectedGame==="unknown")warnings.push("The source game could not be identified from validated model and texture signatures.");
  for(const f of files.filter(f=>f.kind.startsWith("invalid-")))warnings.push(`Invalid ${f.kind.replace("invalid-","").toUpperCase()} header: ${f.path}`);
  return {root,detectedGame,fileCount:files.length,totalBytes,models,textures,files,warnings,missing:[]};
 }
