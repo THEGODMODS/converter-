@@ -29,7 +29,7 @@ jobs:
           $upstream = Join-Path $env:RUNNER_TEMP 'unlimited-tool-works'
           git clone --filter=blob:none --no-checkout https://github.com/the4chancup/unlimited-tool-works.git $upstream
           git -C $upstream checkout ca4fe4a32500ffc2d932a1a669a42a6f932d571a
-          cargo test --manifest-path (Join-Path $upstream 'Cargo.toml') -p model_convert -p fpk -p ftex
+          cargo test --manifest-path (Join-Path $upstream 'Cargo.toml') -p model_convert -p fpk -p ftex -p team_compiler -p studio_core
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
