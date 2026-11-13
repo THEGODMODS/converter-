@@ -11,7 +11,7 @@ export function assessFaceConversion(project:ProjectInput,source:FaceSourceGener
  const embeddedModels=files.filter(file=>file.path.includes("!/")&&file.kind==="model-pes2021");
  const fpk=files.filter(file=>file.kind==="container-fpk");
  const textures=files.filter(file=>file.kind.startsWith("texture-"));
- const mtl=files.filter(file=>file.kind==="material-metadata"&&/\.mtl$/i.test(file.path));
+ const mtl=files.filter(file=>file.kind==="material-pes2017");
  const faceDiff=files.filter(file=>file.kind==="face-diff");
  const invalid=files.filter(file=>file.kind.startsWith("invalid-"));
  const checks:CompatibilityCheck[]=[],blockingReasons:string[]=[],warnings:string[]=[];
