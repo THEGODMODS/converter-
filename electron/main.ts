@@ -37,8 +37,12 @@ function registerIpc(){
   const packages=inventory.files.filter(file=>file.kind==="container-fpk"&&!file.path.includes("!/"));
   const looseModels=inventory.files.filter(file=>["model-pes2017","model-pes2017-compressed","model-pes2021"].includes(file.kind)&&!file.path.includes("!/"));
   let selectedPaths:string[]=[];
-  if(packages.length===1)selectedPaths=[path.resolve(root,...packages[0].path.split("/"))];
-  else if(packages.length>1)throw new Error("This folder contains multiple FPK packages. Convert each face package separately until package-set dependency mapping is supported.");
+  if(packages.length===1){
+   const packagePath=packages[0].path,packageDir=path.posix.dirname(packagePath),packageStem=path.posix.basename(packagePath,path.posix.extname(packagePath)).toLowerCase();
+   const companion=inventory.files.find(file=>file.kind==="container-fpkd"&&!file.path.includes("!/")&&path.posix.dirname(file.path)===packageDir&&path.posix.basename(file.path,path.posix.extname(file.path)).toLowerCase()===packageStem);
+   selectedPaths=[path.resolve(root,...packagePath.split("/"))];
+   if(companion)selectedPaths.push(path.resolve(root,...companion.path.split("/")));
+  }else if(packages.length>1)throw new Error("This folder contains multiple FPK face packages. Convert each face package separately until player/package identity mapping is supported.");
   else selectedPaths=looseModels.map(file=>path.resolve(root,...file.path.split("/")));
   if(!selectedPaths.length)throw new Error("No supported loose models or FPK package were discovered in this face folder.");
   const prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
@@ -49,8 +53,9 @@ function registerIpc(){
    if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("A selected model is not a safe supported file.");
   }
   const extensions=new Set(selectedPaths.map(file=>path.extname(file).toLowerCase()));
-  if(extensions.size!==1)throw new Error("Mixed model generations detected. Separate the PES 2017 and PES 2021 assets before conversion.");
-  const extension=[...extensions][0],sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"?"fpk":null;
+  const isFoxPackage=selectedPaths.every(file=>[".fpk",".fpkd"].includes(path.extname(file).toLowerCase()));
+  if(extensions.size!==1&&!isFoxPackage)throw new Error("Mixed model generations detected. Separate the PES 2017 and PES 2021 assets before conversion.");
+  const extension=[...extensions][0],sourceFormat=isFoxPackage?"fpk":extension===".fmdl"?"fmdl":extension===".model"?"model":null;
   if(!sourceFormat)throw new Error("Select .fmdl, .model or a face .fpk package. The paired .fpkd file is a companion archive, not a standalone model.");
   const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target];
   for(const modelPath of selectedPaths)args.push("--model",modelPath);
