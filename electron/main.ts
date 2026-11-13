@@ -36,7 +36,8 @@ function registerIpc(){
  });
 }
 function createWindow(){
- mainWindow=new BrowserWindow({width:1440,height:960,minWidth:980,minHeight:720,backgroundColor:"#090b10",title:"THEGODMODS FACE FORGE",webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+ const iconPath=app.isPackaged?path.join(process.resourcesPath,"face-forge.ico"):path.join(app.getAppPath(),"assets","face-forge.ico");
+ mainWindow=new BrowserWindow({width:1440,height:960,minWidth:980,minHeight:720,backgroundColor:"#090b10",title:"THEGODMODS FACE FORGE",...(fs.existsSync(iconPath)?{icon:iconPath}:{}),webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false,sandbox:true}});
  if(app.isPackaged)void mainWindow.loadFile(path.join(__dirname,"../../dist/index.html"));else void mainWindow.loadURL("http://127.0.0.1:5173");
  mainWindow.webContents.setWindowOpenHandler(()=>({action:"deny"}));
  const trustedUrl=app.isPackaged?pathToFileURL(path.join(__dirname,"../../dist/index.html")).href:"http://127.0.0.1:5173/";
