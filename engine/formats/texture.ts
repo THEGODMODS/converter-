@@ -91,7 +91,7 @@ export function ddsToFtex(input:Buffer,colorSpace:TextureColorSpace="SRGB"): {da
   const frame=frames[i],chunks:{stored:Buffer;rawSize:number}[]=[];
   for(let start=0;start<frame.length;start+=16384){const raw=frame.subarray(start,Math.min(start+16384,frame.length)),packed=deflateSync(raw,{level:9});chunks.push({stored:packed.length<raw.length?packed:raw,rawSize:raw.length});}
   const count=chunks.length,table=Buffer.alloc(count*8);let chunkData=Buffer.alloc(0),compressedTotal=0;
-  for(let j=0;j<count;j++){const chunk=chunks[j],isCompressed=chunk.stored.length<chunk.rawSize;table.writeUInt16LE(chunk.stored.length,j*8);table.writeUInt16LE(chunk.rawSize,j*8+2);table.writeUInt32LE((count*8+chunkData.length)|(isCompressed?0:0x80000000),j*8+4);chunkData=Buffer.concat([chunkData,chunk.stored]);compressedTotal+=chunk.stored.length;}
+  for(let j=0;j<count;j++){const chunk=chunks[j],isCompressed=chunk.stored.length<chunk.rawSize;table.writeUInt16LE(chunk.stored.length,j*8);table.writeUInt16LE(chunk.rawSize,j*8+2);table.writeUInt32LE(((count*8+chunkData.length)|(isCompressed?0:0x80000000))>>>0,j*8+4);chunkData=Buffer.concat([chunkData,chunk.stored]);compressedTotal+=chunk.stored.length;}
   const descriptor=64+i*16;header.writeUInt32LE(position,descriptor);header.writeUInt32LE(frame.length,descriptor+4);header.writeUInt32LE(compressedTotal,descriptor+8);header.writeUInt8(i%info.mipCount,descriptor+12);header.writeUInt8(0,descriptor+13);header.writeUInt16LE(count,descriptor+14);
   const frameData=Buffer.concat([table,chunkData]);payloads.push(frameData);position+=frameData.length;
  }
