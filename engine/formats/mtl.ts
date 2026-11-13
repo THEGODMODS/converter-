@@ -19,7 +19,7 @@ function bool(value:string|undefined,label:string):boolean|null{
 }
 function safePath(value:string):string{
  const path=value.replace(/\\/g,"/").trim(),parts=path.split("/").filter(part=>part!==".");
- if(!path||path.includes("\0")||/^[a-z]:/i.test(path)||path.startsWith("/")||parts.some(part=>part==="..")||!parts.length)throw new Error("PES MTL sampler path is empty, absolute or escapes its material directory: "+value);
+ if(!path||path.includes("\0")||/^[a-z]:/i.test(path)||path.startsWith("/")||!parts.length)throw new Error("PES MTL sampler path is empty or absolute: "+value);
  return parts.join("/");
 }
 export function parsePes2017Mtl(input:Buffer):Pes2017MaterialSet{
