@@ -13,6 +13,12 @@ This audit describes the implementation in the repository, not the product ambit
 - The generated legacy XML explicitly registers supported `face_high`, `hair_high` and `oral` model stems with their converted MTL companions. Unsupported model stems fail closed.
 - This is byte-preserving format wrapping, not a claimed v5-to-v4 rig transform. It still requires PES 2017 in-game validation for the user's package; no game-level success is claimed.
 
+## FACE diff fixture findings and safety boundary
+
+The pinned upstream Unlimited Tool Works repository contains independently sourced binary fixtures for legacy FACE v4 (944 bytes) and newer FACE v5 (960 bytes). Inspecting their headers shows that record counts are not safely inferred from the version integer alone: the v4 fixture declares 32 16-byte records plus six 32-byte records; one v5 fixture also declares 32 plus six and carries 16 trailing bytes; another v5 fixture declares 33 plus six and uses the full 960-byte count-derived extent. The 16-byte and 32-byte record classes are therefore validated from the declared tables for every version, including finite float values, bounds and overlap. Auxiliary record semantics remain opaque.
+
+The public PES-FMDL issue documents the 16 scalar values (eye scale, eye rotations, eyelids and oral offset) and a facial-bone position list, but its list numbering omits item 17. The face/hair add-on also reads eye-position vectors at fixed offsets 0x150 and 0x160. These references are useful, but they do not establish a complete, version-specific mapping for every v4/v5/v6 record, nor the coordinate and bind-pose transforms needed to translate between generations. No v4↔v5/v6 writer is enabled on this evidence.
+
 ## External format research
 
 The converter already pins the native model engine from `the4chancup/unlimited-tool-works` at revision `ca4fe4a32500ffc2d932a1a669a42a6f932d571a`. Its model-conversion library provides a canonical IR, FMDL and pre-Fox import/export, per-version skeleton retargeting, material-family mapping and structured loss findings. The upstream repository is dual-licensed MIT/Apache-2.0 for code, but its own README describes the wider suite as in development; it is an engine dependency, not proof that FACE FORGE's face-package workflow is complete.
