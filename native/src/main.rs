@@ -3,6 +3,7 @@ use crossbeam_channel::unbounded;
 use studio_core::{AppPaths,PipelineEvent,Settings,ShellRequest,StudioTool,ToolContext};
 use team_compiler::Tool as TeamCompilerTool;
 mod package_policy;
+mod cpk_extract;
 use package_policy::{ftex_target_path, normalize_fox_virtual_path, validate_face_package_members};
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
@@ -165,10 +166,14 @@ fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
 /// v5/v6 payloads into pre-Fox XML. This is byte-preserving transport, not rig retargeting.
 fn validate_face_diff_generation(bytes: &[u8], target: u16) -> Result<(), String> {
     validate_face_diff_payload(bytes)?;
-    if target != 2017 && target != 2021 {
-        return Err(format!("Unsupported target PES generation: {target}."));
+    let version = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    match target {
+        2017 if version == 4 => Ok(()),
+        2021 if version == 4 || version == 5 || version == 6 => Ok(()),
+        2017 => Err(format!("PES 2017 requires FACE diff v4; source v{version} cannot be copied safely.")),
+        2021 => Err(format!("PES 2021 supports FACE diff v4/v5/v6; source v{version} is not supported.")),
+        _ => Err(format!("Unsupported target PES generation: {target}.")),
     }
-    Ok(())
 }
 
 fn legacy_face_diff_from_xml(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
@@ -539,6 +544,14 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
 
 fn run()->Result<(),String>{
  let args:Vec<String>=env::args().collect();
+ if args.get(1).map(String::as_str)==Some("extract-cpk"){
+  let input=PathBuf::from(required(&args,"--input")?);
+  let output=PathBuf::from(required(&args,"--out")?);
+  let mut prefixes=Vec::new();let mut index=2;
+  while index<args.len(){if args[index]=="--prefix"{let value=args.get(index+1).ok_or_else(||"--prefix requires a path".to_string())?;prefixes.push(value.clone());index+=2;}else{index+=1;}}
+  let report=cpk_extract::extract_cpk_archive(&input,&output,&prefixes)?;
+  println!("{}",report);return Ok(());
+ }
  if args.get(1).map(String::as_str)==Some("convert-face-folder"){
   let input=PathBuf::from(required(&args,"--input")?);
   let target:u16=required(&args,"--target")?.parse().map_err(|_|"Target must be 2017 or 2021".to_string())?;
@@ -554,7 +567,7 @@ fn run()->Result<(),String>{
   if direction=="ftex-to-dds"{let _=ftex_info(&bytes).map_err(|e|format!("FTEX validation: {e}"))?;}else{let _=ftex_info(&result).map_err(|e|format!("Generated FTEX validation: {e}"))?;}
   write(&output,&result)?;println!("{}",serde_json::json!({"ok":true,"bytes":result.len()}));return Ok(());
  }
- if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native convert-face-folder --input FOLDER --target 2017|2021 --out EMPTY_DIR | convert-model ... | convert-texture --input FILE --direction ftex-to-dds|dds-to-ftex --color-space srgb|linear|normal --out FILE".into());}
+ if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native extract-cpk --input ARCHIVE.cpk --out EMPTY_DIR [--prefix PATH]... | convert-face-folder --input FOLDER --target 2017|2021 --out EMPTY_DIR | convert-model ... | convert-texture --input FILE --direction ftex-to-dds|dds-to-ftex --color-space srgb|linear|normal --out FILE".into());}
  let source_format=required(&args,"--source-format")?;let target_text=required(&args,"--target")?;let out=PathBuf::from(required(&args,"--out")?);
  let model_paths:Vec<PathBuf>=args.iter().enumerate().filter(|(_,arg)|arg.as_str()=="--model").filter_map(|(i,_)|args.get(i+1)).map(PathBuf::from).collect();
  if model_paths.is_empty(){return Err("At least one --model input is required.".into());}
@@ -765,16 +778,17 @@ mod face_diff_xml_tests {
     }
 
     #[test]
-    fn preserves_structurally_valid_face_diff_payloads_for_both_targets() {
+    fn keeps_legacy_face_diff_v4_usable_in_pes_2021_but_fails_closed_for_pes_2017() {
         let v4 = v4_fixture();
         let v5 = v5_fixture();
         let mut v6 = v5.clone();
         v6[4..8].copy_from_slice(&6u32.to_le_bytes());
-        for target in [2017, 2021] {
-            assert!(validate_face_diff_generation(&v4, target).is_ok());
-            assert!(validate_face_diff_generation(&v5, target).is_ok());
-            assert!(validate_face_diff_generation(&v6, target).is_ok());
-        }
+        assert!(validate_face_diff_generation(&v4, 2017).is_ok());
+        assert!(validate_face_diff_generation(&v4, 2021).is_ok());
+        assert!(validate_face_diff_generation(&v5, 2017).is_err());
+        assert!(validate_face_diff_generation(&v5, 2021).is_ok());
+        assert!(validate_face_diff_generation(&v6, 2017).is_err());
+        assert!(validate_face_diff_generation(&v6, 2021).is_ok());
         assert!(validate_face_diff_generation(&v4, 2020).is_err());
     }
 
