@@ -592,18 +592,22 @@ fn extract_face_archives(
 }
 
 fn split_pes2017_target_player_id(target_player_id: &str) -> Result<(&str, &str), String> {
-    if target_player_id.len() != 5 || !target_player_id.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err("Target PES 2017 player ID must contain exactly five digits.".into());
+    // PES player identity is team ID × 100 + roster slot. PES 2017 supports
+    // roster slots 01–32; custom team IDs can make the resulting player ID
+    // six digits (for example 1761 × 100 + 04 = 176104).
+    if !(target_player_id.len() == 5 || target_player_id.len() == 6)
+        || !target_player_id.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err("Enter the player's existing PES ID (5 or 6 digits), using its final two digits as roster slot 01–32.".into());
     }
-    let team_id = &target_player_id[..3];
-    let team_number = team_id.parse::<u16>().map_err(|_| "Target PES 2017 team ID is invalid.")?;
-    if !(701..=920).contains(&team_number) {
-        return Err(format!("Target PES 2017 ID {target_player_id} is invalid: its first three digits must be a PES 2017 team ID from 701 through 920. The source PES 2021 face ID is not a PES 2017 target ID."));
+    let (team_id, player_slot) = target_player_id.split_at(target_player_id.len() - 2);
+    let team_number = team_id.parse::<u16>().map_err(|_| "The player ID's team portion is invalid.")?;
+    if team_number == 0 {
+        return Err("The player ID's team portion must be greater than zero.".into());
     }
-    let player_slot = &target_player_id[3..5];
-    let slot_number = player_slot.parse::<u8>().map_err(|_| "Target PES 2017 roster slot is invalid.")?;
-    if !(1..=23).contains(&slot_number) {
-        return Err(format!("Target PES 2017 ID {target_player_id} is invalid: its roster slot must be from 01 through 23."));
+    let slot_number = player_slot.parse::<u8>().map_err(|_| "The player's roster slot is invalid.")?;
+    if !(1..=32).contains(&slot_number) {
+        return Err("The player's roster slot must be from 01 through 32.".into());
     }
     Ok((team_id, player_slot))
 }
