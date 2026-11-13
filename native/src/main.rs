@@ -449,7 +449,8 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     }
 
     let workspace = create_temp_workspace()?;
-    let export = workspace.0.join("exports").join("ff - FACE FORGE");
+    // Team Compiler requires the coverage tag as the second word in team export names.
+    let export = workspace.0.join("exports").join("ff Full FACE FORGE");
     let player = export.join("Players").join(format!("{player_slot} - FACE FORGE"));
     let data = workspace.0.join("data");
     let pes = workspace.0.join("PES");
