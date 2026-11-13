@@ -12,7 +12,9 @@
 - [ ] Drag/drop folders and ZIP archives.
 - [ ] Safe archive extraction (path traversal, symlink, size and file-count defenses).
 - [x] Identify MODEL/DDS and FMDL/FTEX by signatures, paths and companion metadata.
-- [ ] Face package report: models, textures, materials, IDs, missing dependencies.
+- [x] Initial direction-aware compatibility report with explicit source checks and hard conversion blockers.
+- [x] Research dossier for PES 2017 MODEL, PES 2021 FMDL/FPK/FTEX and both translation pipelines.
+- [ ] Deep face-package report: semantic meshes, materials, texture bindings, IDs, missing dependencies.
 - [x] Deterministic SHA-256 project manifest export with format inventory and coverage diagnostics.
 
 ## Phase 2 — texture conversion
@@ -32,6 +34,7 @@
 - [ ] Expand FMDL LOD, mesh split, face-specific auxiliary and edge-case support.
 - [ ] Skeleton, bone weights, facial morph/blendshape and auxiliary face data compatibility.
 - [ ] Separate tested adapters for each direction.
+- [x] Explicitly gate both directions until target writers and rig/weight retargeting exist; do not emit placeholder output.
 - [ ] Round-trip and reference-scene regression tests.
 
 ## Phase 4 — preview, packaging and installation
