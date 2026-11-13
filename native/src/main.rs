@@ -1,6 +1,6 @@
 use std::{env, fs, path::{Path,PathBuf}, process};
 mod package_policy;
-use package_policy::is_supported_face_package_member;
+use package_policy::validate_face_package_members;
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
 use model_convert::{convert, NativeModelBundle, Subject};
@@ -43,16 +43,11 @@ fn run()->Result<(),String>{
      archive_entries.push((name.to_owned(),data.to_vec()));
     }
    }
-   // Do not silently discard package members that are not handled by the
-   // current model/texture pipeline. FACE diff, XML, FOX scene and unknown
-   // sidecars may carry player identity, animation or rig data.
-   let unsupported:Vec<_>=archive_entries.iter().filter_map(|(name,_)|{
-    if is_supported_face_package_member(name){None}else{Some(name.as_str())}
-   }).collect();
-   if !unsupported.is_empty(){
-    let examples=unsupported.iter().take(8).copied().collect::<Vec<_>>().join(", ");
-    return Err(format!("Face package contains {} unhandled member(s) ({}). Conversion was stopped to prevent silent loss of face metadata, facial calibration, animation or scene data. This build only handles FMDL, SKL and FTEX members; add explicit converters/preservers for the remaining entries before retrying.",unsupported.len(),examples));
-   }
+   // Validate every member before conversion. In particular, do not accept
+   // FTEX merely because a standalone texture command exists: this package
+   // path must emit/relink every accepted member or reject the whole package.
+   let member_names:Vec<String>=archive_entries.iter().map(|(name,_)|name.clone()).collect();
+   validate_face_package_members(&member_names)?;
    let candidates:Vec<_>=archive_entries.iter().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".fmdl")).collect();
    if candidates.is_empty(){return Err("Neither the FPK nor its paired FPKD contains an FMDL model.".into());}
    let mut names=std::collections::HashSet::new();let mut converted=Vec::new();
