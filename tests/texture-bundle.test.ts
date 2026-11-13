@@ -57,4 +57,14 @@ describe("whole-face texture dependency conversion",()=>{
   const inventory=project([{path:"face.fmdl",bytes:1,kind:"model-pes2021",sha256:""},{path:"face.ftex",bytes:ftex.length,kind:"texture-pes2021",sha256:""}],[{source:"face.fmdl",reference:"../escape.ftex",status:"resolved",candidates:["face.ftex"]}]);
   await expect(convertFaceTextureDependencies(inventory,root,output,"2017")).rejects.toThrow(/escapes its project root/i);
  });
+ it("fails closed when a material sampler reference is missing or ambiguous",async()=>{
+  const root=await temp(),output=path.join(root,"out");await mkdir(output);
+  const files=[{path:"face.mtl",bytes:20,kind:"material-pes2017",sha256:""}];
+  const missing=project(files,[{source:"face.mtl",reference:"missing.dds",status:"missing",candidates:[]}]);
+  await expect(convertFaceTextureDependencies(missing,root,output,"2021")).rejects.toThrow(/dependency closure is incomplete/i);
+  const ambiguous=project(files,[{source:"face.mtl",reference:"skin.dds",status:"ambiguous",candidates:["a/skin.dds","b/skin.dds"]}]);
+  await expect(convertFaceTextureDependencies(ambiguous,root,output,"2021")).rejects.toThrow(/ambiguous sampler references/i);
+  expect(await (await import("node:fs/promises")).readdir(output)).toEqual([]);
+ });
+
 });

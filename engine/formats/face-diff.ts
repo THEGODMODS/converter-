@@ -104,10 +104,10 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  // Validate physical extents only for layouts backed by independent binary evidence.
  // Record meaning remains opaque until a version-specific mapping is proven.
  const v4Layout=version===4&&declaredBlock1Records===32&&declaredBlock2Records===6;
- const v5FullLayout=version===5&&declaredBlock1Records===33&&declaredBlock2Records===6;
+ const modernFullLayout=(version===5||version===6)&&declaredBlock1Records===33&&declaredBlock2Records===6;
  const v5SplitLayout=version===5&&declaredBlock1Records===32&&declaredBlock2Records===6&&
   offsets[declaredBlock1Records+1]-offsets[declaredBlock1Records]===0x10;
- if(v4Layout||v5FullLayout||v5SplitLayout){
+ if(v4Layout||modernFullLayout||v5SplitLayout){
   const structuralRanges=offsets.map((start,index)=>{
    const isSplitExtraBone=v5SplitLayout&&index===declaredBlock1Records;
    const size=index<declaredBlock1Records||isSplitExtraBone?0x10:0x20;
@@ -133,13 +133,14 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
   bottomRight:readFiniteFloat(data,0x38,"bottom-right eyelid angle")
  };
  const jawOffset=readFiniteVec3(data,0x3c,"jaw offset");
- if(eyeScale.some(n=>n<=0||n>10))warnings.push("Eye scale contains an unusual value; inspect eye sizing before applying it.");
+ const defaultEyeScale=eyeScale.every(n=>Math.abs(n)<1e-9);
+ if(!defaultEyeScale&&eyeScale.some(n=>n<=0||n>10))warnings.push("Eye scale contains an unusual value; inspect eye sizing before applying it.");
  if([rightEyeRotation,leftEyeRotation].some(rotation=>rotation.some(n=>Math.abs(n)>180)))
   warnings.push("Eye rotation exceeds 180 degrees; inspect the source value before applying it.");
- const v5CanonicalRecords=v5FullLayout&&offsets.length===39&&
+ const modernCanonicalRecords=modernFullLayout&&offsets.length===39&&
   offsets.slice(0,33).every((offset,index)=>offset===0xf0+index*0x10)&&
   offsets.slice(33).every((offset,index)=>offset===0x300+index*0x20);
- if(v5CanonicalRecords){
+ if(modernCanonicalRecords){
   for(let index=0;index<FACE_BONE_ORDER.length;index++){
    const recordOffset=offsets[index],boneName=FACE_BONE_ORDER[index];
    const position=readFiniteVec3(data,recordOffset,boneName+" position");
@@ -160,7 +161,8 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
   if(jaw){
    const expectedJaw:[number,number,number]=[-jaw.position[2],jaw.position[0],-jaw.position[1]];
    const error=Math.max(...expectedJaw.map((value,index)=>Math.abs(value-jawOffset[index])));
-   if(error>4e-5)warnings.push("Jaw scalar does not match the documented sk_head-frame skf_jaw transform (max error "+error+").");
+   const defaultJawSentinel=jawOffset.every(value=>Math.abs(value+65500)<0.5);
+   if(!defaultJawSentinel&&error>4e-5)warnings.push("Jaw scalar does not match the documented sk_head-frame skf_jaw transform (max error "+error+").");
   }
  }else if(offsets.length>7&&offsets[6]===0x150&&offsets[7]===0x160){
   warnings.push("Uncharacterized FACE diff records remain opaque; only the two documented eye landmarks are decoded.");
@@ -183,4 +185,16 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
   opaqueRecordOffsets,rightEyePosition,leftEyePosition,fileBytes:data.length,
   declaredBlock1Records,declaredBlock2Records,warnings
  };
+}
+
+/** Build the neutral v5 FACE payload used by the upstream Team Compiler when no custom diff is supplied. */
+export function createDefaultFaceDiffV5():Buffer{
+ const data=Buffer.alloc(0x3c0);
+ data.write("FACE",0,"ascii");data.writeUInt32LE(5,4);
+ for(let offset=0x08;offset<0x3c;offset+=4)data.writeFloatLE(0,offset);
+ data.writeFloatLE(-65500,0x3c);data.writeFloatLE(-65500,0x40);data.writeFloatLE(-65500,0x44);
+ data.writeUInt32LE(33,0x48);data.writeUInt32LE(6,0x4c);
+ for(let index=0;index<33;index++){const offset=0xf0+index*0x10;data.writeUInt32LE(offset,0x50+index*4);for(let c=0;c<4;c++)data.writeFloatLE(0,offset+c*4);}
+ for(let index=0;index<6;index++){const offset=0x300+index*0x20;data.writeUInt32LE(offset,0x50+(33+index)*4);[0,0,0,1,1,1,0,0].forEach((v,c)=>data.writeFloatLE(v,offset+c*4));}
+ return data;
 }

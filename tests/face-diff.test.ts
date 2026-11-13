@@ -1,6 +1,6 @@
 import {readFileSync} from "node:fs";
 import {describe,expect,it} from "vitest";
-import {inspectFaceDiff} from "../engine/formats/face-diff";
+import {createDefaultFaceDiffV5,inspectFaceDiff} from "../engine/formats/face-diff";
 
 function realFixture(name:string):Buffer{
  return Buffer.from(readFileSync(new URL("./fixtures/"+name,import.meta.url),"utf8").trim(),"base64");
@@ -114,4 +114,13 @@ describe("PES face_diff metadata and records",()=>{
   const bad=v4Fixture();bad.writeFloatLE(Number.NaN,0xf0);
   expect(()=>inspectFaceDiff(bad)).toThrow(/non-finite/i);
  });
+ it("creates a valid neutral v5 template and decodes the matching v6 record layout",()=>{
+  const data=createDefaultFaceDiffV5(),v5=inspectFaceDiff(data);
+  expect(v5.version).toBe(5);expect(v5.boneOffsets).toHaveLength(33);expect(v5.earTransforms).toHaveLength(6);
+  expect(v5.warnings.some(warning=>/jaw scalar/.test(warning))).toBe(false);
+  const v6Bytes=Buffer.from(data);v6Bytes.writeUInt32LE(6,4);
+  const v6=inspectFaceDiff(v6Bytes);
+  expect(v6.version).toBe(6);expect(v6.boneOffsets).toHaveLength(33);expect(v6.earTransforms).toHaveLength(6);
+ });
+
 });

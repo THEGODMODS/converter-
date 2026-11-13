@@ -160,21 +160,13 @@ fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// Enforce the target game's FACE diff generation. Structural validity alone
-/// does not make a source-generation payload safe to install in another game.
+/// Validate supported FACE payload structure without rewriting its versioned records.
+/// PES 2021 retains the legacy v4 eye path, and the pinned Team Compiler transports
+/// v5/v6 payloads into pre-Fox XML. This is byte-preserving transport, not rig retargeting.
 fn validate_face_diff_generation(bytes: &[u8], target: u16) -> Result<(), String> {
     validate_face_diff_payload(bytes)?;
-    let version = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
-    let accepted = match target {
-        2017 => version == 4,
-        2021 => version == 5 || version == 6,
-        _ => return Err(format!("Unsupported target PES generation: {target}.")),
-    };
-    if !accepted {
-        let expected = if target == 2017 { "FACE v4" } else { "FACE v5 or v6" };
-        return Err(format!(
-            "Cannot use FACE v{version} for PES {target}; this target requires {expected}. A semantic FACE diff retarget is required."
-        ));
+    if target != 2017 && target != 2021 {
+        return Err(format!("Unsupported target PES generation: {target}."));
     }
     Ok(())
 }
@@ -773,13 +765,17 @@ mod face_diff_xml_tests {
     }
 
     #[test]
-    fn enforces_target_generation_for_face_diff_payloads() {
+    fn preserves_structurally_valid_face_diff_payloads_for_both_targets() {
         let v4 = v4_fixture();
         let v5 = v5_fixture();
-        assert!(validate_face_diff_generation(&v4, 2017).is_ok());
-        assert!(validate_face_diff_generation(&v4, 2021).is_err());
-        assert!(validate_face_diff_generation(&v5, 2017).is_err());
-        assert!(validate_face_diff_generation(&v5, 2021).is_ok());
+        let mut v6 = v5.clone();
+        v6[4..8].copy_from_slice(&6u32.to_le_bytes());
+        for target in [2017, 2021] {
+            assert!(validate_face_diff_generation(&v4, target).is_ok());
+            assert!(validate_face_diff_generation(&v5, target).is_ok());
+            assert!(validate_face_diff_generation(&v6, target).is_ok());
+        }
+        assert!(validate_face_diff_generation(&v4, 2020).is_err());
     }
 
     #[test]

@@ -18,6 +18,7 @@ import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
 import { parseFpkArchive } from "../engine/formats/fpk";
 import { convertFaceTextureDependencies } from "./texture-bundle";
 import { buildFoxFacePackage } from "./package-builder";
+import { convertPes2017FaceFolderTo2021 } from "./complete-conversion";
 import { publishStagedOutput } from "./output-publish";
 import { verifyPes2017FaceCpk } from "../engine/packaging/face-cpk-validation";
 
@@ -125,14 +126,14 @@ function registerIpc(){
  });
  ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown,playerId:unknown)=>{
   trusted(event);
-  if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017||typeof playerId!=="string"||!/^[0-9]{5}$/.test(playerId))throw new Error("The first release requires PES 2021 source assets, PES 2017 output and a five-digit target player ID.");
+  if(typeof folder!=="string"||!path.isAbsolute(folder)||(target!==2017&&target!==2021)||typeof playerId!=="string"||!/^[0-9]{5}$/.test(playerId))throw new Error("Choose a supported conversion direction and enter a five-digit target player ID.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
   if(inventory.files.some(file=>(file.packageReferences?.length??0)>0))throw new Error("This face package declares inter-package references. The current single-face export cannot safely resolve those external package links.");
-  const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for the complete converted face CPK",properties:["openDirectory"]});
+  const destination=await dialog.showOpenDialog(mainWindow!,{title:target===2017?"Choose an empty output folder for the converted PES 2017 face CPK":"Choose an empty output folder for the converted PES 2021 face FPK/FPKD",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
   const output=path.resolve(destination.filePaths[0]),outputStat=await fs.promises.lstat(output);
   if(outputStat.isSymbolicLink()||!outputStat.isDirectory())throw new Error("Choose a real output directory, not a symbolic link.");
@@ -141,6 +142,7 @@ function registerIpc(){
   if((await fs.promises.readdir(realOutput)).length)throw new Error("Choose an empty output folder; existing files will never be overwritten.");
   const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
   if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the upstream Team compiler enabled.");
+  if(target===2021)return convertPes2017FaceFolderTo2021({root,realRoot,realOutput,binary,playerId});
   const stageParent=await fs.promises.mkdtemp(path.join(path.dirname(realOutput),".face-forge-complete-stage-"));
   const stageOutput=path.join(stageParent,"output");
   try{
@@ -164,7 +166,7 @@ function registerIpc(){
    const report={...(parsedReport as Record<string,unknown>),archiveVerification:{method:"independent FACE FORGE CPK TOC/range read-back with per-entry SHA-256",archives:archiveVerification}};
    const published=await publishStagedOutput(stageOutput,realOutput);
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
-   return {destination:published,report};
+   return {destination:published,outputFormat:"cpk",report};
   }catch(error){
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
    const detail=error instanceof Error?error.message:String(error);
