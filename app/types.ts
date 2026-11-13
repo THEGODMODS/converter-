@@ -1,5 +1,7 @@
+export type FacePartRole="head"|"neck"|"eyes"|"eyelids"|"mouth"|"hair"|"beard"|"skin-normal";
+export type FacePartCoverage={role:FacePartRole;files:string[];models:number;textures:number;status:"detected"|"not-found"};
 export type FaceFile = { path:string;bytes:number;kind:string;sha256:string;formatValid?:boolean;formatDetails?:string[] };
-export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[] };
+export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[];coverage:FacePartCoverage[] };
 export type FaceDatabase = {root:string;faces:FaceProject[];scannedFolders:number;warnings:string[]};
 export type TextureColorSpace = "LINEAR"|"SRGB"|"NORMAL";
 export type FacePreviewMesh={name:string;positions:number[];normals:number[];uvs:number[];indices:number[]};
