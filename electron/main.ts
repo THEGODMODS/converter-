@@ -157,7 +157,6 @@ function registerIpc(){
     const archivePath=path.join(stageOutput,archiveName),archiveStat=await fs.promises.lstat(archivePath);
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
     const archiveBytes=await readFile(archivePath),verification=verifyPes2017FaceCpk(archiveBytes,playerId),inspection=verification.outerInspection;
-    const verification=verifyPes2017FaceCpk(archiveBytes,playerId);
      const reportRecord=parsedReport as Record<string,unknown>;
      const preservedSidecars=Array.isArray(reportRecord.preservedSidecars)?reportRecord.preservedSidecars as string[]:[];
      for(const sidecar of preservedSidecars){
