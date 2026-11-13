@@ -36,6 +36,60 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
+fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
+    let compact: Vec<u8> = value.bytes().filter(|byte| !byte.is_ascii_whitespace()).collect();
+    if compact.len() % 4 != 0 {
+        return Err("Legacy face XML <dif> payload has invalid Base64 length.".into());
+    }
+    let digit = |byte: u8| -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    };
+    let mut output = Vec::with_capacity(compact.len() / 4 * 3);
+    for (index, chunk) in compact.chunks_exact(4).enumerate() {
+        let last = index + 1 == compact.len() / 4;
+        let a = digit(chunk[0]).ok_or("Legacy face XML <dif> payload contains invalid Base64.")?;
+        let b = digit(chunk[1]).ok_or("Legacy face XML <dif> payload contains invalid Base64.")?;
+        let c = if chunk[2] == b'=' { None } else { Some(digit(chunk[2]).ok_or("Legacy face XML <dif> payload contains invalid Base64.")?) };
+        let d = if chunk[3] == b'=' { None } else { Some(digit(chunk[3]).ok_or("Legacy face XML <dif> payload contains invalid Base64.")?) };
+        if !last && (c.is_none() || d.is_none()) || c.is_none() && d.is_some() {
+            return Err("Legacy face XML <dif> payload has invalid Base64 padding.".into());
+        }
+        output.push((a << 2) | (b >> 4));
+        if let Some(c) = c {
+            output.push((b << 4) | (c >> 2));
+            if let Some(d) = d {
+                output.push((c << 6) | d);
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn legacy_face_diff_from_xml(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    let text = std::str::from_utf8(bytes).map_err(|_| "Legacy face.xml is not UTF-8.")?;
+    let document = roxmltree::Document::parse(text).map_err(|error| format!("Legacy face.xml is malformed: {error}"))?;
+    let diffs: Vec<_> = document.descendants().filter(|node| node.is_element() && node.tag_name().name() == "dif").collect();
+    if diffs.len() > 1 {
+        return Err("Legacy face.xml contains more than one <dif> element.".into());
+    }
+    let Some(diff) = diffs.first() else { return Ok(None); };
+    if diff.children().any(|child| child.is_element()) {
+        return Err("Legacy face.xml <dif> must contain Base64 text only.".into());
+    }
+    let payload = diff.children().filter_map(|child| child.text()).collect::<String>();
+    if payload.trim().is_empty() {
+        return Err("Legacy face.xml <dif> is empty.".into());
+    }
+    Ok(Some(decode_base64(&payload)?))
+}
+
 fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<Vec<u8>, String> {
     if let Some(face_diff) = face_diff {
     if face_diff.len() < 0x50 || &face_diff[..4] != b"FACE" {
@@ -135,6 +189,7 @@ fn run()->Result<(),String>{
  let textures_managed_externally=args.iter().any(|arg|arg=="--textures-managed-externally");
  let mut package_textures:Vec<(String,Vec<u8>)>=Vec::new();
  let mut package_face_diff:Option<Vec<u8>>=None;
+ let mut source_face_diff:Option<Vec<u8>>=None;
  let bundles:Vec<(String,NativeModelBundle)>=match source_format.as_str(){
   "fpk"=>{
    if target!=2017{return Err("A PES 2021 Fox package source must target PES 2017.".into());}
@@ -206,6 +261,14 @@ fn run()->Result<(),String>{
  if bundles.is_empty(){return Err("No convertible models were discovered.".into());}
  let mut output_names=std::collections::HashSet::new();
  for (stem,_) in &bundles{if stem.is_empty()||!stem.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'||c=='-'){return Err(format!("Unsafe output model stem: {stem}"));}if !output_names.insert(stem.to_ascii_lowercase()){return Err(format!("Duplicate output model stem: {stem}"));}}
+ if source_format=="model" {
+  if let Some(diff_path)=optional(&args,"--face-diff") {
+   source_face_diff=Some(fs::read(&diff_path).map_err(|e|format!("Read source FACE diff {diff_path}: {e}"))?);
+  } else if let Some(xml_path)=optional(&args,"--face-xml") {
+   let bytes=fs::read(&xml_path).map_err(|e|format!("Read source legacy face XML {xml_path}: {e}"))?;
+   source_face_diff=legacy_face_diff_from_xml(&bytes)?;
+  }
+ }
  let target_version=if target==2017{pes_version::PesVersion::Pes17}else{pes_version::PesVersion::Pes21};
  fs::create_dir_all(&out).map_err(|e|format!("Create output folder: {e}"))?;
  if fs::read_dir(&out).map_err(|e|format!("Read output folder: {e}"))?.next().is_some(){return Err("Output directory must be empty; no files were written.".into());}
@@ -267,6 +330,11 @@ fn run()->Result<(),String>{
   let xml=legacy_face_xml(package_face_diff.as_deref(),&model_stems)?;
   outputs.push("face.xml".into());
   pending_outputs.push(("face.xml".into(),xml));
+ }
+ if let Some(face_diff)=source_face_diff.as_deref() {
+  let _validated=legacy_face_xml(Some(face_diff),&model_stems)?;
+  outputs.push("face_diff.bin".into());
+  pending_outputs.push(("face_diff.bin".into(),face_diff.to_vec()));
  }
  let stage=out.join(".faceforge-staging");fs::create_dir(&stage).map_err(|e|format!("Create staging directory: {e}"))?;
  for (name,data) in pending_outputs{if let Err(error)=write(&stage.join(&name),&data){let _=fs::remove_dir_all(&stage);return Err(error);}}
