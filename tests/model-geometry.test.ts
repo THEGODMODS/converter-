@@ -4,7 +4,7 @@ function minimalSection1():Buffer{
  const b=Buffer.alloc(170);
  b.writeUInt32LE(12,0);b.writeUInt32LE(1,4);b.writeUInt32LE(16,8);
  b.writeUInt32LE(1,12);b.writeInt32LE(28,16);b.writeInt32LE(80,20);b.writeUInt32LE(0,24);
- b.writeUInt32LE(12,28);b.writeUInt32LE(1,32);b.writeUInt32LE(4,36);b.writeInt32LE(16,40);
+ b.writeUInt32LE(12,28);b.writeUInt32LE(1,32);b.writeUInt32LE(4,36);b.writeInt32LE(44,40);
  b.writeUInt32LE(20,44);b.writeUInt32LE(1,48);b.writeUInt32LE(16,52);b.writeUInt32LE(0,56);b.writeUInt32LE(0,60);
  b.writeInt32LE(128,64);b.writeUInt32LE(2,68);b.writeUInt32LE(5,72);b.writeUInt32LE(3,76);
  b.writeUInt32LE(12,80);b.writeUInt32LE(1,84);b.writeUInt32LE(24,88);
