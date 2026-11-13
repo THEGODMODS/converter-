@@ -69,7 +69,7 @@ describe("inspectFaceFolder",()=>{
       expect(result.files.map(file=>file.kind)).toContain("container-fpk");
       expect(result.files.filter(file=>file.kind==="container-fpkd")).toHaveLength(1);
       expect(result.files.filter(file=>file.kind==="container-kpfd-unknown")).toHaveLength(1);
-      expect(result.files.some(file=>file.path.endsWith("face.fpkd!/scene.fox2"))).toBe(false);
+      expect(result.files.some(file=>file.path.endsWith("face.fpkd!/scene.fox2"))).toBe(true);
       expect(result.textures).toBe(1);
       expect(result.models).toBe(2);
       expect(result.files.some(file=>file.path.endsWith("!/face_high.fmdl")&&file.kind==="model-pes2021")).toBe(true);
