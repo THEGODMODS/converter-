@@ -68,9 +68,9 @@ function checkedOffsetTable(data:Buffer,count:number,recordLimit:number):number[
  return offsets;
 }
 /**
- * Decodes the documented PES 2021 v5/v6 real-face calibration layout.
- * Other versions remain structurally inspected: their offset pointers are exposed
- * but never assigned guessed bone/ear semantics.
+ * Decodes the shared scalar calibration header and validates verified record
+ * structures. Auxiliary records stay opaque until their version-specific semantics
+ * are established against independent real fixtures.
  */
 export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  if(data.length<FACE_DIFF_HEADER_BYTES)throw new Error("FACE diff header is truncated.");
@@ -84,6 +84,11 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  if(!Number.isSafeInteger(offsetCount)||offsetCount>10000)
   throw new Error("FACE diff declares an unreasonable number of records.");
  const offsets=checkedOffsetTable(data,offsetCount,expected);
+ const warnings:string[]=[];
+ const boneOffsets:FaceDiffBoneOffset[]=[];
+ const earTransforms:FaceDiffEarTransform[]=[];
+ let opaqueRecordOffsets:number[]=offsets;
+ warnings.push("FACE diff auxiliary records are preserved opaquely; no unverified bone/ear semantics are assigned.");
  // Validate physical record extents for every generation, including legacy v4.
  // Unknown layouts stay semantically opaque, but malformed pointers must never
  // be accepted merely because their record meanings are not yet decoded.
@@ -113,15 +118,6 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
   bottomRight:readFiniteFloat(data,0x38,"bottom-right eyelid angle")
  };
  const jawOffset=readFiniteVec3(data,0x3c,"jaw offset");
- const warnings:string[]=[];
- const boneOffsets:FaceDiffBoneOffset[]=[];
- const earTransforms:FaceDiffEarTransform[]=[];
- let opaqueRecordOffsets:number[]=[];
- // Real PES 2017 v4 and PES 2021 v5 samples establish the header calibration
- // fields, but not a stable cross-version semantic mapping for every auxiliary record.
- // Preserve those records opaquely until each record family is proven from fixtures.
- opaqueRecordOffsets=offsets;
- warnings.push("FACE diff auxiliary records are preserved opaquely; no unverified bone/ear semantics are assigned.");
  if(eyeScale.some(n=>n<=0||n>10))warnings.push("Eye scale contains an unusual value; inspect eye sizing before applying it.");
  if([rightEyeRotation,leftEyeRotation].some(rotation=>rotation.some(n=>Math.abs(n)>180)))
   warnings.push("Eye rotation exceeds 180 degrees; inspect the source value before applying it.");
