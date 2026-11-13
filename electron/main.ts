@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -18,6 +19,7 @@ import { parseFpkArchive } from "../engine/formats/fpk";
 import { convertFaceTextureDependencies } from "./texture-bundle";
 import { buildFoxFacePackage } from "./package-builder";
 import { publishStagedOutput } from "./output-publish";
+import { inspectCpk } from "../engine/packaging/cpk";
 
 let mainWindow:BrowserWindow|null=null;
 function trusted(event:Electron.IpcMainInvokeEvent){
@@ -144,8 +146,21 @@ function registerIpc(){
   try{
    await fs.promises.mkdir(stageOutput);
    const result=await execFileAsync(binary,["convert-face-folder","--input",realRoot,"--target",String(target),"--out",stageOutput],{timeout:600000,maxBuffer:16*1024*1024,windowsHide:true});
-   let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("The upstream face compiler returned an invalid conversion report.");}
-   if(!report||typeof report!=="object"||(report as {ok?:unknown}).ok!==true||!Array.isArray((report as {cpkFiles?:unknown}).cpkFiles)||(report as {cpkFiles:string[]}).cpkFiles.length===0)throw new Error("The upstream compiler did not produce a verified CPK output.");
+   let parsedReport:unknown;try{parsedReport=JSON.parse(result.stdout.trim());}catch{throw new Error("The upstream face compiler returned an invalid conversion report.");}
+   if(!parsedReport||typeof parsedReport!=="object"||(parsedReport as {ok?:unknown}).ok!==true||!Array.isArray((parsedReport as {cpkFiles?:unknown}).cpkFiles)||(parsedReport as {cpkFiles:string[]}).cpkFiles.length===0)throw new Error("The upstream compiler did not produce a conversion report with CPK outputs.");
+   const cpkNames=(parsedReport as {cpkFiles:string[]}).cpkFiles;
+   const archiveVerification:Array<{archive:string;fileCount:number;entries:Array<{path:string;size:number;sha256:string}>}>=[];
+   for(const archiveName of cpkNames){
+    if(typeof archiveName!=="string"||!archiveName||path.basename(archiveName)!==archiveName||!archiveName.toLowerCase().endsWith(".cpk"))throw new Error("The native report contains an unsafe CPK output name.");
+    const archivePath=path.join(stageOutput,archiveName),archiveStat=await fs.promises.lstat(archivePath);
+    if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
+    const archiveBytes=await readFile(archivePath),inspection=inspectCpk(archiveBytes);
+    if(!inspection.valid||inspection.fileCount===0)throw new Error("Independent CPK read-back failed for "+archiveName+": "+inspection.errors.join("; "));
+    if(!inspection.files.some(entry=>/\\.(?:fmdl|model)$/i.test(entry.path)))throw new Error("CPK "+archiveName+" contains no recognizable face model asset.");
+    const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
+    archiveVerification.push({archive:archiveName,fileCount:inspection.fileCount,entries});
+   }
+   const report={...(parsedReport as Record<string,unknown>),archiveVerification:{method:"independent FACE FORGE CPK TOC/range read-back with per-entry SHA-256",archives:archiveVerification}};
    const published=await publishStagedOutput(stageOutput,realOutput);
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
    return {destination:published,report};
