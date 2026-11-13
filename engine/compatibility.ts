@@ -32,7 +32,7 @@ export function assessFaceConversion(project:ProjectInput,source:FaceSourceGener
   checks.push({label:"PES 2017 material definitions",status:mtl.length?"pass":"warning",detail:mtl.length?mtl.length+" MTL/material metadata file(s) found.":"No .mtl material definition was found."});
   if(!mtl.length)warnings.push("PES 2017 MODEL meshes reference external MTL material definitions; without them texture/shader bindings cannot be reconstructed reliably.");
  }else{
-  checks.push({label:"FMDL semantic material decoding",status:sourceModels.length?"pass":"blocked",detail:"The pinned Team Compiler converts FMDL geometry and material sets for PES 2017 output."});
+  checks.push({label:"FMDL semantic material decoding",status:"warning",detail:sourceModels.length?"FMDL source model(s) were inventoried; successful geometry and material decoding for this specific face is not established by inventory alone.":"No FMDL source model was inventoried."});
  }
  checks.push({label:"Face-specific calibration",status:faceDiff.length?"pass":"warning",detail:faceDiff.length?"A structurally recognized face_diff.bin was found.":"No face_diff.bin was found; the compiler will use its target-generation default calibration."});
  if(!faceDiff.length)warnings.push("No source FACE diff was found. Target defaults will be used for eye/oral calibration rather than preserving authored offsets.");
