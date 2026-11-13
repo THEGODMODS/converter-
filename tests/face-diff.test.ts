@@ -83,7 +83,11 @@ describe("PES face_diff metadata and records",()=>{
   expect(parsed.declaredBlock1Records).toBe(33);
   expect(parsed.boneOffsets).toHaveLength(33);
   expect(parsed.boneOffsets[15].boneName).toBe("skf_cheek_r");
-  expect(parsed.boneOffsets[28]).toMatchObject({boneName:"skf_jaw",position:[0.028,0.056,0.084],w:0});
+  expect(parsed.boneOffsets[28]?.boneName).toBe("skf_jaw");
+  expect(parsed.boneOffsets[28]?.position[0]).toBeCloseTo(0.028,6);
+  expect(parsed.boneOffsets[28]?.position[1]).toBeCloseTo(0.056,6);
+  expect(parsed.boneOffsets[28]?.position[2]).toBeCloseTo(0.084,6);
+  expect(parsed.boneOffsets[28]?.w).toBe(0);
   expect(parsed.earTransforms).toHaveLength(6);
   expect(parsed.earTransforms[0]).toMatchObject({boneName:"dsk_ear_t_l",translation:[0,0,0],scale:[1,1,1],reserved:[0,0]});
   expect(parsed.earTransforms[5].boneName).toBe("dsk_earlobe_r");
