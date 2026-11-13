@@ -102,3 +102,5 @@
 @media(max-width:760px){.face-diff-values{grid-template-columns:1fr}}
 
 .target-player-id{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:9px 0 10px}.target-player-id label{font-size:9px;font-weight:800;letter-spacing:.08em;color:#a8e975}.target-player-id input{width:132px;background:#0b1119;border:1px solid #344254;border-radius:7px;padding:8px 10px;color:#e5edf7;font-size:12px;font-weight:700;outline:none}.target-player-id input:focus{border-color:#8fc95d;box-shadow:0 0 0 2px #8fc95d22}.target-player-id small{flex-basis:100%;font-size:9px;color:#778496}
+
+.target-player-id .target-id-error{color:#ff9b91;font-weight:700}
