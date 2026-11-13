@@ -161,7 +161,7 @@ function registerIpc(){
      const preservedSidecars=Array.isArray(reportRecord.preservedSidecars)?reportRecord.preservedSidecars as string[]:[];
      for(const sidecar of preservedSidecars){
       if(typeof sidecar!=="string"||!sidecar.trim())throw new Error("The native report contains an invalid preserved face sidecar path.");
-      const basename=path.posix.basename(sidecar.replaceAll("\\\\","/")).toLowerCase();
+      const basename=sidecar.split(/[\\/]/).pop()!.toLowerCase();
       if(!basename||basename==="."||basename==="..")throw new Error("The native report contains an unsafe preserved face sidecar path.");
       if(!verification.faceInspection.files.some(entry=>path.posix.basename(entry.path).toLowerCase()===basename))throw new Error("The generated PES 2017 face CPK is missing preserved source sidecar "+sidecar+".");
      }
