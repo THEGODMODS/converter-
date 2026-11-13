@@ -17,20 +17,22 @@ fn run()->Result<(),String>{
   write(&output,&result)?;println!("{}",serde_json::json!({"ok":true,"bytes":result.len()}));return Ok(());
  }
  if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native convert-model ... | convert-texture --input FILE --direction ftex-to-dds|dds-to-ftex --color-space srgb|linear|normal --out FILE".into());}
- let source_format=required(&args,"--source-format")?;let target_text=required(&args,"--target")?;let model_path=PathBuf::from(required(&args,"--model")?);let out=PathBuf::from(required(&args,"--out")?);
+ let source_format=required(&args,"--source-format")?;let target_text=required(&args,"--target")?;let out=PathBuf::from(required(&args,"--out")?);
+ let model_paths:Vec<PathBuf>=args.iter().enumerate().filter(|(_,arg)|arg.as_str()=="--model").filter_map(|(i,_)|args.get(i+1)).map(PathBuf::from).collect();
+ if model_paths.is_empty(){return Err("At least one --model input is required.".into());}
  let target:u16=target_text.parse().map_err(|_|"Target must be 2017 or 2021".to_string())?;if target!=2017&&target!=2021{return Err("Target must be 2017 or 2021".into());}
- if !model_path.is_file(){return Err(format!("Source model does not exist: {}",model_path.display()));}
- let bytes=fs::read(&model_path).map_err(|e|format!("Read source model: {e}"))?;
+ for path in &model_paths{if !path.is_file(){return Err(format!("Source model does not exist: {}",path.display()));}}
+ if source_format=="fpk"&&model_paths.len()!=1{return Err("An FPK conversion accepts exactly one archive input; the archive may contain multiple FMDL models.".into());}
  let bundles:Vec<(String,NativeModelBundle)>=match source_format.as_str(){
   "fpk"=>{
    if target!=2017{return Err("An FPK source is a PES 2021 Fox package; choose PES 2017 as target.".into());}
+   let bytes=fs::read(&model_paths[0]).map_err(|e|format!("Read source FPK: {e}"))?;
    let archive=FpkFile::read(&bytes).map_err(|e|format!("Decode FPK package: {e}"))?;
    let candidates:Vec<_>=archive.entries().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".fmdl")).collect();
    if candidates.is_empty(){return Err("The FPK contains no FMDL models.".into());}
    let mut names=std::collections::HashSet::new();let mut converted=Vec::new();
    for (name,data) in candidates{
-    let file_name=name.rsplit('/').next().unwrap_or(name);
-    let stem=file_name.rsplit_once('.').map(|x|x.0).unwrap_or(file_name);
+    let file_name=name.rsplit('/').next().unwrap_or(name);let stem=file_name.rsplit_once('.').map(|x|x.0).unwrap_or(file_name);
     if stem.is_empty()||!stem.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'||c=='-'){return Err(format!("Unsafe or unsupported model name in FPK: {name}"));}
     if !names.insert(stem.to_ascii_lowercase()){return Err(format!("Multiple FPK models collapse to the same output name: {stem}"));}
     let skl_name=format!("{}.skl",&name[..name.len()-5]);
@@ -39,26 +41,35 @@ fn run()->Result<(),String>{
     let skl_bytes=archive.entries().find(|(candidate,_)|candidate.eq_ignore_ascii_case(&skl_name)).map(|(_,bytes)|bytes);
     let skl=skl_bytes.map(|bytes|SklFile::read(bytes).map_err(|e|format!("Decode companion SKL {skl_name}: {e}"))).transpose()?;
     converted.push((stem.to_owned(),NativeModelBundle::Fox{model,skl}));
-   }
-   converted
+   }converted
   },
   "fmdl"=>{
    if target==2021{return Err("Source and target are both PES 2021; select PES 2017 as target.".into());}
-   let file=FmdlFile::read(&bytes).map_err(|e|format!("Decode FMDL: {e}"))?;
-   let model=FoxModel::from_file(&file).map_err(|e|format!("Resolve FMDL references: {e}"))?;
-   let skl=if let Some(p)=optional(&args,"--skeleton"){let data=fs::read(&p).map_err(|e|format!("Read SKL: {e}"))?;Some(SklFile::read(&data).map_err(|e|format!("Decode SKL: {e}"))?)}else{None};
-   let stem=model_path.file_stem().and_then(|x|x.to_str()).ok_or("Invalid FMDL file name")?.to_owned();
-   vec![(stem,NativeModelBundle::Fox{model,skl})]
+   let mut converted=Vec::new();
+   for model_path in &model_paths{
+    let bytes=fs::read(model_path).map_err(|e|format!("Read FMDL {}: {e}",model_path.display()))?;
+    let file=FmdlFile::read(&bytes).map_err(|e|format!("Decode FMDL {}: {e}",model_path.display()))?;
+    let model=FoxModel::from_file(&file).map_err(|e|format!("Resolve FMDL references {}: {e}",model_path.display()))?;
+    let skl_path=model_path.with_extension("skl");
+    let skl=if skl_path.exists(){let data=fs::read(&skl_path).map_err(|e|format!("Read SKL: {e}"))?;Some(SklFile::read(&data).map_err(|e|format!("Decode SKL: {e}"))?)}else{None};
+    let stem=model_path.file_stem().and_then(|x|x.to_str()).ok_or("Invalid FMDL file name")?.to_owned();
+    converted.push((stem,NativeModelBundle::Fox{model,skl}));
+   }converted
   },
   "model"=>{
    if target==2017{return Err("Source and target are both PES 2017; select PES 2021 as target.".into());}
-   let file=PreFoxModel::read(&bytes).map_err(|e|format!("Decode MODEL: {e}"))?;
-   let model=PreFoxSemanticModel::from_file(&file).map_err(|e|format!("Resolve MODEL geometry: {e}"))?;
-   let mtl_path=optional(&args,"--material").ok_or("PES 2017 MODEL conversion requires its companion .mtl file")?;
-   let mtl_bytes=fs::read(&mtl_path).map_err(|e|format!("Read MTL: {e}"))?;
-   let mtl=MaterialSet::read(&mtl_bytes).map_err(|e|format!("Decode MTL: {e}"))?;
-   let stem=model_path.file_stem().and_then(|x|x.to_str()).ok_or("Invalid MODEL file name")?.to_owned();
-   vec![(stem,NativeModelBundle::PreFox{model,mtl})]
+   let mut converted=Vec::new();
+   for model_path in &model_paths{
+    let bytes=fs::read(model_path).map_err(|e|format!("Read MODEL {}: {e}",model_path.display()))?;
+    let file=PreFoxModel::read(&bytes).map_err(|e|format!("Decode MODEL {}: {e}",model_path.display()))?;
+    let model=PreFoxSemanticModel::from_file(&file).map_err(|e|format!("Resolve MODEL geometry {}: {e}",model_path.display()))?;
+    let mtl_path=model_path.with_extension("mtl");
+    if !mtl_path.is_file(){return Err(format!("PES 2017 MODEL {} requires its companion .mtl file",model_path.display()));}
+    let mtl_bytes=fs::read(&mtl_path).map_err(|e|format!("Read MTL: {e}"))?;
+    let mtl=MaterialSet::read(&mtl_bytes).map_err(|e|format!("Decode MTL: {e}"))?;
+    let stem=model_path.file_stem().and_then(|x|x.to_str()).ok_or("Invalid MODEL file name")?.to_owned();
+    converted.push((stem,NativeModelBundle::PreFox{model,mtl}));
+   }converted
   },
   _=>return Err("--source-format must be fmdl, fpk or model".into())
  };
