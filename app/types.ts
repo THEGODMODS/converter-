@@ -13,7 +13,7 @@ export type FaceForgeApi = {
  inspectFolder:(folder:string)=>Promise<FaceProject>;
  exportManifest:(folder:string)=>Promise<{destination:string;files:number;bytes:number}|null>;
  previewModel:(folder:string,relativePath:string)=>Promise<FacePreviewData>;
- convertNativeModel:(folder:string)=>Promise<{destination:string;report:{ok:boolean;target:number;outputs:string[];findings:string}}|null>;
+ convertNativeModel:(folder:string)=>Promise<{destination:string;report:{ok:boolean;target:number;outputs:string[];findings:{code:string;subject:{type:string;index?:number};detail:string}[]}}|null>;
  getPathForDrop:(file:File)=>string;
  convertTextureFile:(colorSpace:TextureColorSpace)=>Promise<{source:string;destination:string;format:string;width:number;height:number;bytes:number}|null>;
 };
