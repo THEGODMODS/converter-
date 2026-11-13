@@ -125,7 +125,7 @@ function registerIpc(){
  });
  ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown)=>{
   trusted(event);
-  if(typeof folder!=="string"||!path.isAbsolute(folder)||(target!==2017&&target!==2021))throw new Error("Invalid complete-face conversion request.");
+  if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017)throw new Error("The first release accepts PES 2021 source faces and produces PES 2017 output only.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
