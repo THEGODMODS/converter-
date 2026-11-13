@@ -21,12 +21,12 @@ function chooseInFolder(modelStem:string,candidates:LegacyMtlFile[]):LegacyMtlFi
  return sorted.find(file=>baseOf(file.path).toLowerCase()==="materials.mtl")??sorted[0]??null;
 }
 /** Mirrors Unlimited Tool Works Team Compiler mtl_for(): model folder first, then face folder; name match, materials.mtl, then deterministic first MTL. */
-export function resolveLegacyMtlForModel(modelPath:string,materialFiles:LegacyMtlFile[],modelFolder=""):string|null{
+export function resolveLegacyMtlForModel(modelPath:string,materialFiles:LegacyMtlFile[],modelFolder?:string):string|null{
  const normalizedModel=modelPath.replace(/\\/g,"/"),ownFolder=folderOf(normalizedModel),rawStem=stemOf(normalizedModel);
  const matchStem=rawStem.startsWith("oral_")&&rawStem.endsWith("_win32")?rawStem.slice(5,-6):rawStem;
  const inFolder=(folder:string)=>chooseInFolder(matchStem,materialFiles.filter(file=>(file.kind===undefined||file.kind==="material-pes2017")&&folderOf(file.path).toLowerCase()===folder.toLowerCase()));
  const own=inFolder(ownFolder);if(own)return own.path;
- const root=modelFolder==="."?"":modelFolder;
+ const root=modelFolder===undefined?folderOf(normalizedModel):modelFolder==="."?"":modelFolder;
  if(root.toLowerCase()!==ownFolder.toLowerCase()){const parent=inFolder(root);if(parent)return parent.path;}
  return null;
 }
