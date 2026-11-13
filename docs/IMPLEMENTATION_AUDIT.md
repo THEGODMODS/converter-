@@ -13,6 +13,18 @@ This audit describes the implementation in the repository, not the product ambit
 - The generated legacy XML explicitly registers supported `face_high`, `hair_high` and `oral` model stems with their converted MTL companions. Unsupported model stems fail closed.
 - This is byte-preserving format wrapping, not a claimed v5-to-v4 rig transform. It still requires PES 2017 in-game validation for the user's package; no game-level success is claimed.
 
+## External format research
+
+The converter already pins the native model engine from `the4chancup/unlimited-tool-works` at revision `ca4fe4a32500ffc2d932a1a669a42a6f932d571a`. Its model-conversion library provides a canonical IR, FMDL and pre-Fox import/export, per-version skeleton retargeting, material-family mapping and structured loss findings. The upstream repository is dual-licensed MIT/Apache-2.0 for code, but its own README describes the wider suite as in development; it is an engine dependency, not proof that FACE FORGE's face-package workflow is complete.
+
+Additional references inspected:
+- `the4chancup/pes-model-blender`: PES 2016–2017 MODEL container and mesh format documentation.
+- `the4chancup/pes-fmdl-blender`: FMDL parsing/export and FACE-diff issue discussion.
+- `MjTs140914/PES_Face_Hair_Modifier`, `leus/PES_Face_Hair_Modifier`, and the updated `luckyfacemaker/PES_Face_Hair_Modifier`: face/hair/oral FMDL import/export, FPK workflows, FTEX handling and eye positioning from FACE diff.
+- `the4chancup/unlimited-tool-works` face compiler specs: legacy model role mapping, `face.xml` `<dif>` Base64 semantics, model filename affixes and the per-face package contents.
+
+Integration decision: reuse the pinned native IR conversion engine and independently test its behavior in FACE FORGE. Treat the Blender projects as format/behavior references, not runtime dependencies. Preserve attribution and each upstream license if any source is ever incorporated. No upstream binary, game data or executable is redistributed by this audit.
+
 ## Executive result
 
 **Release status: NOT READY.** The repository has a substantial engineering foundation and a limited native single-model conversion path. It does not yet provide a complete, fidelity-preserving, bidirectional face-folder converter. Batch and project screens are primarily intake/review workflows, not complete conversion workflows. No actual target-game validation is recorded.
