@@ -6,13 +6,16 @@ import { decodeWesysModel } from "./formats/model-container";
 import { analyzeFacePackage,type FacePartCoverage } from "./face-package";
 import { inspectFaceDiff } from "./formats/face-diff";
 import { parseFpkArchive } from "./formats/fpk";
-export type FaceFile = { path:string;bytes:number;kind:string;sha256:string;formatValid?:boolean;formatDetails?:string[] };
-export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[];coverage:FacePartCoverage[] };
+import { parseFmdlContainer } from "./formats/fmdl-container";
+import { decodePes2021Fmdl } from "./formats/fmdl-geometry";
+export type FaceFile = { path:string;bytes:number;kind:string;sha256:string;formatValid?:boolean;formatDetails?:string[];assetReferences?:string[] };
+export type FaceDependency={source:string;reference:string;status:"resolved"|"missing"|"ambiguous";candidates:string[]};
+export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[];coverage:FacePartCoverage[];dependencies:FaceDependency[] };
 const MAX_FILES=5000,MAX_TOTAL_BYTES=1024*1024*1024,MAX_FILE_BYTES=256*1024*1024;
 const RELEVANT=new Set([".fmdl",".model",".ftex",".dds",".xml",".mtl",".bin",".fpk",".fpkd",".kpfd",".cpk",".png",".jpg",".jpeg"]);
 async function inspectFile(rel:string,absolute:string,size:number,embedded?:Buffer):Promise<FaceFile>{
- const data=embedded??await readFile(absolute),ext=path.extname(rel).toLowerCase();let kind="other",valid:boolean|undefined,details:string[]|undefined;
- if(ext===".fmdl"){const x=inspectFmdlHeader(data);kind=x.valid?"model-pes2021":"invalid-fmdl";valid=x.valid;details=x.details;}
+ const data=embedded??await readFile(absolute),ext=path.extname(rel).toLowerCase();let kind="other",valid:boolean|undefined,details:string[]|undefined,assetReferences:string[]|undefined;
+ if(ext===".fmdl"){const x=inspectFmdlHeader(data);kind=x.valid?"model-pes2021":"invalid-fmdl";valid=x.valid;details=x.details;if(x.valid){try{const scene=decodePes2021Fmdl(parseFmdlContainer(data));assetReferences=[...new Set(scene.materials.flatMap(material=>Object.values(material.textures)))];}catch{details=[...(details??[]),"Material/texture references could not be semantically resolved by the current inspector."];assetReferences=[];}}}
  else if(ext===".model"){let modelData:Buffer<ArrayBufferLike>=data,compressed=false,decompressionError:string|undefined;try{const decoded=decodeWesysModel(data);modelData=decoded.data;compressed=decoded.wrapperVersion!==null;}catch(error){decompressionError=error instanceof Error?error.message:"Invalid WESYS wrapper."; }const x=decompressionError?{valid:false,details:[decompressionError]}:inspectModelHeader(modelData);kind=x.valid?(compressed?"model-pes2017-compressed":"model-pes2017"):"invalid-model";valid=x.valid;details=x.details;}
  else if(ext===".ftex"){const x=inspectFtexHeader(data);kind=x.valid?"texture-pes2021":"invalid-ftex";valid=x.valid;details=x.details;}
  else if(ext===".dds"){const x=inspectDdsHeader(data);kind=x.valid?"texture-pes2017":"invalid-dds";valid=x.valid;details=x.details;}
@@ -27,6 +30,19 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  const has21Model=files.some(f=>f.kind==="model-pes2021"),has17Model=files.some(f=>f.kind==="model-pes2017"||f.kind==="model-pes2017-compressed");
  const has21Texture=files.some(f=>f.kind==="texture-pes2021"),has17Texture=files.some(f=>f.kind==="texture-pes2017");
  const detectedGame=has21Model&&has17Model?"mixed":has21Model?"pes2021":has17Model?"pes2017":has21Texture&&has17Texture?"mixed":has21Texture?"pes2021":has17Texture?"pes2017":"unknown";
+ const dependencies:FaceDependency[]=[];
+ const textureFiles=files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
+ const normalizeAsset=(value:string)=>value.replaceAll("\\\\","/").replace(/^\\/+/, "").replace(/^Assets\\//i,"").replace(/\\.(ftex|dds)$/i,"").toLowerCase();
+ for(const model of files.filter(file=>file.kind==="model-pes2021"&&file.assetReferences?.length)){
+  for(const reference of model.assetReferences??[]){
+   const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
+   const exact=textureFiles.filter(file=>normalizeAsset(file.path.split("!/").pop()??file.path)===normalized);
+   const candidates=exact.length?exact:textureFiles.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
+   dependencies.push({source:model.path,reference,status:candidates.length===1?"resolved":candidates.length===0?"missing":"ambiguous",candidates:candidates.map(file=>file.path)});
+  }
+ }
+ if(dependencies.some(item=>item.status==="missing"))warnings.push(dependencies.filter(item=>item.status==="missing").length+" FMDL texture reference(s) have no matching FTEX/DDS asset in this folder. Conversion must not silently drop these textures.");
+ if(dependencies.some(item=>item.status==="ambiguous"))warnings.push(dependencies.filter(item=>item.status==="ambiguous").length+" FMDL texture reference(s) match multiple files. Resolve duplicate texture names before package conversion.");
  const models=files.filter(f=>f.kind.startsWith("model-pes")).length,textures=files.filter(f=>f.kind.startsWith("texture-pes")).length;
  const fpkFiles=files.filter(f=>f.kind==="container-fpk"||f.kind==="container-fpk-unknown");
  const extractedFpkModels=files.filter(f=>f.path.includes("!/")&&f.kind.startsWith("model-pes2021"));
@@ -36,5 +52,5 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  if(!models&&!fpkFiles.length)warnings.push("No valid supported face model was found. A file extension alone is not enough.");if(!textures)warnings.push("No valid DDS or FTEX texture was found.");if(detectedGame==="mixed")warnings.push("Both generation formats are present. Check whether this is a hybrid or previously converted project.");
  if(has21Model&&has17Texture||has17Model&&has21Texture)warnings.push("Model and texture generations do not match. Verify companion textures before conversion.");if(detectedGame==="unknown")warnings.push("The source game could not be identified from validated model and texture signatures.");
  for(const f of files.filter(f=>f.kind.startsWith("invalid-")))warnings.push(`Invalid ${f.kind.replace("invalid-","").toUpperCase()} header: ${f.path}`);
- return {root,detectedGame,fileCount:files.length,totalBytes,models,textures,files,warnings,missing:[],coverage:analyzeFacePackage(files)};
+ return {root,detectedGame,fileCount:files.length,totalBytes,models,textures,files,warnings,missing:[],coverage:analyzeFacePackage(files),dependencies};
 }
