@@ -12,20 +12,31 @@ export default function SingleFaceApp(){
  const loadFolder=async(folder:string)=>{
   setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setTargetId("");
   try{
-   const scanned=await window.faceForge.inspectFolder(folder);setProject(scanned);const sourceId=inferPesPlayerIdFromPath(scanned.root);if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
+   const scanned=await window.faceForge.inspectFolder(folder);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
-   const models=scanned.files.filter(file=>file.kind==="model-pes2021"),head=models.find(file=>/face_high\.fmdl$/i.test(file.path));
+   const head=scanned.files.find(file=>file.kind==="model-pes2021"&&/face_high\\.fmdl$/i.test(file.path));
    if(!head)throw new Error("The source folder does not contain a valid face_high.fmdl head model.");
+   setProject(scanned);
+   const sourceId=inferPesPlayerIdFromPath(scanned.root);
+   if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
    setPreviewBusy(true);
-   const headScene=await window.faceForge.previewModel(scanned.root,head.path);
-   setPreview({source:"PES 2021 head model",generation:"pes2021",meshes:headScene.meshes,materials:headScene.materials,warnings:headScene.warnings});
-  }catch(e){console.error("FACE FORGE source inspection failed",e);setError("FACE FORGE could not read this folder. Choose an extracted PES 2021 face folder and try again.");}
-  finally{setPreviewBusy(false);setBusy(false);}
+   try{
+    const headScene=await window.faceForge.previewModel(scanned.root,head.path);
+    setPreview({source:"PES 2021 head model",generation:"pes2021",meshes:headScene.meshes,materials:headScene.materials,warnings:headScene.warnings});
+   }catch(previewError){
+    console.error("FACE FORGE 3D preview failed; conversion remains available",previewError);
+    setPreview(null);
+    setError("The face folder is ready, but its 3D preview could not be displayed. You can still convert it.");
+   }
+  }catch(e){
+   console.error("FACE FORGE source inspection failed",e);
+   setError(e instanceof Error?e.message:"FACE FORGE could not read this folder. Choose an extracted PES 2021 face folder and try again.");
+  }finally{setPreviewBusy(false);setBusy(false);}
  };
  const browse=async()=>{try{const folder=await window.faceForge.chooseFolder();if(folder)await loadFolder(folder);}catch(e){console.error("FACE FORGE folder picker failed",e);setError("Could not open that face folder. Please try again.");}};
  const onDrop=async(event:DragEvent)=>{event.preventDefault();setDragging(false);const file=event.dataTransfer.files[0];if(!file)return;const folder=window.faceForge.getPathForDrop(file);if(!folder){setError("Drop a face folder from Windows Explorer, not an individual file.");return;}await loadFolder(folder);};
  const convert=async()=>{
-  if(!project||!preview)return;
+  if(!project)return;
   if(!validTarget.test(targetId)||!/[1-9]/.test(targetId)){setError("Enter the player ID belonging to this face.");return;}
   setConverting(true);setError("");setResult("");
   try{const converted=await window.faceForge.convertCompleteFaceFolder(project.root,2017,targetId);if(converted){setResult("Face converted successfully. Your PES 2017 files are saved in the folder you selected.");}}
@@ -45,7 +56,7 @@ export default function SingleFaceApp(){
     </div>
     <div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">PREVIEW</span><h2>Review the actual face</h2></div><span className="step-number">02</span></div>
      {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE</span></div><FacePreview preview={preview}/></>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>Your face preview will appear here.</p></div>}
-     <div className="convert-footer"><div><span className="eyebrow">OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">FACE PLAYER ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Player ID" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>The ID is detected from the face folder when possible.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a valid player ID.</small>}</div>}<p></p></div><button className="convert-btn" onClick={convert} disabled={!project||!preview||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
+     <div className="convert-footer"><div><span className="eyebrow">OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">FACE PLAYER ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Player ID" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>The ID is detected from the face folder when possible.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a valid player ID.</small>}</div>}<p></p></div><button className="convert-btn" onClick={convert} disabled={!project||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
      {result&&<div className="texture-toast">{result}</div>}
     </div>
    </section>
