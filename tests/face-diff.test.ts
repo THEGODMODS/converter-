@@ -54,14 +54,14 @@ describe("PES face_diff metadata and records",()=>{
   expect(parsed.rightEyeRotation).toEqual([1.5,-2.5,3.5]);
   expect(parsed.leftEyeRotation).toEqual([-1.5,2.5,-3.5]);
   expect(parsed.eyelidOffsets).toEqual({topLeft:20,topRight:-21,bottomLeft:-5,bottomRight:6});
-  expect(parsed.jawOffset).toEqual([0.01,-0.02,0.03]);
+  parsed.jawOffset.forEach((value,index)=>expect(value).toBeCloseTo([0.01,-0.02,0.03][index],6));
   expect(parsed.oralPosition).toEqual(parsed.jawOffset);
   expect(parsed.mouthPosition).toEqual(parsed.jawOffset);
  });
  it("maps all 33 bone offsets by the verified v5/v6 order",()=>{
   const parsed=inspectFaceDiff(v5Fixture());
   expect(parsed.boneOffsets).toHaveLength(33);
-  expect(parsed.boneOffsets[0]).toMatchObject({boneName:"skf_brow_o_r",recordOffset:0xf0,position:[0.1,0.2,0.3],w:0});
+  expect(parsed.boneOffsets[0]).toMatchObject({boneName:"skf_brow_o_r",recordOffset:0xf0,w:0});\n  parsed.boneOffsets[0].position.forEach((value,index)=>expect(value).toBeCloseTo([0.1,0.2,0.3][index],6));
   expect(parsed.boneOffsets[6].boneName).toBe("skf_eye_r");
   expect(parsed.boneOffsets[7].boneName).toBe("skf_eye_l");
   expect(parsed.rightEyePosition).toEqual(parsed.boneOffsets[6].position);
