@@ -51,6 +51,8 @@ jobs:
           if ($message -notmatch 'face_high\.fmdl') { throw "FACE FORGE failed for an unexpected reason: $message" }
           if (@(Get-ChildItem -Path $output -Filter '*.cpk' -File).Count -gt 0) { throw 'FACE FORGE left a partial CPK after rejecting the incomplete source.' }
           'Confirmed: the pinned upstream 79205 archive is a hair-only/incomplete fixture and is rejected without publishing output.'
+          # The expected cargo failure must not become the PowerShell step exit code.
+          $global:LASTEXITCODE = 0
       - name: Convert synthetic structural PES 2021 face package
         shell: pwsh
         run: |
