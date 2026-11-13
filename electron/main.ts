@@ -135,7 +135,6 @@ function registerIpc(){
   const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
-  if(inventory.files.some(file=>(file.packageReferences?.length??0)>0))throw new Error("This face package declares inter-package references. The current single-face export cannot safely resolve those external package links.");
   if(inventory.dependencies.some(dependency=>dependency.status!=="resolved"))throw new Error("This face is missing required texture files or contains duplicate texture matches. Add the missing face textures or remove duplicate copies, then try again.");
   const destination=await dialog.showOpenDialog(mainWindow!,{title:target===2017?"Choose an empty output folder for the converted PES 2017 face CPK":"Choose an empty output folder for the converted PES 2021 face FPK/FPKD",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
