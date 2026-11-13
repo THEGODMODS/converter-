@@ -8,6 +8,7 @@ import { inspectFaceDiff } from "./formats/face-diff";
 import { parseFpkArchive } from "./formats/fpk";
 import { parseFmdlContainer } from "./formats/fmdl-container";
 import { decodePes2021Fmdl } from "./formats/fmdl-geometry";
+import { resolveFaceDependencies } from "./dependencies";
 export type FaceFile = { path:string;bytes:number;kind:string;sha256:string;formatValid?:boolean;formatDetails?:string[];assetReferences?:string[];packageReferences?:string[] };
 export type FaceDependency={source:string;reference:string;status:"resolved"|"missing"|"ambiguous";candidates:string[]};
 export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[];coverage:FacePartCoverage[];dependencies:FaceDependency[] };
@@ -30,24 +31,7 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  const has21Model=files.some(f=>f.kind==="model-pes2021"),has17Model=files.some(f=>f.kind==="model-pes2017"||f.kind==="model-pes2017-compressed");
  const has21Texture=files.some(f=>f.kind==="texture-pes2021"),has17Texture=files.some(f=>f.kind==="texture-pes2017");
  const detectedGame=has21Model&&has17Model?"mixed":has21Model?"pes2021":has17Model?"pes2017":has21Texture&&has17Texture?"mixed":has21Texture?"pes2021":has17Texture?"pes2017":"unknown";
- const dependencies:FaceDependency[]=[];
- const textureFiles=files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
- const normalizeAsset=(value:string)=>value.split(String.fromCharCode(92)).join("/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
- for(const model of files.filter(file=>file.kind==="model-pes2021"&&file.assetReferences?.length)){
-  for(const reference of model.assetReferences??[]){
-   const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
-   const exact=textureFiles.filter(file=>normalizeAsset(file.path.split("!/").pop()??file.path)===normalized);
-   const candidates=exact.length?exact:textureFiles.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
-   dependencies.push({source:model.path,reference,status:candidates.length===1?"resolved":candidates.length===0?"missing":"ambiguous",candidates:candidates.map(file=>file.path)});
-  }
- }
- for(const archive of files.filter(file=>file.kind==="container-fpk"||file.kind==="container-fpkd")){
-  for(const reference of archive.packageReferences??[]){
-   const base=(reference.replaceAll("\\\\","/").split("/").pop()??reference).toLowerCase();
-   const candidates=files.filter(file=>(file.kind==="container-fpk"||file.kind==="container-fpkd")&&file.path.toLowerCase().split("/").pop()===base);
-   dependencies.push({source:archive.path,reference,status:candidates.length===1?"resolved":candidates.length===0?"missing":"ambiguous",candidates:candidates.map(file=>file.path)});
-  }
- }
+ const dependencies=resolveFaceDependencies(files);
  if(dependencies.some(item=>item.status==="missing"))warnings.push(dependencies.filter(item=>item.status==="missing").length+" model texture/package reference(s) have no matching asset in this folder. Conversion must not silently drop these dependencies.");
  if(dependencies.some(item=>item.status==="ambiguous"))warnings.push(dependencies.filter(item=>item.status==="ambiguous").length+" FMDL texture reference(s) match multiple files. Resolve duplicate texture names before package conversion.");
  const models=files.filter(f=>f.kind.startsWith("model-pes")).length,textures=files.filter(f=>f.kind.startsWith("texture-pes")).length;
