@@ -5,6 +5,7 @@ import type { TextureColorSpace } from "../engine/formats/texture";
 const api = {
   chooseFolder: ():Promise<string|null> => ipcRenderer.invoke("face:choose-folder"),
   chooseFolders: ():Promise<string[]> => ipcRenderer.invoke("face:choose-folders"),
+  chooseFolders: ():Promise<string[]> => ipcRenderer.invoke("face:choose-folders"),
   inspectDatabase: (folder:string):Promise<FaceDatabase> => ipcRenderer.invoke("face:inspect-database",folder),
   inspectFolder: (folder:string):Promise<FaceProject> => ipcRenderer.invoke("face:inspect-folder",folder),
   getPathForDrop: (file:File):string => webUtils.getPathForFile(file),
