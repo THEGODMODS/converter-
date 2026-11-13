@@ -68,7 +68,7 @@ export function inspectDdsHeader(data:Buffer):FormatInspection{
   if(fourCC==="DX10"){
     if(data.length<148)return fail("DDS","DDS DX10 extension header is truncated.");
     const dxgi=data.readUInt32LE(128);
-    const map:Record<number,string>={61:"R8",71:"BC1",74:"BC2",77:"BC3",80:"BC4",83:"BC5",95:"BC6H",98:"BC7",10:"RGBA16F",2:"RGBA32F",24:"R10G10B10A2",26:"R11G11B10F"};
+    const map:Record<number,string>={61:"R8",71:"BC1",72:"BC1_SRGB",74:"BC2",75:"BC2_SRGB",77:"BC3",78:"BC3_SRGB",80:"BC4",83:"BC5",95:"BC6H",98:"BC7",99:"BC7_SRGB",10:"RGBA16F",2:"RGBA32F",24:"R10G10B10A2",26:"R11G11B10F"};
     pixelFormat=map[dxgi]??`DXGI ${dxgi}`;
   }
   return {valid:true,format:"DirectDraw Surface",width,height,mipCount,pixelFormat,details:[`${width} × ${height}`,`${mipCount} mip levels`,`Pixel format ${pixelFormat}`]};
