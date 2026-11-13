@@ -53,7 +53,7 @@ jobs:
           'Confirmed: the pinned upstream 79205 archive is a hair-only/incomplete fixture and is rejected without publishing output.'
           # The expected cargo failure must not become the PowerShell step exit code.
           $global:LASTEXITCODE = 0
-      - name: Convert synthetic structural PES 2021 face package
+      - name: Synthetic hair-geometry package smoke test (not face validation)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -71,15 +71,16 @@ jobs:
           Copy-Item (Join-Path $fixture 'fcl_hair.fmdl') (Join-Path $input 'fcl_hair.fmdl')
           foreach ($name in @('fcl_hair_sim.skl','fcl_hair_sim.fclo','face_diff.bin','shirt.dds','portrait.dds')) { Copy-Item (Join-Path $fixture $name) $input }
           cargo run --quiet --manifest-path native/Cargo.toml -- convert-face-folder --input $input --target 2017 --player-id 79205 --out $output
-          if ($LASTEXITCODE -ne 0) { throw 'FACE FORGE failed its synthetic structural package conversion.' }
+          if ($LASTEXITCODE -ne 0) { throw 'FACE FORGE failed its synthetic hair-geometry package smoke test.' }
           $reportPath = Join-Path $output 'face-forge-report.json'
           if (!(Test-Path $reportPath)) { throw 'FACE FORGE did not write its structural conversion report.' }
           $report = Get-Content $reportPath -Raw | ConvertFrom-Json
           $hasHead = @($report.sourceModels | Where-Object { $_.ToLower().EndsWith('face_high.fmdl') }).Count -gt 0
           $hasHair = @($report.sourceModels | Where-Object { $_.ToLower().EndsWith('fcl_hair.fmdl') }).Count -gt 0
           $hasHairPhysics = @($report.preservedSidecars | Where-Object { $_.ToLower().EndsWith('fcl_hair_sim.fclo') }).Count -gt 0
-          if ($report.ok -ne $true -or $report.targetPlayerId -ne '79205' -or $report.complete.success -ne $true -or $report.cpkFiles.Count -lt 1 -or !$hasHead -or !$hasHair -or !$hasHairPhysics) { throw 'FACE FORGE structural conversion report failed its package, head, hair, skeleton-sidecar or output checks.' }
-          "FACE_FORGE_E2E_OUTPUT=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          if ($report.ok -ne $true -or $report.targetPlayerId -ne '79205' -or $report.complete.success -ne $true -or $report.cpkFiles.Count -lt 1 -or !$hasHead -or !$hasHair -or !$hasHairPhysics) { throw 'FACE FORGE synthetic package smoke-test report failed. The aliased hair mesh is not a real face-head fixture.' }
+          "FACE_FORGE_SYNTHETIC_SMOKE_OUTPUT=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "PASS: synthetic hair geometry exercises package plumbing only; this is NOT evidence of real-face conversion or visual/game compatibility."
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
