@@ -19,7 +19,7 @@ import { parseFpkArchive } from "../engine/formats/fpk";
 import { convertFaceTextureDependencies } from "./texture-bundle";
 import { buildFoxFacePackage } from "./package-builder";
 import { publishStagedOutput } from "./output-publish";
-import { inspectCpk } from "../engine/packaging/cpk";
+import { verifyPes2017FaceCpk } from "../engine/packaging/face-cpk-validation";
 
 let mainWindow:BrowserWindow|null=null;
 function trusted(event:Electron.IpcMainInvokeEvent){
@@ -154,13 +154,7 @@ function registerIpc(){
     if(typeof archiveName!=="string"||!archiveName||path.basename(archiveName)!==archiveName||!archiveName.toLowerCase().endsWith(".cpk"))throw new Error("The native report contains an unsafe CPK output name.");
     const archivePath=path.join(stageOutput,archiveName),archiveStat=await fs.promises.lstat(archivePath);
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
-    const archiveBytes=await readFile(archivePath),inspection=inspectCpk(archiveBytes);
-    if(!inspection.valid||inspection.fileCount===0)throw new Error("Independent CPK read-back failed for "+archiveName+": "+inspection.errors.join("; "));
-    const foldedPaths=inspection.files.map(entry=>entry.path.toLowerCase());
-    const hasBasename=(name:string)=>foldedPaths.some(value=>value.split("/").at(-1)===name);
-    if(!hasBasename("face.xml"))throw new Error("PES 2017 face CPK "+archiveName+" has no generated face.xml.");
-    if(!hasBasename("oral_face_high_win32.model"))throw new Error("PES 2017 face CPK "+archiveName+" has no converted face_high model.");
-    if(!hasBasename("face_high.mtl"))throw new Error("PES 2017 face CPK "+archiveName+" has no face_high material set.");
+    const archiveBytes=await readFile(archivePath),verification=verifyPes2017FaceCpk(archiveBytes),inspection=verification.inspection;
     const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
     archiveVerification.push({archive:archiveName,fileCount:inspection.fileCount,entries});
    }
