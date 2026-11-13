@@ -296,6 +296,85 @@ fn copy_face_source_tree(
     Ok(())
 }
 
+#[derive(Default)]
+struct Pes2021FaceInventory {
+    models: Vec<String>,
+    texture_count: usize,
+    face_diff: Option<String>,
+    unsupported_sidecars: Vec<String>,
+}
+
+fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, String> {
+    fn walk(root: &Path, current: &Path, inventory: &mut Pes2021FaceInventory, model_paths: &mut std::collections::HashSet<String>, skeleton_paths: &mut Vec<PathBuf>) -> Result<(), String> {
+        for entry in fs::read_dir(current).map_err(|e| format!("Inspect PES 2021 face source {}: {e}", current.display()))? {
+            let entry = entry.map_err(|e| format!("Read PES 2021 face source entry: {e}"))?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path).map_err(|e| format!("Inspect PES 2021 face source entry {}: {e}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!("Symbolic links are not accepted in a PES 2021 face source: {}", path.display()));
+            }
+            if metadata.is_dir() {
+                walk(root, &path, inventory, model_paths, skeleton_paths)?;
+                continue;
+            }
+            if !metadata.is_file() { return Err(format!("Unsupported filesystem entry: {}", path.display())); }
+            let relative = path.strip_prefix(root).map_err(|_| "PES 2021 source path escaped its root.")?;
+            let relative_text = relative.to_string_lossy().replace('\\\\', "/");
+            let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("");
+            let lower = name.to_ascii_lowercase();
+            let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
+            match extension.as_str() {
+                "fmdl" => {
+                    let bytes = fs::read(&path).map_err(|e| format!("Read source FMDL {}: {e}", relative_text))?;
+                    let file = FmdlFile::read(&bytes).map_err(|e| format!("Invalid PES 2021 FMDL {relative_text}: {e}"))?;
+                    FoxModel::from_file(&file).map_err(|e| format!("Unresolved PES 2021 FMDL references in {relative_text}: {e}"))?;
+                    model_paths.insert(relative_text.to_ascii_lowercase());
+                    inventory.models.push(relative_text);
+                }
+                "model" | "mtl" => return Err(format!("This first-release route accepts PES 2021 Fox assets only; legacy .{extension} source detected at {relative_text}.")),
+                "skl" => {
+                    let bytes = fs::read(&path).map_err(|e| format!("Read source SKL {}: {e}", relative_text))?;
+                    SklFile::read(&bytes).map_err(|e| format!("Invalid PES 2021 SKL {relative_text}: {e}"))?;
+                    skeleton_paths.push(path);
+                }
+                "ftex" => {
+                    let bytes = fs::read(&path).map_err(|e| format!("Read source FTEX {}: {e}", relative_text))?;
+                    ftex_info(&bytes).map_err(|e| format!("Invalid PES 2021 FTEX {relative_text}: {e}"))?;
+                    inventory.texture_count += 1;
+                }
+                "dds" => inventory.texture_count += 1,
+                "fclo" => inventory.unsupported_sidecars.push(relative_text),
+                _ => {
+                    if lower == "face_diff.bin" {
+                        if inventory.face_diff.is_some() { return Err("The source face contains multiple face_diff.bin files.".into()); }
+                        let bytes = fs::read(&path).map_err(|e| format!("Read FACE diff {}: {e}", relative_text))?;
+                        validate_face_diff_payload(&bytes).map_err(|e| format!("Invalid PES 2021 FACE diff {relative_text}: {e}"))?;
+                        inventory.face_diff = Some(relative_text);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    let mut inventory = Pes2021FaceInventory::default();
+    let mut model_paths = std::collections::HashSet::new();
+    let mut skeleton_paths = Vec::new();
+    walk(root, root, &mut inventory, &mut model_paths, &mut skeleton_paths)?;
+    if !inventory.models.iter().any(|value| value.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("face_high.fmdl"))) {
+        return Err("A PES 2021 face source must contain face_high.fmdl; no head model was found.".into());
+    }
+    for skeleton in skeleton_paths {
+        let model = skeleton.with_extension("fmdl");
+        let relative = model.strip_prefix(root).map_err(|_| "PES 2021 SKL path escaped its source root.")?.to_string_lossy().replace('\\\\', "/").to_ascii_lowercase();
+        if !model_paths.contains(&relative) {
+            return Err(format!("Orphan PES 2021 skeleton {} has no matching FMDL.", skeleton.display()));
+        }
+    }
+    inventory.models.sort();
+    inventory.unsupported_sidecars.sort();
+    Ok(inventory)
+}
+
 fn extract_face_archives(
     archive_paths: &[PathBuf],
     destination: &Path,
@@ -339,8 +418,8 @@ fn extract_face_archives(
 }
 
 fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Result<serde_json::Value, String> {
-    if target != 2017 && target != 2021 {
-        return Err("Target must be 2017 or 2021.".into());
+    if target != 2017 {
+        return Err("The first FACE FORGE release supports PES 2021 → PES 2017 only. PES 2017 → PES 2021 is deferred.".into());
     }
     let input_metadata = fs::symlink_metadata(input).map_err(|e| format!("Inspect face input: {e}"))?;
     if input_metadata.file_type().is_symlink() || !input_metadata.is_dir() {
@@ -370,6 +449,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
     let mut total_bytes = 0u64;
     copy_face_source_tree(&input, &player, &mut archive_paths, &mut seen, &mut file_count, &mut total_bytes)?;
     extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
+    let source_inventory = inspect_pes2021_face_source(&player)?;
     let has_model = {
         fn any_model(root: &Path) -> Result<bool, String> {
             for entry in fs::read_dir(root).map_err(|e| format!("Inspect staged face assets: {e}"))? {
@@ -443,6 +523,10 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
         "sourceFolder": input.file_name().and_then(|x| x.to_str()).unwrap_or("face-folder"),
         "sourceFiles": file_count,
         "sourceBytes": total_bytes,
+        "sourceModels": source_inventory.models,
+        "sourceTextureCount": source_inventory.texture_count,
+        "sourceFaceDiff": source_inventory.face_diff,
+        "unsupportedSidecars": source_inventory.unsupported_sidecars,
         "outputFiles": output_files,
         "cpkFiles": cpk_files,
         "events": event_summaries.iter().take(500).collect::<Vec<_>>(),
