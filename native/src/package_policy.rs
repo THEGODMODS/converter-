@@ -1,48 +1,93 @@
-/// Package-member allowlist for the currently implemented cross-generation model path.
-///
-/// This is deliberately fail-closed: accepting a member here means the conversion
-/// pipeline has an explicit reader/writer path for it. Add a new extension only
-/// alongside its converter or byte-preserving package handling and tests.
-pub fn is_supported_face_package_member(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    [".fmdl", ".skl", ".ftex"].iter().any(|ext| lower.ends_with(ext))
+/// Validates the complete member set that the current Fox-to-PES2017 path can
+/// actually consume. This is deliberately fail-closed: a member is accepted only
+/// when the native conversion path reads it and emits a corresponding target file.
+pub fn validate_face_package_members(paths: &[String]) -> Result<(), String> {
+    use std::collections::HashSet;
+
+    let mut folded = HashSet::new();
+    for path in paths {
+        let lower = path.to_ascii_lowercase();
+        if !folded.insert(lower.clone()) {
+            return Err(format!("Duplicate case-insensitive package member: {path}"));
+        }
+        if !lower.ends_with(".fmdl") && !lower.ends_with(".skl") {
+            return Err(format!(
+                "Unhandled package member: {path}. This build can only convert FMDL and paired SKL model members. FTEX textures, FACE diff, XML, FOX scene and unknown sidecars are blocked because their package-wide conversion/preservation path is not implemented."
+            ));
+        }
+    }
+
+    // An SKL is not allowed to disappear as an unreferenced archive member.
+    // The current bridge pairs it by the FMDL's virtual path and basename.
+    for path in paths.iter().filter(|p| p.to_ascii_lowercase().ends_with(".skl")) {
+        let stem = path.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(path);
+        let expected = format!("{stem}.fmdl").to_ascii_lowercase();
+        if !folded.contains(&expected) {
+            return Err(format!(
+                "Orphan skeleton member: {path}. Expected a companion FMDL at the same virtual path."
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_supported_face_package_member;
+    use super::validate_face_package_members;
 
     #[test]
-    fn accepts_only_members_with_an_implemented_conversion_path() {
-        for path in [
-            "face/head.fmdl",
-            "face/HEAD.FMDL",
-            "face/rig.skl",
-            "face/textures/skin.ftex",
-            "skin.FTEX",
+    fn accepts_model_members_with_a_real_native_output_path() {
+        let paths = vec![
+            "Assets/face/head.fmdl".to_string(),
+            "Assets/face/head.skl".to_string(),
+            "Assets/face/hair.fmdl".to_string(),
+        ];
+        assert!(validate_face_package_members(&paths).is_ok());
+    }
+
+    #[test]
+    fn rejects_texture_and_metadata_sidecars_not_yet_converted_or_preserved() {
+        for sidecar in [
+            "Assets/face/skin.ftex",
+            "Assets/face/face_diff.bin",
+            "Assets/face/player.xml",
+            "Assets/face/scene.fox2",
+            "Assets/face/config.json",
+            "Assets/face/unknown.dat",
         ] {
-            assert!(is_supported_face_package_member(path), "expected supported: {path}");
+            let paths = vec!["Assets/face/head.fmdl".to_string(), sidecar.to_string()];
+            assert!(
+                validate_face_package_members(&paths).is_err(),
+                "must reject unhandled sidecar: {sidecar}"
+            );
         }
     }
 
     #[test]
-    fn rejects_sidecars_until_their_semantics_are_handled_or_preserved() {
-        for path in [
-            "face/face_diff.bin",
-            "face/player.xml",
-            "face/scene.fox",
-            "face/config.json",
-            "face/unknown.dat",
-            "face/no-extension",
-        ] {
-            assert!(!is_supported_face_package_member(path), "expected fail-closed rejection: {path}");
-        }
+    fn rejects_orphan_skeleton_instead_of_dropping_it() {
+        let paths = vec![
+            "Assets/face/head.fmdl".to_string(),
+            "Assets/face/extra.skl".to_string(),
+        ];
+        assert!(validate_face_package_members(&paths).unwrap_err().contains("Orphan skeleton"));
     }
 
     #[test]
-    fn rejects_extension_lookalikes() {
-        for path in ["face.fmdl.bak", "face.sklx", "face.ftex.tmp"] {
-            assert!(!is_supported_face_package_member(path), "must not accept suffix lookalike: {path}");
-        }
+    fn pairs_skeletons_case_insensitively() {
+        let paths = vec![
+            "Assets/face/HEAD.FMDL".to_string(),
+            "Assets/face/head.SKL".to_string(),
+        ];
+        assert!(validate_face_package_members(&paths).is_ok());
+    }
+
+    #[test]
+    fn rejects_case_insensitive_duplicate_virtual_paths() {
+        let paths = vec![
+            "Assets/face/head.fmdl".to_string(),
+            "Assets/face/HEAD.FMDL".to_string(),
+        ];
+        assert!(validate_face_package_members(&paths).unwrap_err().contains("Duplicate"));
     }
 }
