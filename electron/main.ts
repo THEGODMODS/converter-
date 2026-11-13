@@ -165,13 +165,15 @@ function registerIpc(){
   const realOutput=await fs.promises.realpath(outputRoot),sourcePrefix=realSource.endsWith(path.sep)?realSource:realSource+path.sep;
   if(realOutput===realSource||realOutput.startsWith(sourcePrefix)||realSource.startsWith(realOutput.endsWith(path.sep)?realOutput:realOutput+path.sep))throw new Error("Source and output folders must be separate and cannot contain one another.");
   if((await fs.promises.readdir(realOutput)).length)throw new Error("Choose an empty output folder; existing files will never be overwritten.");
+  const outputBytes=files.reduce((sum,file)=>sum+file.data.length,0);
+  if(outputBytes>1024*1024*1024)throw new Error("Converted textures exceed the 1 GiB output safety limit.");
   const written:string[]=[];
-  for(const file of files){
+  try{for(const file of files){
    const ext=path.extname(file.relative).toLowerCase(),target=path.join(realOutput,path.dirname(file.relative),path.basename(file.relative,path.extname(file.relative))+(ext===".dds"?".ftex":".dds"));
    const parent=path.dirname(target);await fs.promises.mkdir(parent,{recursive:true});
    await writeFile(target,file.data,{flag:"wx"});written.push(target);
-  }
-  return {source:realSource,destination:realOutput,converted:written.length,bytes:files.reduce((sum,file)=>sum+file.data.length,0),files:files.map((file,index)=>({source:file.relative,destination:path.relative(realOutput,written[index]),format:file.format,width:file.width,height:file.height}))};
+  }}catch(error){for(const target of written){try{await fs.promises.unlink(target);}catch{}}throw new Error("Batch texture conversion was rolled back because an output file could not be written: "+(error instanceof Error?error.message:String(error)));}
+  return {source:realSource,destination:realOutput,converted:written.length,bytes:outputBytes,files:files.map((file,index)=>({source:file.relative,destination:path.relative(realOutput,written[index]),format:file.format,width:file.width,height:file.height}))};
  });
  ipcMain.handle("texture:convert",async(event,colorSpace:unknown)=>{
   trusted(event);
