@@ -9,6 +9,7 @@ export type FaceMorphTarget={name:string;meshIndex:number;positionDeltas:Vec3[];
 export type FaceScene={schemaVersion:1;sourceFormat:"PES2017_MODEL"|"PES2021_FMDL";meshes:FaceMesh[];materials:FaceMaterial[];bones:FaceBone[];morphTargets:FaceMorphTarget[];metadata:Record<string,string|number|boolean>};
 export type ValidationIssue={severity:"error"|"warning";code:string;message:string;mesh?:string};
 const finite=(n:number)=>Number.isFinite(n);
+function isFiniteVector(value:unknown,length:number):boolean{return Array.isArray(value)&&value.length===length&&value.every(item=>typeof item==="number"&&Number.isFinite(item));}
 export function validateFaceScene(scene:FaceScene):ValidationIssue[]{
  const issues:ValidationIssue[]=[];
  if(scene.schemaVersion!==1)issues.push({severity:"error",code:"SCHEMA_VERSION",message:"Unsupported intermediate scene schema."});
@@ -19,10 +20,10 @@ export function validateFaceScene(scene:FaceScene):ValidationIssue[]{
   if(mesh.indices.length%3!==0)issues.push({severity:"error",code:"NON_TRIANGLE_INDEX_COUNT",message:"Index buffer is not a triangle list.",mesh:mesh.name});
   for(const index of mesh.indices)if(!Number.isInteger(index)||index<0||index>=mesh.vertices.length){issues.push({severity:"error",code:"INDEX_OUT_OF_RANGE",message:"Mesh index references a vertex outside the vertex buffer.",mesh:mesh.name});break;}
   for(const vertex of mesh.vertices){
-   if(vertex.position.length!==3||!vertex.position.every(finite))issues.push({severity:"error",code:"INVALID_POSITION",message:"Vertex position is missing or non-finite.",mesh:mesh.name});
-   if(vertex.normal&&(!vertex.normal.every(finite)||vertex.normal.length!==3))issues.push({severity:"error",code:"INVALID_NORMAL",message:"Vertex normal is invalid.",mesh:mesh.name});
-   if(vertex.tangent&&(!vertex.tangent.every(finite)||vertex.tangent.length!==4))issues.push({severity:"error",code:"INVALID_TANGENT",message:"Vertex tangent is invalid.",mesh:mesh.name});
-   if(vertex.uvs.some(uv=>uv.length!==2||!uv.every(finite)))issues.push({severity:"error",code:"INVALID_UV",message:"Vertex UV coordinates are invalid.",mesh:mesh.name});
+   if(!isFiniteVector(vertex.position,3))issues.push({severity:"error",code:"INVALID_POSITION",message:"Vertex position is missing or non-finite.",mesh:mesh.name});
+   if(vertex.normal&&!isFiniteVector(vertex.normal,3))issues.push({severity:"error",code:"INVALID_NORMAL",message:"Vertex normal is invalid.",mesh:mesh.name});
+   if(vertex.tangent&&!isFiniteVector(vertex.tangent,4))issues.push({severity:"error",code:"INVALID_TANGENT",message:"Vertex tangent is invalid.",mesh:mesh.name});
+   if(vertex.uvs.some(uv=>!isFiniteVector(uv,2)))issues.push({severity:"error",code:"INVALID_UV",message:"Vertex UV coordinates are invalid.",mesh:mesh.name});
    if(vertex.boneIndices.length!==vertex.boneWeights.length)issues.push({severity:"error",code:"BONE_WEIGHT_LAYOUT",message:"Bone index and weight counts differ.",mesh:mesh.name});
    if(vertex.boneIndices.some(i=>!Number.isInteger(i)||i<0||i>=scene.bones.length))issues.push({severity:"error",code:"BONE_INDEX",message:"Vertex references a missing skeleton bone.",mesh:mesh.name});
    if(vertex.boneWeights.some(w=>!finite(w)||w<0))issues.push({severity:"error",code:"BONE_WEIGHT",message:"Bone weights must be finite and non-negative.",mesh:mesh.name});
