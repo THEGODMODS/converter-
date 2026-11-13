@@ -60,3 +60,7 @@
 .face-coverage .coverage-heading>span{flex:none;padding:4px 6px;border:1px solid #40533a;border-radius:5px;background:#1a2b20;color:#c3e99f;font-size:7px;font-weight:900;letter-spacing:.7px}
 .face-coverage>div:not(.coverage-heading)>span{min-width:0}
 .face-coverage>div:not(.coverage-heading)>span small{flex:none;text-align:right}
+
+.manifest-export{display:inline-flex;align-items:center;gap:7px;margin:8px 0 2px;padding:8px 10px;border:1px solid #34495b;border-radius:6px;background:#142230;color:#c6d9ec;font-size:8px;font-weight:900;letter-spacing:.65px;cursor:pointer}
+.manifest-export:hover:not(:disabled){border-color:#6b91b5;background:#1a3042;color:#fff}
+.manifest-export:disabled{opacity:.55;cursor:wait}
