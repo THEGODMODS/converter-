@@ -31,6 +31,16 @@ Promise: Free to use. No paid-converter dependency. No false "game-ready" status
 - Preview the exact archive file list and destination paths before packaging.
 - Verify the CPK by reopening it with an independent parser and compare every entry hash.
 
+## Installation and recovery
+
+- Detect the PES 2017 installation and Download directory, but require the user to confirm the selected game root.
+- Show the exact CPK filename, destination, DpFileList order and conflicts before applying changes.
+- Create timestamped backups of any replaced CPK and DpFileList file before writing.
+- Integrate with a verified DpFileList Generator or documented compatible workflow; do not guess at undocumented binary edits.
+- Validate that the generated CPK can be listed and extracted before installation.
+- After installation, show a transaction report and offer one-click rollback from the backup.
+- Never delete a user's existing mod or overwrite a file without an explicit confirmation.
+
 ## Face and hair fidelity requirements
 
 | Feature | Required behaviour | Acceptance evidence |
