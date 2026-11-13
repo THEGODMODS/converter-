@@ -21,7 +21,7 @@ export type FaceDiffInfo={
  leftEyeRotation:FaceDiffVector3;
  /** Upper-left, upper-right, lower-left, lower-right eyelid angles in degrees. */
  eyelidOffsets:{topLeft:number;topRight:number;bottomLeft:number;bottomRight:number};
- /** Jaw/oral model offset in the face-head frame, not a mouth mesh-space position. */
+ /** Model-space jaw/oral offset; the PES 2021 runtime derives it from the sk_head-frame skf_jaw offset. */
  jawOffset:FaceDiffVector3;
  /** Legacy alias retained for callers built against the first inspector. */
  oralPosition:FaceDiffVector3;
@@ -39,6 +39,19 @@ export type FaceDiffInfo={
 };
 const FACE_DIFF_HEADER_BYTES=0x50;
 const FACE_DIFF_RECORDS_START=0xf0;
+const FACE_BONE_ORDER=[
+ "skf_brow_o_r","skf_brow_i_r","skf_brow_i_l","skf_brow_o_l",
+ "skf_orbicularisoculi_b_r","skf_orbicularisoculi_b_l","skf_eye_r","skf_eye_l",
+ "skf_eyelid_b_r","skf_eyelid_b_l","skf_eyelid_t_r","skf_eyelid_t_l",
+ "skf_glabella","skf_nosewing_r","skf_nosewing_l","skf_cheek_r",
+ "skf_nasolabialfold_t_r","skf_nasolabialfold_t_l","skf_cheek_l","skf_cheek_s_r",
+ "skf_cheek_s_l","skf_lip_t_r","skf_lip_s_r","skf_lip_s_l","skf_lip_t_l",
+ "skf_nose","skf_lip_t_c","skf_lip_volume","skf_jaw","skf_lip_b_l",
+ "skf_lip_b_r","skf_doublechin","skf_lip_b_c"
+] as const;
+const FACE_EAR_BONE_ORDER=[
+ "dsk_ear_t_l","dsk_ear_t_r","dsk_ear_b_l","dsk_ear_b_r","dsk_earlobe_l","dsk_earlobe_r"
+] as const;
 function readFiniteVec3(data:Buffer,offset:number,label:string):FaceDiffVector3{
  if(offset<0||offset+12>data.length)throw new Error("FACE diff "+label+" vector is truncated.");
  const value:FaceDiffVector3=[data.readFloatLE(offset),data.readFloatLE(offset+4),data.readFloatLE(offset+8)];
@@ -125,13 +138,38 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  if(eyeScale.some(n=>n<=0||n>10))warnings.push("Eye scale contains an unusual value; inspect eye sizing before applying it.");
  if([rightEyeRotation,leftEyeRotation].some(rotation=>rotation.some(n=>Math.abs(n)>180)))
   warnings.push("Eye rotation exceeds 180 degrees; inspect the source value before applying it.");
- // The face modifier reference reads the right/left eye-position vectors at
- // 0x150 and 0x160. Decode only those two records when the offset table confirms
- // those exact positions; all other facial/ear records remain byte-preserved.
- if(offsets.length>7&&offsets[6]===0x150&&offsets[7]===0x160){
+ const v5CanonicalRecords=v5FullLayout&&offsets.length===39&&
+  offsets.slice(0,33).every((offset,index)=>offset===0xf0+index*0x10)&&
+  offsets.slice(33).every((offset,index)=>offset===0x300+index*0x20);
+ if(v5CanonicalRecords){
+  for(let index=0;index<FACE_BONE_ORDER.length;index++){
+   const recordOffset=offsets[index],boneName=FACE_BONE_ORDER[index];
+   const position=readFiniteVec3(data,recordOffset,boneName+" position");
+   const w=readFiniteFloat(data,recordOffset+12,boneName+" w");
+   if(Math.abs(w)>1e-6)warnings.push(boneName+" has non-zero w; expected a sk_head-local position with w=0.");
+   boneOffsets.push({index,boneName,recordOffset,position,w});
+  }
+  for(let index=0;index<FACE_EAR_BONE_ORDER.length;index++){
+   const recordIndex=33+index,recordOffset=offsets[recordIndex],boneName=FACE_EAR_BONE_ORDER[index];
+   const translation=readFiniteVec3(data,recordOffset,boneName+" translation");
+   const scale=readFiniteVec3(data,recordOffset+12,boneName+" scale");
+   const reserved:[number,number]=[readFiniteFloat(data,recordOffset+24,boneName+" reserved[0]"),readFiniteFloat(data,recordOffset+28,boneName+" reserved[1]")];
+   if(reserved.some(value=>Math.abs(value)>1e-6))warnings.push(boneName+" has non-zero reserved ear-transform values.");
+   earTransforms.push({index,boneName,recordOffset,translation,scale,reserved});
+  }
+  opaqueRecordOffsets=[];
+  const jaw=boneOffsets.find(record=>record.boneName==="skf_jaw");
+  if(jaw){
+   const expectedJaw:[number,number,number]=[-jaw.position[2],jaw.position[0],-jaw.position[1]];
+   const error=Math.max(...expectedJaw.map((value,index)=>Math.abs(value-jawOffset[index])));
+   if(error>4e-5)warnings.push("Jaw scalar does not match the documented sk_head-frame skf_jaw transform (max error "+error+").");
+  }
+ }else if(offsets.length>7&&offsets[6]===0x150&&offsets[7]===0x160){
+  // The face modifier reference reads the right/left eye-position vectors at
+  // 0x150 and 0x160. This is the only semantic mapping applied to other profiles.
   for(const [index,boneName] of [[6,"skf_eye_r"],[7,"skf_eye_l"]] as const){
    const recordOffset=offsets[index];
-   boneOffsets.push({index,boneName,recordOffset,position:readFiniteVec3(data,recordOffset,boneName+" position"),w:readFiniteFloat(data,recordOffset+12,boneName+" weight")});
+   boneOffsets.push({index,boneName,recordOffset,position:readFiniteVec3(data,recordOffset,boneName+" position"),w:readFiniteFloat(data,recordOffset+12,boneName+" w")});
   }
   opaqueRecordOffsets=offsets.filter((_,index)=>index!==6&&index!==7);
  }else{
