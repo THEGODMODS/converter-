@@ -614,22 +614,21 @@ fn extract_face_archives(
 }
 
 fn split_pes2017_target_player_id(target_player_id: &str) -> Result<(&str, &str), String> {
-    // PES player identity is team ID × 100 + roster slot. PES 2017 supports
-    // roster slots 01–32; custom team IDs can make the resulting player ID
-    // six digits (for example 1761 × 100 + 04 = 176104).
-    if !(target_player_id.len() == 5 || target_player_id.len() == 6)
-        || !target_player_id.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        return Err("Enter the player's existing PES ID (5 or 6 digits), using its final two digits as roster slot 01–32.".into());
+    // The Team Compiler's supported cup-team identity is a 701–920 team ID
+    // plus a PES 15–18 roster slot (01–32). A six-digit PES 2021 source face
+    // ID is not a valid PES 2017 destination identity.
+    if target_player_id.len() != 5 || !target_player_id.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Enter the player's five-digit PES 2017 ID. The six-digit folder ID belongs to the PES 2021 source.".into());
     }
-    let (team_id, player_slot) = target_player_id.split_at(target_player_id.len() - 2);
-    let team_number = team_id.parse::<u16>().map_err(|_| "The player ID's team portion is invalid.")?;
-    if team_number == 0 {
-        return Err("The player ID's team portion must be greater than zero.".into());
+    let team_id = &target_player_id[..3];
+    let team_number = team_id.parse::<u16>().map_err(|_| "The PES 2017 team ID is invalid.")?;
+    if !(701..=920).contains(&team_number) {
+        return Err(format!("PES 2017 target ID {target_player_id} is outside the supported team range 701–920."));
     }
-    let slot_number = player_slot.parse::<u8>().map_err(|_| "The player's roster slot is invalid.")?;
+    let player_slot = &target_player_id[3..5];
+    let slot_number = player_slot.parse::<u8>().map_err(|_| "The PES 2017 roster slot is invalid.")?;
     if !(1..=32).contains(&slot_number) {
-        return Err("The player's roster slot must be from 01 through 32.".into());
+        return Err("The PES 2017 roster slot must be from 01 through 32.".into());
     }
     Ok((team_id, player_slot))
 }
@@ -1143,13 +1142,13 @@ mod pes2017_target_id_tests {
 
     #[test]
     fn accepts_valid_pes2017_team_and_slot_ids() {
-        assert_eq!(split_pes2017_target_player_id("70105").unwrap(), ("701", "05"));
-        assert_eq!(split_pes2017_target_player_id("92023").unwrap(), ("920", "23"));
+        assert_eq!(split_pes2017_target_player_id("70101").unwrap(), ("701", "01"));
+        assert_eq!(split_pes2017_target_player_id("92032").unwrap(), ("920", "32"));
     }
 
     #[test]
-    fn rejects_source_face_ids_and_out_of_range_team_prefixes() {
-        for id in ["15958", "70005", "92105", "99999", "71400", "71424", "71499", "1234", "abcde"] {
+    fn rejects_pes2021_source_ids_and_invalid_pes2017_targets() {
+        for id in ["176104", "15958", "70005", "92105", "99999", "71400", "71433", "1234", "abcde"] {
             assert!(split_pes2017_target_player_id(id).is_err(), "{id}");
         }
     }
