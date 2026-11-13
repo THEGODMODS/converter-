@@ -36,8 +36,8 @@ fn run()->Result<(),String>{
   NativeModelBundle::Fox{model,skl}=>{let file=model.to_file().map_err(|e|format!("Encode PES 2021 FMDL: {e}"))?;let model_bytes=file.write();let checked_file=FmdlFile::read(&model_bytes).map_err(|e|format!("PES 2021 FMDL read-back failed: {e}"))?;FoxModel::from_file(&checked_file).map_err(|e|format!("PES 2021 FMDL semantic read-back failed: {e}"))?;let skl_bytes=skl.as_ref().map(SklFile::write);if let Some(bytes)=&skl_bytes{SklFile::read(bytes).map_err(|e|format!("PES 2021 SKL read-back failed: {e}"))?;}write(&out.join("face.fmdl"),&model_bytes)?;outputs.push("face.fmdl".to_string());if let Some(bytes)=skl_bytes{write(&out.join("face.skl"),&bytes)?;outputs.push("face.skl".to_string());}}
  }
  let findings:Vec<serde_json::Value>=converted.findings.iter().map(|finding|{
-  let subject=match finding.subject {Subject::Model=>serde_json::json!({"type":"model"}),Subject::Mesh(index)=>serde_json::json!({"type":"mesh","index":index}),Subject::Material(index)=>serde_json::json!({"type":"material","index":index}),Subject::Bone(index)=>serde_json::json!({"type":"bone","index":index})};
-  serde_json::json!({"code":finding.code,"subject":subject,"detail":finding.detail})
+  let subject=match &finding.subject {Subject::Model=>serde_json::json!({"type":"model"}),Subject::Mesh(index)=>serde_json::json!({"type":"mesh","index":index}),Subject::Material(index)=>serde_json::json!({"type":"material","index":index}),Subject::Bone(index)=>serde_json::json!({"type":"bone","index":index})};
+  serde_json::json!({"code":finding.code,"subject":subject,"detail":&finding.detail})
  }).collect();
  let report=serde_json::json!({"ok":true,"target":target,"outputs":outputs,"findings":findings});
  println!("{}",report);
