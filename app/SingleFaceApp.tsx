@@ -20,7 +20,8 @@ export default function SingleFaceApp(){
    const headScene=scenes[models.indexOf(head)];if(headScene.status!=="fulfilled")throw headScene.reason;
    const loaded=scenes.flatMap(scene=>scene.status==="fulfilled"?[scene.value]:[]);
    const skipped=scenes.flatMap((scene,index)=>scene.status==="rejected"?[models[index].path+": "+(scene.reason instanceof Error?scene.reason.message:"geometry decode failed")]:[]);
-   setPreview({source:"PES 2021 face package · "+loaded.length+" model(s)",generation:"pes2021",meshes:loaded.flatMap(scene=>scene.meshes),materials:loaded.flatMap(scene=>scene.materials),warnings:[...loaded.flatMap(scene=>scene.warnings),...skipped]});
+   let materialOffset=0;const mergedMeshes=loaded.flatMap(scene=>{const meshes=scene.meshes.map(mesh=>({...mesh,materialIndex:mesh.materialIndex+materialOffset}));materialOffset+=scene.materials.length;return meshes;});
+   setPreview({source:"PES 2021 face package · "+loaded.length+" model(s)",generation:"pes2021",meshes:mergedMeshes,materials:loaded.flatMap(scene=>scene.materials),warnings:[...loaded.flatMap(scene=>scene.warnings),...skipped]});
   }catch(e){setError(e instanceof Error?e.message:"The face folder could not be inspected or previewed.");}
   finally{setPreviewBusy(false);setBusy(false);}
  };
