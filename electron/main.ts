@@ -195,7 +195,7 @@ function registerIpc(){
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The selected face folder is no longer a safe directory.");
   const realRoot=await fs.promises.realpath(root);
-  let data:Buffer,extension:string,companionMtl:Buffer|undefined;
+  let data:Buffer,extension:string,companionMtl:Buffer|undefined,archiveEntries:Array<{name:string;data:Buffer}>=[];
   const archiveMarker=relativePath.indexOf("!/");
   if(archiveMarker>=0){
    const archiveRelative=relativePath.slice(0,archiveMarker),memberName=relativePath.slice(archiveMarker+2).replaceAll("\\\\","/");
@@ -231,6 +231,36 @@ function registerIpc(){
    if(typeof scene.metadata.modelWarnings==="string"&&scene.metadata.modelWarnings)warnings.push(scene.metadata.modelWarnings);
    warnings.push("PES 2017 preview is static. External MTL shader/texture bindings and facial animation are not yet rendered.");
   }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
+  if(generation==="pes2021"&&materials.length){
+   const textureInventory=await inspectFaceFolder(root);
+   const normalize=(value:string)=>value.replaceAll("\\","/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
+   for(const material of materials){
+    const textureData:Record<string,string>={};
+    for(const [slot,reference] of Object.entries(material.textures)){
+     const wanted=normalize(reference),base=wanted.split("/").pop()??wanted;
+     const candidates=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017").filter(file=>normalize(file.path.split("!/").pop()??file.path)===wanted);
+     const resolved=candidates.length===1?candidates:candidates.length===0?textureInventory.files.filter(file=>(file.kind==="texture-pes2021"||file.kind==="texture-pes2017")&&(normalize(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base):candidates;
+     if(resolved.length!==1){warnings.push("Texture "+reference+" for "+material.name+" was "+(resolved.length?"ambiguous":"not found")+"; it is not shown in the preview.");continue;}
+     const asset=resolved[0];let textureBytes:Buffer;
+     if(asset.path.includes("!/")){
+      const marker=asset.path.indexOf("!/"),archiveRelative=asset.path.slice(0,marker),memberName=asset.path.slice(marker+2);
+      const archivePath=path.resolve(root,...archiveRelative.split("/")),realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+      if(!realArchive.startsWith(realPrefix))throw new Error("Preview texture archive resolves outside the selected face folder.");
+      const archive=archiveRelative===relativePath.slice(0,relativePath.indexOf("!/"))&&archiveEntries.length?{entries:archiveEntries}:parseFpkArchive(await readFile(realArchive));
+      const entry=archive.entries.find(item=>item.name.toLowerCase()===memberName.toLowerCase());if(!entry)throw new Error("Preview texture "+reference+" is missing from its FPK archive.");textureBytes=entry.data;
+     }else{
+      const texturePath=path.resolve(root,...asset.path.split("/")),realTexture=await fs.promises.realpath(texturePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+      if(!realTexture.startsWith(realPrefix))throw new Error("Preview texture resolves outside the selected face folder.");
+      const textureStat=await fs.promises.lstat(texturePath);if(textureStat.isSymbolicLink()||!textureStat.isFile()||textureStat.size>128*1024*1024)throw new Error("Preview texture is not a safe regular file.");
+      textureBytes=await readFile(texturePath);
+     }
+     const dds=asset.kind==="texture-pes2021"?ftexToDds(textureBytes).data:textureBytes;
+     if(dds.length<128||dds.toString("ascii",0,4)!=="DDS ")throw new Error("Decoded preview texture is not a valid DDS payload: "+reference);
+     textureData[slot]=dds.toString("base64");
+    }
+    material.textureData=textureData;
+   }
+  }
   if(!meshes.length)throw new Error("No renderable mesh geometry was found in this model.");
   const malformed=meshes.find(mesh=>mesh.positions.length<9||mesh.positions.length%3!==0||mesh.indices.length<3||mesh.indices.length%3!==0||mesh.indices.some(index=>!Number.isInteger(index)||index<0||index>=mesh.positions.length/3));
   if(malformed)throw new Error("The selected model contains no valid triangle surface for preview ("+malformed.name+"). The file header and material bindings alone are not a 3D face preview.");
