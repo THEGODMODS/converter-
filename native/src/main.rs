@@ -5,7 +5,7 @@ use team_compiler::Tool as TeamCompilerTool;
 mod package_policy;
 mod cpk_extract;
 use package_policy::{ftex_target_path, normalize_fox_virtual_path, validate_face_package_members};
-use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
+use fmdl::{format::{FmdlFile,SklFile}, ops::paths::rewrite_texture_paths, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
 use model_convert::{convert, NativeModelBundle, Subject};
 use fpk::FpkFile;
@@ -97,8 +97,7 @@ fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
         .ok_or("FACE diff pointer table overflow.")?;
     if table_end > 0xf0 {
         return Err("FACE diff record-offset table exceeds its fixed header.".into());
-    }
-    let required = 0xf0usize.checked_add(count_a.checked_mul(0x10).ok_or("FACE diff record size overflow.")?)
+    }    let required = 0xf0usize.checked_add(count_a.checked_mul(0x10).ok_or("FACE diff record size overflow.")?)
         .and_then(|v| v.checked_add(count_b.checked_mul(0x20)?))
         .ok_or("FACE diff record size overflow.")?;
     if bytes.len() < required {
@@ -197,8 +196,7 @@ fn legacy_face_diff_from_xml(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
 fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<Vec<u8>, String> {
     if let Some(face_diff) = face_diff {
         validate_face_diff_payload(face_diff)?;
-    }
-    let has_face = model_stems.iter().any(|s| s.eq_ignore_ascii_case("face_high"));
+    }    let has_face = model_stems.iter().any(|s| s.eq_ignore_ascii_case("face_high"));
     if !has_face {
         return Err("A legacy face XML requires a face_high model.".into());
     }
@@ -245,6 +243,78 @@ fn create_temp_workspace() -> Result<TempWorkspace, String> {
 
 fn is_face_archive_extension(extension: &str) -> bool {
     matches!(extension, "fpk" | "fpkd" | "kpfd")
+}
+
+/// Rewrite the two legacy Fox texture spellings that the upstream Team Compiler
+/// deliberately rejects in Studio exports. This is a lossless path-table edit:
+/// geometry, skinning, materials and mesh records remain unchanged.
+fn normalize_fox_texture_reference(directory: &mut String, file_name: &mut String) {
+    const COMMON: &str = "/model/character/common/";
+    if let Some(at) = directory.to_ascii_lowercase().find(COMMON) {
+        let end = at + COMMON.len();
+        let (head, tail) = directory.split_at(end);
+        if let Some((segment, rest)) = tail.split_once('/') {
+            if !segment.eq_ignore_ascii_case("sourceimages")
+                && !segment.eq_ignore_ascii_case("team_folder")
+            {
+                *directory = format!("{head}team_folder/{rest}");
+            }
+        }
+    }
+
+    let (stem, extension) = file_name
+        .rsplit_once('.')
+        .map(|(stem, extension)| (stem, format!(".{extension}")))
+        .unwrap_or((file_name.as_str(), String::new()));
+    let folded = stem.to_ascii_lowercase();
+    if folded == "dummy_kit"
+        || folded.starts_with("dummy_kit_")
+        || folded == "dummy_gk_kit"
+        || folded.starts_with("dummy_gk_kit_")
+    {
+        *file_name = format!("team_{}{extension}", &folded["dummy_".len()..]);
+    }
+}
+
+fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
+    fn walk(root: &Path, changed_total: &mut usize) -> Result<(), String> {
+        for entry in fs::read_dir(root).map_err(|e| format!("Read staged face folder {}: {e}", root.display()))? {
+            let entry = entry.map_err(|e| format!("Read staged face entry: {e}"))?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path).map_err(|e| format!("Inspect staged face entry {}: {e}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!("Symbolic links are not accepted in staged face data: {}", path.display()));
+            }
+            if metadata.is_dir() {
+                walk(&path, changed_total)?;
+                continue;
+            }
+            if !metadata.is_file() || !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fmdl")) {
+                continue;
+            }
+            let bytes = fs::read(&path).map_err(|e| format!("Read FMDL {}: {e}", path.display()))?;
+            let mut model = FmdlFile::read(&bytes).map_err(|e| format!("Parse FMDL {} before texture-path normalization: {e}", path.display()))?;
+            let changed = rewrite_texture_paths(&mut model, |texture| {
+                normalize_fox_texture_reference(&mut texture.directory, &mut texture.file_name);
+            }).map_err(|e| format!("Normalize FMDL texture paths {}: {e}", path.display()))?;
+            if changed == 0 { continue; }
+            let encoded = model.write();
+            let checked = FmdlFile::read(&encoded).map_err(|e| format!("Normalized FMDL failed read-back {}: {e}", path.display()))?;
+            let original = FmdlFile::read(&bytes).map_err(|e| format!("Original FMDL failed read-back {}: {e}", path.display()))?;
+            if checked.meshes.len() != original.meshes.len()
+                || checked.bones.len() != original.bones.len()
+                || checked.materials.len() != original.materials.len()
+            {
+                return Err(format!("Texture-path normalization unexpectedly changed model structure: {}", path.display()));
+            }
+            fs::write(&path, encoded).map_err(|e| format!("Write normalized FMDL {}: {e}", path.display()))?;
+            *changed_total += changed;
+        }
+        Ok(())
+    }
+    let mut changed = 0;
+    walk(root, &mut changed)?;
+    Ok(changed)
 }
 
 fn companion_fmdl_for_skeleton(skeleton: &Path) -> PathBuf {
@@ -297,8 +367,7 @@ fn copy_face_source_tree(
             return Err(format!("Duplicate case-insensitive face source path: {normalized}"));
         }
         let to = destination.join(PathBuf::from(normalized));
-        if let Some(parent) = to.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Create face asset folder {}: {e}", parent.display()))?;
+        if let Some(parent) = to.parent() {            fs::create_dir_all(parent).map_err(|e| format!("Create face asset folder {}: {e}", parent.display()))?;
         }
         fs::copy(&from, &to).map_err(|e| format!("Stage face asset {}: {e}", from.display()))?;
     }
@@ -397,8 +466,7 @@ fn extract_face_archives(
         return Err("A face folder must contain at most one face.fpk and one paired face.fpkd/.kpfd archive.".into());
     }
     if fpk.is_empty() && !fpkd.is_empty() {
-        return Err("A face.fpkd/.kpfd archive was found without its face.fpk companion.".into());
-    }
+        return Err("A face.fpkd/.kpfd archive was found without its face.fpk companion.".into());    }
     for path in fpk.iter().chain(fpkd.iter()) {
         let metadata = fs::symlink_metadata(path).map_err(|e| format!("Inspect Fox archive {}: {e}", path.display()))?;
         if !metadata.is_file() || metadata.len() > 1024 * 1024 * 1024 {
@@ -464,6 +532,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let mut total_bytes = 0u64;
     copy_face_source_tree(&input, &player, &mut archive_paths, &mut seen, &mut file_count, &mut total_bytes)?;
     extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
+    let normalized_texture_references = normalize_fox_face_model_paths(&player)?;
     let source_inventory = inspect_pes2021_face_source(&player)?;
     let has_model = {
         fn any_model(root: &Path) -> Result<bool, String> {
@@ -497,8 +566,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let context = ToolContext::new(
         Arc::new(Mutex::new(settings)),
         AppPaths { exe_dir: workspace.0.clone(), data_dir: Some(data) },
-        events_tx,
-        requests_tx
+        events_tx,        requests_tx
     );
     let export_arg = export.to_string_lossy().to_string();
     let matches = tool.cli_command().try_get_matches_from([
@@ -541,6 +609,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "sourceBytes": total_bytes,
         "sourceModels": source_inventory.models,
         "sourceTextureCount": source_inventory.texture_count,
+        "normalizedTextureReferences": normalized_texture_references,
         "sourceFaceDiff": source_inventory.face_diff,
         "preservedSidecars": source_inventory.preserved_sidecars,
         "outputFiles": output_files,
@@ -597,8 +666,7 @@ fn run()->Result<(),String>{
    let mut archive_entries:Vec<(String,Vec<u8>)>=Vec::new();let mut seen=std::collections::HashSet::new();
    for archive_path in &model_paths{
     let bytes=fs::read(archive_path).map_err(|e|format!("Read source Fox archive {}: {e}",archive_path.display()))?;
-    let archive=FpkFile::read(&bytes).map_err(|e|format!("Decode source FPK/FPKD {}: {e}",archive_path.display()))?;
-    for (name,data) in archive.entries(){
+    let archive=FpkFile::read(&bytes).map_err(|e|format!("Decode source FPK/FPKD {}: {e}",archive_path.display()))?;    for (name,data) in archive.entries(){
      let normalized=normalize_fox_virtual_path(name)?;
      if !seen.insert(normalized.to_ascii_lowercase()){return Err(format!("The paired FPK/FPKD archives contain a duplicate virtual path: {normalized}"));}
      archive_entries.push((normalized,data.to_vec()));
@@ -697,8 +765,7 @@ fn run()->Result<(),String>{
     outputs.push(model_name);outputs.push(format!("{stem}.mtl"));
    },
    NativeModelBundle::Fox{model,skl}=>{
-    let file=model.to_file().map_err(|e|format!("Encode PES 2021 FMDL {stem}: {e}"))?;let model_bytes=file.write();
-    let checked_file=FmdlFile::read(&model_bytes).map_err(|e|format!("PES 2021 FMDL read-back failed for {stem}: {e}"))?;
+    let file=model.to_file().map_err(|e|format!("Encode PES 2021 FMDL {stem}: {e}"))?;let model_bytes=file.write();    let checked_file=FmdlFile::read(&model_bytes).map_err(|e|format!("PES 2021 FMDL read-back failed for {stem}: {e}"))?;
     FoxModel::from_file(&checked_file).map_err(|e|format!("PES 2021 FMDL semantic read-back failed for {stem}: {e}"))?;
     let skl_bytes=skl.as_ref().map(SklFile::write);
     if let Some(bytes)=&skl_bytes{SklFile::read(bytes).map_err(|e|format!("PES 2021 SKL read-back failed for {stem}: {e}"))?;}
@@ -797,8 +864,7 @@ mod face_diff_xml_tests {
         let mut v6 = v5.clone();
         v6[4..8].copy_from_slice(&6u32.to_le_bytes());
         assert!(validate_face_diff_generation(&v4, 2017).is_ok());
-        assert!(validate_face_diff_generation(&v4, 2021).is_ok());
-        assert!(validate_face_diff_generation(&v5, 2017).is_err());
+        assert!(validate_face_diff_generation(&v4, 2021).is_ok());        assert!(validate_face_diff_generation(&v5, 2017).is_err());
         assert!(validate_face_diff_generation(&v5, 2021).is_ok());
         assert!(validate_face_diff_generation(&v6, 2017).is_err());
         assert!(validate_face_diff_generation(&v6, 2021).is_ok());
