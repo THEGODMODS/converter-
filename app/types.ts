@@ -11,6 +11,7 @@ export type FaceForgeApi = {
  chooseFolders:()=>Promise<string[]>;
  inspectDatabase:(folder:string)=>Promise<FaceDatabase>;
  inspectFolder:(folder:string)=>Promise<FaceProject>;
+ exportManifest:(folder:string)=>Promise<{destination:string;files:number;bytes:number}|null>;
  previewModel:(folder:string,relativePath:string)=>Promise<FacePreviewData>;
  getPathForDrop:(file:File)=>string;
  convertTextureFile:(colorSpace:TextureColorSpace)=>Promise<{source:string;destination:string;format:string;width:number;height:number;bytes:number}|null>;
