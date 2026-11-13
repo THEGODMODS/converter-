@@ -88,4 +88,14 @@ describe("inspectFaceFolder",()=>{
     }finally{await rm(root,{recursive:true,force:true});}
   });
 
+  it("includes Fox hair sidecars and face_diff.xml in the source inventory",async()=>{
+    const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
+    try{
+      await writeFile(path.join(root,"fcl_hair_sim.fclo"),Buffer.from("sidecar"));
+      await writeFile(path.join(root,"face_diff.xml"),Buffer.from("<config><dif>AAAA</dif></config>"));
+      const result=await inspectFaceFolder(root);
+      expect(result.files.map(file=>file.kind).sort()).toEqual(["face-diff-xml","sidecar-fclo"]);
+    }finally{await rm(root,{recursive:true,force:true});}
+  });
+
 });
