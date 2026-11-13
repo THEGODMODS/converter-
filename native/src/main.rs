@@ -361,8 +361,9 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
 
     fs::write(data.join("teams_list.txt"), "ID\\tName\\n714\\t/ff/\\n")
         .map_err(|e| format!("Write isolated Team compiler team list: {e}"))?;
+    let pes_version = if target == 2017 { 17 } else { 21 };
     let settings_text = format!(
-        "[common]\\npes_version = {target}\\npes_folder_path = {:?}\\n\\n[team-compiler]\\ncpk_name = \\"4cc_99_test\\"\\noutput_folder_path = {:?}\\nteams_list_path = \\"teams_list.txt\\"\\nstrict_file_type_check = true\\npass_through = false\\n",
+        "[common]\\npes_version = {pes_version}\\npes_folder_path = {:?}\\n\\n[team-compiler]\\ncpk_name = \\"4cc_99_test\\"\\noutput_folder_path = {:?}\\nteams_list_path = \\"teams_list.txt\\"\\nstrict_file_type_check = true\\npass_through = false\\n",
         pes.to_string_lossy().to_string(),
         output.to_string_lossy().to_string()
     );
@@ -429,13 +430,21 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
 
 fn run()->Result<(),String>{
  let args:Vec<String>=env::args().collect();
+ if args.get(1).map(String::as_str)==Some("convert-face-folder"){
+  let input=PathBuf::from(required(&args,"--input")?);
+  let target:u16=required(&args,"--target")?.parse().map_err(|_|"Target must be 2017 or 2021".to_string())?;
+  let output=PathBuf::from(required(&args,"--out")?);
+  let report=convert_complete_face_folder(&input,target,&output)?;
+  println!("{}",report);
+  return Ok(());
+ }
  if args.get(1).map(String::as_str)==Some("convert-texture"){
   let input=PathBuf::from(required(&args,"--input")?);let output=PathBuf::from(required(&args,"--out")?);let direction=required(&args,"--direction")?;let color=match optional(&args,"--color-space").as_deref().unwrap_or("srgb"){"srgb"=>ColorSpace::Srgb,"linear"=>ColorSpace::Linear,"normal"=>ColorSpace::Normal,_=>return Err("Color space must be srgb, linear or normal".into())};let bytes=fs::read(&input).map_err(|e|format!("Read texture: {e}"))?;
   let result=match direction.as_str(){"ftex-to-dds"=>ftex_to_dds(&bytes).map_err(|e|format!("FTEX decode: {e}"))?,"dds-to-ftex"=>dds_to_ftex(&bytes,color).map_err(|e|format!("DDS encode: {e}"))?,_=>return Err("Texture direction must be ftex-to-dds or dds-to-ftex".into())};
   if direction=="ftex-to-dds"{let _=ftex_info(&bytes).map_err(|e|format!("FTEX validation: {e}"))?;}else{let _=ftex_info(&result).map_err(|e|format!("Generated FTEX validation: {e}"))?;}
   write(&output,&result)?;println!("{}",serde_json::json!({"ok":true,"bytes":result.len()}));return Ok(());
  }
- if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native convert-model ... | convert-texture --input FILE --direction ftex-to-dds|dds-to-ftex --color-space srgb|linear|normal --out FILE".into());}
+ if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native convert-face-folder --input FOLDER --target 2017|2021 --out EMPTY_DIR | convert-model ... | convert-texture --input FILE --direction ftex-to-dds|dds-to-ftex --color-space srgb|linear|normal --out FILE".into());}
  let source_format=required(&args,"--source-format")?;let target_text=required(&args,"--target")?;let out=PathBuf::from(required(&args,"--out")?);
  let model_paths:Vec<PathBuf>=args.iter().enumerate().filter(|(_,arg)|arg.as_str()=="--model").filter_map(|(i,_)|args.get(i+1)).map(PathBuf::from).collect();
  if model_paths.is_empty(){return Err("At least one --model input is required.".into());}
