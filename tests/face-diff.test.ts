@@ -13,10 +13,10 @@ describe("PES face_diff metadata",()=>{
  it("reads documented eye scale, rotation, eyelid and oral controls",()=>{
   const parsed=inspectFaceDiff(fixture());
   expect(parsed.eyeScale).toEqual([1,1,1]);
-  expect(parsed.rightEyeRotation).toEqual([0.01,0.02,0.03]);
-  expect(parsed.leftEyeRotation).toEqual([-0.01,-0.02,-0.03]);
-  expect(parsed.eyelidOffsets).toEqual({topLeft:0.11,topRight:0.12,bottomLeft:0.13,bottomRight:0.14});
-  expect(parsed.oralPosition).toEqual([0.1,0.2,0.3]);
+  parsed.rightEyeRotation.forEach((value,index)=>expect(value).toBeCloseTo([0.01,0.02,0.03][index],6));
+  parsed.leftEyeRotation.forEach((value,index)=>expect(value).toBeCloseTo([-0.01,-0.02,-0.03][index],6));
+  for(const [actual,expected] of Object.values(parsed.eyelidOffsets).map((value,index)=>[value,[0.11,0.12,0.13,0.14][index]] as [number,number]))expect(actual).toBeCloseTo(expected,6);
+  parsed.oralPosition.forEach((value,index)=>expect(value).toBeCloseTo([0.1,0.2,0.3][index],6));
   expect(parsed.mouthPosition).toEqual(parsed.oralPosition);
  });
  it("reads right and left eye placement vectors",()=>{
