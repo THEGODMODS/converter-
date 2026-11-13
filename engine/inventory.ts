@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { inflateSync } from "node:zlib";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { inspectDdsHeader, inspectFmdlHeader, inspectFtexHeader, inspectModelHeader } from "./formats/headers";
+import { decodeWesysModel } from "./formats/model-container";
 export type FaceFile = { path:string;bytes:number;kind:string;sha256:string;formatValid?:boolean;formatDetails?:string[] };
 export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[] };
 const MAX_FILES=5000,MAX_TOTAL_BYTES=1024*1024*1024,MAX_FILE_BYTES=256*1024*1024;
@@ -10,7 +10,7 @@ const RELEVANT=new Set([".fmdl",".model",".ftex",".dds",".xml",".mtl",".bin",".f
 async function inspectFile(rel:string,absolute:string,size:number):Promise<FaceFile>{
  const data=await readFile(absolute),ext=path.extname(rel).toLowerCase();let kind="other",valid:boolean|undefined,details:string[]|undefined;
  if(ext===".fmdl"){const x=inspectFmdlHeader(data);kind=x.valid?"model-pes2021":"invalid-fmdl";valid=x.valid;details=x.details;}
- else if(ext===".model"){let modelData=data;let compressed=false,decompressionError:string|undefined;if(data.subarray(4,8).toString("ascii")==="ESYS"){try{modelData=inflateSync(data.subarray(16),{maxOutputLength:MAX_FILE_BYTES});compressed=true;}catch{decompressionError="ESYS-compressed MODEL could not be decompressed within the safety limit.";}}const x=decompressionError?{valid:false,details:[decompressionError]}:inspectModelHeader(modelData);kind=x.valid?(compressed?"model-pes2017-compressed":"model-pes2017"):"invalid-model";valid=x.valid;details=x.details;}
+ else if(ext===".model"){let modelData=data,compressed=false,decompressionError:string|undefined;try{const decoded=decodeWesysModel(data);modelData=decoded.data;compressed=decoded.wrapperVersion!==null;}catch(error){decompressionError=error instanceof Error?error.message:"Invalid WESYS wrapper."; }const x=decompressionError?{valid:false,details:[decompressionError]}:inspectModelHeader(modelData);kind=x.valid?(compressed?"model-pes2017-compressed":"model-pes2017"):"invalid-model";valid=x.valid;details=x.details;}
  else if(ext===".ftex"){const x=inspectFtexHeader(data);kind=x.valid?"texture-pes2021":"invalid-ftex";valid=x.valid;details=x.details;}
  else if(ext===".dds"){const x=inspectDdsHeader(data);kind=x.valid?"texture-pes2017":"invalid-dds";valid=x.valid;details=x.details;}
  else if([".xml",".mtl"].includes(ext))kind="material-metadata";else if(ext===".bin")kind="auxiliary";else if([".fpk",".cpk"].includes(ext))kind="container";else if([".png",".jpg",".jpeg"].includes(ext))kind="image-source";
