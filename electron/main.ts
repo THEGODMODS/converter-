@@ -11,6 +11,7 @@ import { parseModelContainer } from "../engine/formats/model-container";
 import { decodePes2017Model } from "../engine/formats/model-scene";
 import { parseFmdlContainer } from "../engine/formats/fmdl-container";
 import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
+import { parseFpkArchive } from "../engine/formats/fpk";
 
 let mainWindow:BrowserWindow|null=null;
 function trusted(event:Electron.IpcMainInvokeEvent){
@@ -27,13 +28,32 @@ function registerIpc(){
  ipcMain.handle("face:preview-model",async(event,folder:unknown,relativePath:unknown)=>{
   trusted(event);
   if(typeof folder!=="string"||!path.isAbsolute(folder)||typeof relativePath!=="string"||relativePath.length>2048)throw new Error("Invalid preview source.");
-  const root=path.resolve(folder),source=path.resolve(root,relativePath),prefix=root.endsWith(path.sep)?root:root+path.sep;
-  if(!source.startsWith(prefix))throw new Error("Preview path escapes the selected face folder.");
-  const rootStat=await fs.promises.lstat(root);if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The selected face folder is no longer a safe directory.");
-  const realRoot=await fs.promises.realpath(root),realSource=await fs.promises.realpath(source),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
-  if(!realSource.startsWith(realPrefix))throw new Error("Preview source resolves outside the selected face folder.");
-  const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview source is not a safe supported file.");
-  const data=await readFile(source),extension=path.extname(source).toLowerCase();
+  const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
+  if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The selected face folder is no longer a safe directory.");
+  const realRoot=await fs.promises.realpath(root);
+  let data:Buffer,extension:string;
+  const archiveMarker=relativePath.indexOf("!/");
+  if(archiveMarker>=0){
+   const archiveRelative=relativePath.slice(0,archiveMarker),memberName=relativePath.slice(archiveMarker+2).replaceAll("\\\\","/");
+   if(!archiveRelative||!memberName||memberName.split("/").some(part=>!part||part==="."||part===".."))throw new Error("Invalid embedded model path.");
+   const archivePath=path.resolve(root,archiveRelative),prefix=root.endsWith(path.sep)?root:root+path.sep;
+   if(!archivePath.startsWith(prefix))throw new Error("Preview archive escapes the selected face folder.");
+   const realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+   if(!realArchive.startsWith(realPrefix))throw new Error("Preview archive resolves outside the selected face folder.");
+   const stat=await fs.promises.lstat(archivePath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview archive is not a safe file.");
+   const archive=parseFpkArchive(await readFile(archivePath));
+   const member=archive.entries.find(entry=>entry.name.toLowerCase()===memberName.toLowerCase());
+   if(!member)throw new Error("The requested model was not found inside the FPK archive. Re-scan the face folder.");
+   if(member.size>256*1024*1024)throw new Error("Embedded model exceeds the preview size limit.");
+   data=member.data;extension=path.extname(member.name).toLowerCase();
+  }else{
+   const source=path.resolve(root,relativePath),prefix=root.endsWith(path.sep)?root:root+path.sep;
+   if(!source.startsWith(prefix))throw new Error("Preview path escapes the selected face folder.");
+   const realSource=await fs.promises.realpath(source),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+   if(!realSource.startsWith(realPrefix))throw new Error("Preview source resolves outside the selected face folder.");
+   const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview source is not a safe supported file.");
+   data=await readFile(source);extension=path.extname(source).toLowerCase();
+  }
   let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],warnings:string[]=[];
   if(extension===".fmdl"){
    const scene=decodePes2021Fmdl(parseFmdlContainer(data));generation="pes2021";
