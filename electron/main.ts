@@ -21,8 +21,6 @@ import { convertFaceTextureDependencies } from "./texture-bundle";
 import { buildFoxFacePackage } from "./package-builder";
 import { publishStagedOutput } from "./output-publish";
 import { verifyPes2017FaceCpk } from "../engine/packaging/face-cpk-validation";
-import { installSignedPackage } from "./signed-package-download";
-import { FACE_FORGE_PACKAGE_TRUST } from "./package-trust";
 
 let mainWindow:BrowserWindow|null=null;
 const inspectedFaceProjects=new Map<string,FaceProject>();
@@ -32,7 +30,6 @@ function trusted(event:Electron.IpcMainInvokeEvent){
  else {const parsed=new URL(url);if(parsed.origin!=="http://127.0.0.1:5173"||(parsed.pathname!=="/"&&parsed.pathname!=="/index.html"))throw new Error("Untrusted renderer.");}
 }
 function registerIpc(){
- ipcMain.handle("package:install",async(event,manifestUrl:unknown)=>{trusted(event);if(typeof manifestUrl!=="string"||manifestUrl.length>2048)throw new Error("Enter a valid package manifest URL.");return installSignedPackage(manifestUrl,path.join(app.getPath("userData"),"packages"),FACE_FORGE_PACKAGE_TRUST);});
  ipcMain.handle("face:choose-folder",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose PES face project folder",properties:["openDirectory"]});return result.canceled?null:result.filePaths[0]??null;});
  ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose face folders for batch or project",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
