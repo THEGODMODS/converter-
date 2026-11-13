@@ -16,6 +16,74 @@ fn replace_texture_extension(value:&mut String,from:&str,to:&str)->Result<(),Str
  if !extension.eq_ignore_ascii_case(from){return Err(format!("Texture reference has unexpected source extension: {value} (expected .{from})"));}
  *value=format!("{stem}.{to}");Ok(())
 }
+
+/// Wraps a validated Fox FACE calibration payload in the legacy PES XML <dif>
+/// element. The payload is preserved byte-for-byte; no unverified rig-space
+/// transform or v5-to-v4 record remapping is attempted.
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let a = chunk[0] as u32;
+        let b = *chunk.get(1).unwrap_or(&0) as u32;
+        let c = *chunk.get(2).unwrap_or(&0) as u32;
+        let value = (a << 16) | (b << 8) | c;
+        out.push(TABLE[((value >> 18) & 63) as usize] as char);
+        out.push(TABLE[((value >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[((value >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(value & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+fn legacy_face_xml(face_diff: &[u8], model_stems: &[String]) -> Result<Vec<u8>, String> {
+    if face_diff.len() < 0x50 || &face_diff[..4] != b"FACE" {
+        return Err("FACE diff sidecar has an invalid or truncated header.".into());
+    }
+    let version = u32::from_le_bytes(face_diff[4..8].try_into().unwrap());
+    let count_a = u32::from_le_bytes(face_diff[0x48..0x4c].try_into().unwrap()) as usize;
+    let count_b = u32::from_le_bytes(face_diff[0x4c..0x50].try_into().unwrap()) as usize;
+    let known = (version == 5 || version == 6) && count_a == 33 && count_b == 6
+        || version == 4 && count_a == 32 && count_b == 6;
+    if !known {
+        return Err(format!("FACE diff version/count combination is not supported for XML preservation: v{version}, {count_a}/{count_b}."));
+    }
+    let required = 0xf0usize.checked_add(count_a * 0x10).and_then(|v| v.checked_add(count_b * 0x20))
+        .ok_or("FACE diff record size overflow.")?;
+    if face_diff.len() < required {
+        return Err(format!("FACE diff is truncated: {} bytes, expected at least {required}.", face_diff.len()));
+    }
+    let offset_count = count_a + count_b;
+    let mut seen = std::collections::HashSet::new();
+    for i in 0..offset_count {
+        let at = 0x50 + i * 4;
+        let offset = u32::from_le_bytes(face_diff[at..at + 4].try_into().unwrap()) as usize;
+        if offset < 0xf0 || offset % 16 != 0 || offset + 4 > required || !seen.insert(offset) {
+            return Err(format!("FACE diff record pointer {i} is invalid, unaligned, out of range or duplicated."));
+        }
+    }
+    let has_face = model_stems.iter().any(|s| s.eq_ignore_ascii_case("face_high"));
+    if !has_face {
+        return Err("A FACE diff cannot be attached to a legacy XML without a face_high model.".into());
+    }
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n");
+    for stem in model_stems {
+        let (kind, material) = if stem.eq_ignore_ascii_case("face_high") {
+            ("face_neck", format!("{stem}.mtl"))
+        } else if stem.eq_ignore_ascii_case("hair_high") {
+            ("hair", format!("{stem}.mtl"))
+        } else if stem.eq_ignore_ascii_case("oral") || stem.eq_ignore_ascii_case("oral_high") {
+            ("eye", format!("{stem}.mtl"))
+        } else {
+            return Err(format!("Cannot safely assign legacy PES XML model type for '{stem}'."));
+        };
+        xml.push_str(&format!("  <model level=\"0\" type=\"{kind}\" path=\"./{stem}.model\" material=\"./{material}\"/>\n"));
+    }
+    xml.push_str("  <dif>");
+    xml.push_str(&base64_encode(face_diff));
+    xml.push_str("</dif>\n</config>\n");
+    Ok(xml.into_bytes())
+}
 fn run()->Result<(),String>{
  let args:Vec<String>=env::args().collect();
  if args.get(1).map(String::as_str)==Some("convert-texture"){
@@ -33,6 +101,7 @@ fn run()->Result<(),String>{
  if source_format=="fpk"&&(model_paths.is_empty()||model_paths.len()>2){return Err("Supply one face FPK and optionally its paired FPKD archive.".into());}
  let textures_managed_externally=args.iter().any(|arg|arg=="--textures-managed-externally");
  let mut package_textures:Vec<(String,Vec<u8>)>=Vec::new();
+ let mut package_face_diff:Option<Vec<u8>>=None;
  let bundles:Vec<(String,NativeModelBundle)>=match source_format.as_str(){
   "fpk"=>{
    if target!=2017{return Err("A PES 2021 Fox package source must target PES 2017.".into());}
@@ -52,6 +121,9 @@ fn run()->Result<(),String>{
    let member_names:Vec<String>=archive_entries.iter().map(|(name,_)|name.clone()).collect();
    validate_face_package_members(&member_names)?;
    package_textures=archive_entries.iter().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".ftex")).map(|(name,data)|(name.clone(),data.clone())).collect();
+   let face_diff_entries:Vec<_>=archive_entries.iter().filter(|(name,_)|name.eq_ignore_ascii_case("face_diff.bin")).collect();
+   if face_diff_entries.len()>1{return Err("The Fox package contains multiple face_diff.bin sidecars.".into());}
+   package_face_diff=face_diff_entries.first().map(|(_,data)|data.clone());
    let candidates:Vec<_>=archive_entries.iter().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".fmdl")).collect();
    if candidates.is_empty(){return Err("Neither the FPK nor its paired FPKD contains an FMDL model.".into());}
    let mut names=std::collections::HashSet::new();let mut converted=Vec::new();
@@ -104,7 +176,7 @@ fn run()->Result<(),String>{
  let target_version=if target==2017{pes_version::PesVersion::Pes17}else{pes_version::PesVersion::Pes21};
  fs::create_dir_all(&out).map_err(|e|format!("Create output folder: {e}"))?;
  if fs::read_dir(&out).map_err(|e|format!("Read output folder: {e}"))?.next().is_some(){return Err("Output directory must be empty; no files were written.".into());}
- let model_count=bundles.len();let mut outputs=Vec::new();let mut pending_outputs:Vec<(String,Vec<u8>)>=Vec::new();let mut findings:Vec<serde_json::Value>=Vec::new();
+ let model_count=bundles.len();let model_stems:Vec<String>=bundles.iter().map(|(stem,_)|stem.clone()).collect();let mut outputs=Vec::new();let mut pending_outputs:Vec<(String,Vec<u8>)>=Vec::new();let mut findings:Vec<serde_json::Value>=Vec::new();
  for (stem,bundle) in bundles{
   let mut converted=convert(bundle,target_version).map_err(|e|format!("Cross-generation conversion rejected for {stem}: {e}"))?;
   match &mut converted.bundle {
@@ -157,6 +229,11 @@ fn run()->Result<(),String>{
   }
  
  }
+ if let Some(face_diff)=package_face_diff.as_deref() {
+  let xml=legacy_face_xml(face_diff,&model_stems)?;
+  outputs.push("face.xml".into());
+  pending_outputs.push(("face.xml".into(),xml));
+ }
  let stage=out.join(".faceforge-staging");fs::create_dir(&stage).map_err(|e|format!("Create staging directory: {e}"))?;
  for (name,data) in pending_outputs{if let Err(error)=write(&stage.join(&name),&data){let _=fs::remove_dir_all(&stage);return Err(error);}}
  let mut committed:Vec<PathBuf>=Vec::new();
@@ -170,3 +247,45 @@ fn run()->Result<(),String>{
  let report=serde_json::json!({"ok":true,"target":target,"model_count":model_count,"outputs":outputs,"findings":findings});println!("{}",report);Ok(())
 }
 fn main(){if let Err(error)=run(){eprintln!("FACE_FORGE_CONVERSION_ERROR: {error}");process::exit(2);}}
+
+#[cfg(test)]
+mod face_diff_xml_tests {
+    use super::{base64_encode, legacy_face_xml};
+
+    fn fixture() -> Vec<u8> {
+        let mut data = vec![0u8; 960];
+        data[..4].copy_from_slice(b"FACE");
+        data[4..8].copy_from_slice(&5u32.to_le_bytes());
+        data[0x48..0x4c].copy_from_slice(&33u32.to_le_bytes());
+        data[0x4c..0x50].copy_from_slice(&6u32.to_le_bytes());
+        for i in 0..39 {
+            let offset = if i < 33 { 0xf0 + i * 0x10 } else { 0x300 + (i - 33) * 0x20 };
+            data[0x50 + i * 4..0x54 + i * 4].copy_from_slice(&(offset as u32).to_le_bytes());
+        }
+        data
+    }
+
+    #[test]
+    fn base64_encoding_matches_known_vector() {
+        assert_eq!(base64_encode(b"FACE"), "RkFDRQ==");
+    }
+
+    #[test]
+    fn wraps_v5_face_diff_and_registers_supported_face_models() {
+        let xml = legacy_face_xml(&fixture(), &["face_high".into(), "hair_high".into()]).unwrap();
+        let text = String::from_utf8(xml).unwrap();
+        assert!(text.contains("type=\"face_neck\""));
+        assert!(text.contains("type=\"hair\""));
+        assert!(text.contains("<dif>"));
+        assert!(text.contains("RkFDRQ"));
+    }
+
+    #[test]
+    fn rejects_unknown_models_and_truncated_or_unknown_face_diff() {
+        assert!(legacy_face_xml(&fixture(), &["head".into()]).is_err());
+        assert!(legacy_face_xml(&fixture()[..100], &["face_high".into()]).is_err());
+        let mut bad = fixture();
+        bad[4..8].copy_from_slice(&9u32.to_le_bytes());
+        assert!(legacy_face_xml(&bad, &["face_high".into()]).is_err());
+    }
+}
