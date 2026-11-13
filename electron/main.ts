@@ -156,7 +156,7 @@ function registerIpc(){
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
     const archiveBytes=await readFile(archivePath),inspection=inspectCpk(archiveBytes);
     if(!inspection.valid||inspection.fileCount===0)throw new Error("Independent CPK read-back failed for "+archiveName+": "+inspection.errors.join("; "));
-    const foldedPaths=inspection.files.map(entry=>entry.path.replaceAll("\\\\","/").toLowerCase());
+    const foldedPaths=inspection.files.map(entry=>entry.path.toLowerCase());
     const hasBasename=(name:string)=>foldedPaths.some(value=>value.split("/").at(-1)===name);
     if(!hasBasename("face.xml"))throw new Error("PES 2017 face CPK "+archiveName+" has no generated face.xml.");
     if(!hasBasename("oral_face_high_win32.model"))throw new Error("PES 2017 face CPK "+archiveName+" has no converted face_high model.");
