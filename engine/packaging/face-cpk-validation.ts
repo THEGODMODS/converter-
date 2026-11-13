@@ -45,11 +45,11 @@ function verifyFaceXmlReferences(
 
   const archivePaths = files.map((file) => file.path.replaceAll("\\", "/").toLowerCase());
   const xmlDirectory = faceXmlPath.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
-  const resolve = (raw: string, kind: string): string[] => {
+  const resolve = (raw: string, kind: string, baseDirectory = xmlDirectory): string[] => {
     const relative = localReference(raw);
     if (relative === null) return [];
     if (/[?#[\]{}]/.test(relative)) throw new Error("Unsupported " + kind + " reference: " + raw);
-    const target = (xmlDirectory ? xmlDirectory + "/" : "") + relative;
+    const target = (baseDirectory ? baseDirectory + "/" : "") + relative;
     const escaped = target.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*");
     const matcher = new RegExp("^" + escaped + "$", "i");
     const matches = archivePaths.filter((archivePath) => matcher.test(archivePath));
@@ -96,7 +96,7 @@ function verifyFaceXmlReferences(
       }
       const texturePath = attributes.get("path");
       if (!texturePath) throw new Error("Material sampler is missing its texture path: " + materialPath);
-      textures.push(...resolve(texturePath, "texture"));
+      const materialDirectory = materialEntry.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();\n      textures.push(...resolve(texturePath, "texture", materialDirectory));
     }
   }
   return { models: resolvedModels, materials: resolvedMaterials, head, headMaterial, textures: unique(textures) };
