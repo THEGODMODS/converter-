@@ -128,6 +128,51 @@ function registerIpc(){
   const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
   return {source:relativePath,generation,meshes,warnings};
  });
+ ipcMain.handle("texture:convert-folder",async(event,colorSpace:unknown)=>{
+  trusted(event);
+  if(colorSpace!=="LINEAR"&&colorSpace!=="SRGB"&&colorSpace!=="NORMAL")throw new Error("Invalid texture color-space selection.");
+  const picked=await dialog.showOpenDialog(mainWindow!,{title:"Choose a face texture folder",properties:["openDirectory"]});
+  if(picked.canceled||!picked.filePaths[0])return null;
+  const sourceRoot=path.resolve(picked.filePaths[0]),sourceStat=await fs.promises.lstat(sourceRoot);
+  if(sourceStat.isSymbolicLink()||!sourceStat.isDirectory())throw new Error("Choose a real source folder, not a shortcut.");
+  const realSource=await fs.promises.realpath(sourceRoot);
+  const files:Array<{source:string;relative:string;data:Buffer;format:string;width:number;height:number}>=[];
+  let totalBytes=0;
+  async function scan(dir:string,relative=""):Promise<void>{
+   const entries=await fs.promises.readdir(dir,{withFileTypes:true});
+   for(const entry of entries){
+    const absolute=path.join(dir,entry.name),rel=path.posix.join(relative,entry.name),stat=await fs.promises.lstat(absolute);
+    if(stat.isSymbolicLink())throw new Error("Texture batch stopped: symbolic link found at "+rel+".");
+    if(stat.isDirectory()){await scan(absolute,rel);continue;}
+    if(!stat.isFile())continue;
+    const ext=path.extname(entry.name).toLowerCase();
+    if(ext!==".dds"&&ext!==".ftex")continue;
+    if(files.length>=500)throw new Error("Texture batch exceeds the 500-file safety limit.");
+    if(stat.size>64*1024*1024)throw new Error("Texture batch contains an oversized file: "+rel);
+    totalBytes+=stat.size;if(totalBytes>512*1024*1024)throw new Error("Texture batch exceeds the 512 MiB source safety limit.");
+    const real=await fs.promises.realpath(absolute),prefix=realSource.endsWith(path.sep)?realSource:realSource+path.sep;
+    if(!real.startsWith(prefix))throw new Error("Texture path resolves outside the selected source folder.");
+    const input=await readFile(absolute),converted=ext===".dds"?ddsToFtex(input,colorSpace as TextureColorSpace):ftexToDds(input);
+    files.push({source:absolute,relative:rel,data:converted.data,format:converted.info.formatName,width:converted.info.width,height:converted.info.height});
+   }
+  }
+  await scan(sourceRoot);
+  if(!files.length)throw new Error("No .dds or .ftex textures were found in the selected folder.");
+  const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for converted textures",properties:["openDirectory"]});
+  if(destination.canceled||!destination.filePaths[0])return null;
+  const outputRoot=path.resolve(destination.filePaths[0]),outStat=await fs.promises.lstat(outputRoot);
+  if(outStat.isSymbolicLink()||!outStat.isDirectory())throw new Error("Choose a real output directory.");
+  const realOutput=await fs.promises.realpath(outputRoot),sourcePrefix=realSource.endsWith(path.sep)?realSource:realSource+path.sep;
+  if(realOutput===realSource||realOutput.startsWith(sourcePrefix)||realSource.startsWith(realOutput.endsWith(path.sep)?realOutput:realOutput+path.sep))throw new Error("Source and output folders must be separate and cannot contain one another.");
+  if((await fs.promises.readdir(realOutput)).length)throw new Error("Choose an empty output folder; existing files will never be overwritten.");
+  const written:string[]=[];
+  for(const file of files){
+   const ext=path.extname(file.relative).toLowerCase(),target=path.join(realOutput,path.dirname(file.relative),path.basename(file.relative,path.extname(file.relative))+(ext===".dds"?".ftex":".dds"));
+   const parent=path.dirname(target);await fs.promises.mkdir(parent,{recursive:true});
+   await writeFile(target,file.data,{flag:"wx"});written.push(target);
+  }
+  return {source:realSource,destination:realOutput,converted:written.length,bytes:files.reduce((sum,file)=>sum+file.data.length,0),files:files.map((file,index)=>({source:file.relative,destination:path.relative(realOutput,written[index]),format:file.format,width:file.width,height:file.height}))};
+ });
  ipcMain.handle("texture:convert",async(event,colorSpace:unknown)=>{
   trusted(event);
   if(colorSpace!=="LINEAR"&&colorSpace!=="SRGB"&&colorSpace!=="NORMAL")throw new Error("Invalid texture color-space selection.");
