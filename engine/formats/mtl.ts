@@ -18,9 +18,9 @@ function bool(value:string|undefined,label:string):boolean|null{
  if(value===undefined)return null;if(value==="1"||value.toLowerCase()==="true")return true;if(value==="0"||value.toLowerCase()==="false")return false;throw new Error("PES MTL "+label+" must be 0, 1, true or false.");
 }
 function safePath(value:string):string{
- const path=value.replace(/\\/g,"/").trim();
- if(!path||path.includes("\0")||/^[a-z]:/i.test(path)||path.startsWith("/")||path.split("/").some(part=>part===".."||part==="."))throw new Error("PES MTL sampler path is empty, absolute or escapes its material directory: "+value);
- return path;
+ const path=value.replace(/\\/g,"/").trim(),parts=path.split("/").filter(part=>part!==".");
+ if(!path||path.includes("\0")||/^[a-z]:/i.test(path)||path.startsWith("/")||parts.some(part=>part==="..")||!parts.length)throw new Error("PES MTL sampler path is empty, absolute or escapes its material directory: "+value);
+ return parts.join("/");
 }
 export function parsePes2017Mtl(input:Buffer):Pes2017MaterialSet{
  if(input.length===0||input.length>32*1024*1024)throw new Error("PES MTL is empty or exceeds the 32 MiB safety limit.");
