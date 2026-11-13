@@ -9,6 +9,7 @@ const api = {
   inspectDatabase: (folder:string):Promise<FaceDatabase> => ipcRenderer.invoke("face:inspect-database",folder),
   inspectFolder: (folder:string):Promise<FaceProject> => ipcRenderer.invoke("face:inspect-folder",folder),
   exportManifest: (folder:string):Promise<{destination:string;files:number;bytes:number}|null> => ipcRenderer.invoke("face:export-manifest",folder),
+  installPackage: (manifestUrl:string):Promise<{packageId:string;version:string;displayName:string;files:number;directory:string}> => ipcRenderer.invoke("package:install",manifestUrl),
   previewModel: (folder:string,relativePath:string):Promise<FacePreviewData> => ipcRenderer.invoke("face:preview-model",folder,relativePath),
   convertNativeModel: (folder:string):Promise<{destination:string;report:{ok:boolean;target:number;outputs:string[];findings:{code:string;subject:{type:string;index?:number};detail:string}[]};textures:{converted:number;bytes:number;files:Array<{source:string;reference:string;destination:string;format:string;width:number;height:number}>}}|null> => ipcRenderer.invoke("face:convert-native-model",folder),
   convertCompleteFaceFolder: (folder:string,target:2017,playerId:string):Promise<{destination:string;outputFormat:"cpk"|"fpk";report:Record<string,unknown>}|null> => ipcRenderer.invoke("face:convert-complete-folder",folder,target,playerId),
