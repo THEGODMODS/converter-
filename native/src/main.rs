@@ -41,6 +41,18 @@ fn run()->Result<(),String>{
      archive_entries.push((name.to_owned(),data.to_vec()));
     }
    }
+   // Do not silently discard package members that are not handled by the
+   // current model/texture pipeline. FACE diff, XML, FOX scene and unknown
+   // sidecars may carry player identity, animation or rig data.
+   let unsupported:Vec<_>=archive_entries.iter().filter_map(|(name,_)|{
+    let lower=name.to_ascii_lowercase();
+    let supported=lower.ends_with(".fmdl")||lower.ends_with(".skl")||lower.ends_with(".ftex");
+    if supported{None}else{Some(name.as_str())}
+   }).collect();
+   if !unsupported.is_empty(){
+    let examples=unsupported.iter().take(8).copied().collect::<Vec<_>>().join(", ");
+    return Err(format!("Face package contains {} unhandled member(s) ({}). Conversion was stopped to prevent silent loss of face metadata, facial calibration, animation or scene data. This build only handles FMDL, SKL and FTEX members; add explicit converters/preservers for the remaining entries before retrying.",unsupported.len(),examples));
+   }
    let candidates:Vec<_>=archive_entries.iter().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".fmdl")).collect();
    if candidates.is_empty(){return Err("Neither the FPK nor its paired FPKD contains an FMDL model.".into());}
    let mut names=std::collections::HashSet::new();let mut converted=Vec::new();
