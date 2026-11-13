@@ -18,7 +18,6 @@ import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
 import { parseFpkArchive } from "../engine/formats/fpk";
 import { convertFaceTextureDependencies } from "./texture-bundle";
 import { buildFoxFacePackage } from "./package-builder";
-import { convertPes2017FaceFolderTo2021 } from "./complete-conversion";
 import { publishStagedOutput } from "./output-publish";
 import { verifyPes2017FaceCpk } from "../engine/packaging/face-cpk-validation";
 
@@ -126,7 +125,7 @@ function registerIpc(){
  });
  ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown,playerId:unknown)=>{
   trusted(event);
-  if(typeof folder!=="string"||!path.isAbsolute(folder)||(target!==2017&&target!==2021)||typeof playerId!=="string"||!/^[0-9]{5}$/.test(playerId))throw new Error("Choose a supported conversion direction and enter a five-digit target player ID.");
+  if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017||typeof playerId!=="string"||!/^[0-9]{5}$/.test(playerId))throw new Error("This release supports PES 2021 → PES 2017 only. Reverse conversion is still in development.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
@@ -142,7 +141,6 @@ function registerIpc(){
   if((await fs.promises.readdir(realOutput)).length)throw new Error("Choose an empty output folder; existing files will never be overwritten.");
   const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
   if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the upstream Team compiler enabled.");
-  if(target===2021)return convertPes2017FaceFolderTo2021({root,realRoot,realOutput,binary,playerId});
   const stageParent=await fs.promises.mkdtemp(path.join(path.dirname(realOutput),".face-forge-complete-stage-"));
   const stageOutput=path.join(stageParent,"output");
   try{
