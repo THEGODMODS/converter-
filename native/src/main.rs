@@ -2,7 +2,7 @@ use std::{env, fs, path::{Path,PathBuf}, process};
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
 use model_convert::{convert, NativeModelBundle};
-use fpk::{FpkFile,FpkKind};
+use fpk::FpkFile;
 use ftex::{ColorSpace,dds_to_ftex,ftex_to_dds,info as ftex_info};
 
 fn required(args:&[String], name:&str)->Result<String,String>{let i=args.iter().position(|x|x==name).ok_or_else(||format!("Missing required argument {name}"))?;args.get(i+1).cloned().ok_or_else(||format!("Missing value for {name}"))}
@@ -14,7 +14,7 @@ fn run()->Result<(),String>{
   let input=PathBuf::from(required(&args,"--input")?);let output=PathBuf::from(required(&args,"--out")?);let direction=required(&args,"--direction")?;let color=match optional(&args,"--color-space").as_deref().unwrap_or("srgb"){"srgb"=>ColorSpace::Srgb,"linear"=>ColorSpace::Linear,"normal"=>ColorSpace::Normal,_=>return Err("Color space must be srgb, linear or normal".into())};let bytes=fs::read(&input).map_err(|e|format!("Read texture: {e}"))?;
   let result=match direction.as_str(){"ftex-to-dds"=>ftex_to_dds(&bytes).map_err(|e|format!("FTEX decode: {e}"))?,"dds-to-ftex"=>dds_to_ftex(&bytes,color).map_err(|e|format!("DDS encode: {e}"))?,_=>return Err("Texture direction must be ftex-to-dds or dds-to-ftex".into())};
   if direction=="ftex-to-dds"{let _=ftex_info(&bytes).map_err(|e|format!("FTEX validation: {e}"))?;}else{let _=ftex_info(&result).map_err(|e|format!("Generated FTEX validation: {e}"))?;}
-  write(&output,&result)?;println!("{{\\"ok\\":true,\\"bytes\\":{}}}",result.len());return Ok(());
+  write(&output,&result)?;println!(r#"{"ok":true,"bytes":{}}"#,result.len());return Ok(());
  }
  if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native convert-model ... | convert-texture --input FILE --direction ftex-to-dds|dds-to-ftex --color-space srgb|linear|normal --out FILE".into());}
  let source_format=required(&args,"--source-format")?;let target_text=required(&args,"--target")?;let model_path=PathBuf::from(required(&args,"--model")?);let out=PathBuf::from(required(&args,"--out")?);
