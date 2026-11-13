@@ -32,3 +32,13 @@ export function auditSkinWeights(meshes:FaceMesh[],bones:FaceBone[]):WeightAudit
  return {vertices,skinnedVertices,unskinnedVertices,invalidInfluences,nonNormalizedWeights,maximumInfluences,issues};
 }
 export function normalizeSkinWeights(indices:number[],weights:number[],boneCount:number,maxInfluences=4):{indices:number[];weights:number[]}{if(indices.length!==weights.length)throw new Error("Bone index and weight arrays must have equal lengths.");if(!Number.isInteger(maxInfluences)||maxInfluences<1||maxInfluences>8)throw new Error("Maximum influences must be between 1 and 8.");const combined=new Map<number,number>();for(let i=0;i<indices.length;i++){const bone=indices[i],weight=weights[i];if(!Number.isInteger(bone)||bone<0||bone>=boneCount)throw new Error("Skin influence references an invalid bone.");if(!Number.isFinite(weight)||weight<0)throw new Error("Skin influence weight must be finite and non-negative.");if(weight>0)combined.set(bone,(combined.get(bone)??0)+weight);}const sorted=[...combined.entries()].sort((a,b)=>b[1]-a[1]||a[0]-b[0]).slice(0,maxInfluences),sum=sorted.reduce((n,x)=>n+x[1],0);if(sum<=0)return {indices:[],weights:[]};return {indices:sorted.map(x=>x[0]),weights:sorted.map(x=>x[1]/sum)};}
+
+/** Remap already-decoded skin influences using an explicit source→target bone map.
+ * Unmapped weighted bones are fatal: silently dropping them distorts the face.
+ */
+export function remapSkinWeights(indices:number[],weights:number[],sourceToTarget:ReadonlyMap<number,number>,targetBoneCount:number,maxInfluences=4):{indices:number[];weights:number[]}{
+ if(indices.length!==weights.length)throw new Error("Bone index and weight arrays must have equal lengths.");
+ const mappedIndices:number[]=[],mappedWeights:number[]=[];
+ for(let i=0;i<indices.length;i++){const source=indices[i],weight=weights[i];if(!Number.isInteger(source)||source<0)throw new Error("Source skin influence has an invalid bone index.");if(!Number.isFinite(weight)||weight<0)throw new Error("Source skin influence has an invalid weight.");if(weight===0)continue;const target=sourceToTarget.get(source);if(target===undefined)throw new Error("Cannot retarget weighted source bone "+source+": no explicit target mapping exists.");if(!Number.isInteger(target)||target<0||target>=targetBoneCount)throw new Error("Explicit bone map points outside the target skeleton.");mappedIndices.push(target);mappedWeights.push(weight);}
+ return normalizeSkinWeights(mappedIndices,mappedWeights,targetBoneCount,maxInfluences);
+}
