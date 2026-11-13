@@ -10,8 +10,8 @@ e2e("real PES 2021 to PES 2017 package conversion fixture",()=>{
   it("produces a nested face CPK for the requested PES player ID",()=>{
     const files=readdirSync(outputDirectory!).filter(name=>name.toLowerCase().endsWith(".cpk"));
     expect(files.length).toBeGreaterThan(0);
-    for(const file of files){
-      const result=verifyPes2017FaceCpk(readFileSync(path.join(outputDirectory!,file)),"79205");
+    const verifications=files.map(file=>verifyPes2017FaceCpk(readFileSync(path.join(outputDirectory!,file)),"79205"));
+    for(const result of verifications){
       expect(result.faceCpkPath.toLowerCase()).toContain("79205.cpk");
     }
     const report=JSON.parse(readFileSync(path.join(outputDirectory!,"face-forge-report.json"),"utf8"));
@@ -22,8 +22,8 @@ e2e("real PES 2021 to PES 2017 package conversion fixture",()=>{
     expect(report.sourceModels.some((name:string)=>name.toLowerCase().endsWith("fcl_hair.fmdl"))).toBe(true);
     const preservedSidecars = Array.isArray(report.preservedSidecars) ? report.preservedSidecars as string[] : [];
     for (const sidecar of preservedSidecars) {
-      const basename = path.posix.basename(sidecar.replaceAll("\\\\", "/")).toLowerCase();
-      expect(result.faceInspection.files.some(entry => path.posix.basename(entry.path).toLowerCase() === basename)).toBe(true);
+      const basename = sidecar.split(/[\\/]/).pop()!.toLowerCase();
+      expect(verifications.some(result => result.faceInspection.files.some(entry => path.posix.basename(entry.path).toLowerCase() === basename))).toBe(true);
     }
   });
 });
