@@ -156,7 +156,11 @@ function registerIpc(){
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
     const archiveBytes=await readFile(archivePath),inspection=inspectCpk(archiveBytes);
     if(!inspection.valid||inspection.fileCount===0)throw new Error("Independent CPK read-back failed for "+archiveName+": "+inspection.errors.join("; "));
-    if(!inspection.files.some(entry=>/\.(?:fmdl|model)$/i.test(entry.path)))throw new Error("CPK "+archiveName+" contains no recognizable face model asset.");
+    const foldedPaths=inspection.files.map(entry=>entry.path.replaceAll("\\\\","/").toLowerCase());
+    const hasBasename=(name:string)=>foldedPaths.some(value=>value.split("/").at(-1)===name);
+    if(!hasBasename("face.xml"))throw new Error("PES 2017 face CPK "+archiveName+" has no generated face.xml.");
+    if(!hasBasename("oral_face_high_win32.model"))throw new Error("PES 2017 face CPK "+archiveName+" has no converted face_high model.");
+    if(!hasBasename("face_high.mtl"))throw new Error("PES 2017 face CPK "+archiveName+" has no face_high material set.");
     const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
     archiveVerification.push({archive:archiveName,fileCount:inspection.fileCount,entries});
    }
