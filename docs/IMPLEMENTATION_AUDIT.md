@@ -35,7 +35,7 @@ This audit describes the implementation in the repository, not the product ambit
 ### P0 — conversion correctness and data loss
 
 1. **Whole-face package orchestration is incomplete.** The converter must treat head, neck, hair, beard, eyes, eyelids, oral/teeth/tongue, skeleton, face diff, XML/config and all referenced textures as one dependency graph. Current native conversion translates model candidates, not every semantic asset in the face.
-2. **Package sidecar semantics are incomplete.** XML, face_diff, FOX scene and unknown members need explicit parse/map/write or safe preservation. The native package path previously accepted an archive and emitted only converted model outputs, risking silent loss of unhandled members. A fail-closed guard has now been added for members other than FMDL, SKL and FTEX; this deliberately blocks packages until their sidecars have converters.
+2. **Package sidecar semantics are incomplete.** XML, face_diff, FOX scene and unknown members need explicit parse/map/write or safe preservation. The native package path previously accepted an archive and emitted only converted model outputs, risking silent loss of unhandled members. A fail-closed guard now accepts only FMDL members and same-virtual-path companion SKL members. FTEX is also rejected because the package conversion path does not yet emit and relink those textures; accepting it would silently lose appearance data. Orphan SKL members and case-insensitive duplicate paths are rejected.
 3. **Face-diff conversion is not implemented.** The v5/v6 inspector is not a target writer. Eye placement, eyelid values, jaw/oral values, facial bone offsets and ear transforms cannot be copied or reinterpreted without verified coordinate and bind-pose conventions.
 4. **Target serializers and semantic coverage are incomplete.** The upstream bridge covers supported model structures, but FACE FORGE has not demonstrated round-trip preservation for every mesh split, LOD, vertex channel, bone group, material, auxiliary face payload and morph/blendshape.
 5. **Dependency rewriting needs package-wide guarantees.** Every material sampler and model reference must resolve to exactly one output asset after conversion. Case-insensitive collisions, shared references, package-relative paths, common-folder references and texture semantic conflicts must be reported and validated.
@@ -67,7 +67,7 @@ This audit describes the implementation in the repository, not the product ambit
 
 ## Work added during this audit
 
-- Native Fox-package conversion now rejects archive members outside the explicitly handled FMDL/SKL/FTEX subset instead of silently dropping XML, face-diff, FOX scene or unknown sidecar data.
+- Native Fox-package conversion now validates the complete member set, accepts only FMDL plus correctly paired SKL members, and rejects FTEX, XML, face-diff, FOX scene and unknown sidecars instead of silently dropping them. It also rejects orphan skeletons and case-insensitive duplicate virtual paths.
 - Rig calibration audit now detects invalid parent references and cycles, and measures hierarchy coverage over mapped landmarks.
 - Synthetic regression tests cover the rig-audit cases. CI is pending for the current feature branch; no passing result is claimed here.
 
