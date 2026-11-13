@@ -6,6 +6,13 @@ Product target: Windows desktop, PES 2017 MODEL/DDS ↔ PES 2021 FMDL/FTEX
 
 This audit describes the implementation in the repository, not the product ambition. A visible screen, parser, package writer or successful binary round-trip is not evidence that the game accepts a converted face.
 
+## FACE diff handling update
+
+- Fox package conversion now accepts the explicitly recognized `face_diff.bin` sidecar; unrelated `.bin`, XML, scene and unknown members remain blocked.
+- For PES 2017 output, the native bridge validates supported FACE v4 (32/6 records) and v5/v6 (33/6 records) structure, checks record pointers/ranges/overlap and finite calibration values, then preserves the original binary bytes as Base64 inside the legacy `face.xml` `<dif>` element.
+- The generated legacy XML explicitly registers supported `face_high`, `hair_high` and `oral` model stems with their converted MTL companions. Unsupported model stems fail closed.
+- This is byte-preserving format wrapping, not a claimed v5-to-v4 rig transform. It still requires PES 2017 in-game validation for the user's package; no game-level success is claimed.
+
 ## Executive result
 
 **Release status: NOT READY.** The repository has a substantial engineering foundation and a limited native single-model conversion path. It does not yet provide a complete, fidelity-preserving, bidirectional face-folder converter. Batch and project screens are primarily intake/review workflows, not complete conversion workflows. No actual target-game validation is recorded.
