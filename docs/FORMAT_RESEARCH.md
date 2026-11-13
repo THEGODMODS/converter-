@@ -79,3 +79,21 @@ A direction may be marked conversion-ready only after all of the following are p
 - in-game PES 2017 / PES 2021 testing, including close-up, replay, eye/mouth and hair transparency checks.
 
 Until then the UI must report the specific blockers and keep conversion output disabled.
+
+
+## Native converter integration update
+
+On 2026-11-13, FACE FORGE added a native Rust bridge pinned to Unlimited Tool Works revision
+`ca4fe4a32500ffc2d932a1a669a42a6f932d571a`. The upstream project is dual-licensed MIT OR
+Apache-2.0; exact licence texts and dependency scope are recorded in
+`native/UPSTREAM_NOTICES.md`. FACE FORGE consumes the published crates as Cargo git
+dependencies and does not copy upstream source files.
+
+The upstream `model_convert` crate provides FMDL → canonical IR → PES MODEL and PES MODEL →
+canonical IR → FMDL routes, target-version skeleton conformance, material translation, and
+explicit conversion-loss findings. FACE FORGE's native CLI wraps those APIs for a single
+model pair and emits the target model plus MTL or SKL companion when produced. It does not
+yet orchestrate FPK/FPKD packages or all face dependencies; the desktop action is therefore
+labelled single-model-pair conversion, not complete face conversion. The upstream engine's
+own test fixtures and test suite are upstream evidence, not a substitute for FACE FORGE's
+real face-package and in-game acceptance tests.
