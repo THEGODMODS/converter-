@@ -1,120 +1,63 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { DragEvent } from "react";
-import { ArrowDownUp, ArrowRight, BadgeCheck, Box, CheckCircle2, ChevronDown, CircleHelp, FileArchive, FileImage, FileSearch, FolderOpen, Gauge, HardDrive, History, Layers3, Package, ScanFace, ShieldCheck, Sparkles, UploadCloud, XCircle } from "lucide-react";
+import { ArrowDownUp, ArrowRight, BadgeCheck, Box, CheckCircle2, ChevronDown, CircleHelp, FileArchive, FileImage, FileSearch, FolderOpen, Gauge, HardDrive, History, Layers3, Package, ScanFace, ShieldCheck, Sparkles, UploadCloud, XCircle, Users, Database, Trash2 } from "lucide-react";
 import type { FaceProject, TextureColorSpace } from "./types";
-
-type Direction = "pes2021-to-pes2017" | "pes2017-to-pes2021";
-type WorkMode = "single" | "batch" | "project";
-type SavedProject = { id:string; root:string; name:string; generation:string; fileCount:number; models:number; textures:number; addedAt:string };
-const formatBytes = (bytes: number) => bytes < 1024 ? bytes + " B" : bytes < 1024*1024 ? (bytes/1024).toFixed(1)+" KB" : (bytes/1024/1024).toFixed(1)+" MB";
-
-export default function App() {
-  const [direction, setDirection] = useState<Direction>("pes2021-to-pes2017");
-  const [mode,setMode]=useState<WorkMode>("single");
-  const [batch,setBatch]=useState<FaceProject[]>([]);
-  const [batchBusy,setBatchBusy]=useState(false);
-  const [savedProjects,setSavedProjects]=useState<SavedProject[]>([]);
-  const [projectMessage,setProjectMessage]=useState("");
-  const [project, setProject] = useState<FaceProject | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [dragging, setDragging] = useState(false);
-  const [textureColorSpace,setTextureColorSpace] = useState<TextureColorSpace>("SRGB");
-  const [textureBusy,setTextureBusy] = useState(false);
-  const [textureResult,setTextureResult] = useState("");
-  useEffect(()=>{try{const saved=localStorage.getItem("face-forge-project-library");if(saved)setSavedProjects(JSON.parse(saved) as SavedProject[]);}catch{setProjectMessage("Saved project library could not be read. It has not been overwritten.");}},[]);
-  useEffect(()=>{if(savedProjects.length||localStorage.getItem("face-forge-project-library")!==null)localStorage.setItem("face-forge-project-library",JSON.stringify(savedProjects));},[savedProjects]);
-  const target = direction === "pes2021-to-pes2017" ? "PES 2017" : "PES 2021";
-  const source = direction === "pes2021-to-pes2017" ? "PES 2021" : "PES 2017";
-  const canConvert = false;
-  const expectedSource = direction === "pes2021-to-pes2017" ? "pes2021" : "pes2017";
-  const sourceMatches = project?.detectedGame === expectedSource;
-
-  const inspect = useCallback(async (folder: string) => {
-    setBusy(true); setError("");
-    try { setProject(await window.faceForge.inspectFolder(folder)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Could not inspect this folder."); setProject(null); }
-    finally { setBusy(false); }
-  }, []);
-
-  const choose = async () => {
-    const folder = await window.faceForge.chooseFolder();
-    if (folder) await inspect(folder);
-  };
-  const onDrop = async (event: DragEvent) => {
-    event.preventDefault(); setDragging(false);
-    const file = event.dataTransfer.files[0];
-    if (!file) return;
-    const path = window.faceForge.getPathForDrop(file);
-    if (!path) { setError("Drop a face folder from Windows Explorer, not an individual file."); return; }
-    await inspect(path);
-  };
-  const addBatch = async () => {
-    setBatchBusy(true);setError("");
-    try{const folders=await window.faceForge.chooseFolders();const results:FaceProject[]=[];for(const folder of folders){try{results.push(await window.faceForge.inspectFolder(folder));}catch(e){setError(e instanceof Error?e.message:"A selected folder could not be inspected.");}}setBatch(current=>{const known=new Set(current.map(x=>x.root.toLowerCase()));return [...current,...results.filter(x=>!known.has(x.root.toLowerCase()))];});}
-    catch(e){setError(e instanceof Error?e.message:"Could not add batch folders.");}finally{setBatchBusy(false);}
-  };
-  const addCurrentToLibrary=()=>{if(!project)return;const entry:SavedProject={id:crypto.randomUUID(),root:project.root,name:project.root.split(/[\\/]/).filter(Boolean).pop()||"Face project",generation:project.detectedGame,fileCount:project.fileCount,models:project.models,textures:project.textures,addedAt:new Date().toISOString()};setSavedProjects(current=>[entry,...current.filter(x=>x.root.toLowerCase()!==entry.root.toLowerCase())]);setProjectMessage("Face project saved to your local library.");};
-  const inspectSaved=async(entry:SavedProject)=>{setMode("single");setDirection(entry.generation==="pes2017"?"pes2017-to-pes2021":"pes2021-to-pes2017");await inspect(entry.root);};
-  const runTextureLab = async () => {
-    setTextureBusy(true); setTextureResult("");
-    try { const result=await window.faceForge.convertTextureFile(textureColorSpace); if(result) setTextureResult("Converted "+result.format+" "+result.width+"×"+result.height+" → "+result.destination); }
-    catch(e) { setTextureResult(e instanceof Error?e.message:"Texture conversion failed."); }
-    finally { setTextureBusy(false); }
-  };
-  const directionLabel = useMemo(() => direction === "pes2021-to-pes2017" ? "NEW-GEN → CLASSIC" : "CLASSIC → NEW-GEN", [direction]);
-
-  return <div className="shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-mark"><ScanFace size={23}/></div><div><strong>THEGODMODS</strong><span>FACE FORGE</span></div></div>
-      <div className="side-label">WORKSPACE</div>
-      <button className={"nav-item "+(mode==="single"?"active":"")} onClick={()=>setMode("single")}><ScanFace size={17}/> Single face {mode==="single"&&<span className="nav-dot"/>}</button>
-      <button className={"nav-item "+(mode==="batch"?"active":"")} onClick={()=>setMode("batch")}><Layers3 size={17}/> Batch {mode==="batch"&&<span className="nav-dot"/>}</button>
-      <button className={"nav-item "+(mode==="project"?"active":"")} onClick={()=>setMode("project")}><FolderOpen size={17}/> Project library {mode==="project"&&<span className="nav-dot"/>}</button>
-      <button className="nav-item" onClick={() => setProject(null)}><History size={17}/> Recent projects</button>
-      <div className="side-label tools-label">TOOLKIT</div>
-      <div className="tool-link"><FileSearch size={16}/> Face inspector</div>
-      <button className="tool-link" onClick={runTextureLab} disabled={textureBusy}><FileImage size={16}/> Texture lab <small>{textureBusy?"WORKING":"DDS ↔ FTEX"}</small></button><select className="color-select" value={textureColorSpace} onChange={e=>setTextureColorSpace(e.target.value as TextureColorSpace)} aria-label="Texture color space"><option value="SRGB">Color / diffuse</option><option value="NORMAL">Normal map</option><option value="LINEAR">Linear data</option></select>
-      <div className="tool-link"><Box size={16}/> 3D preview <small>SOON</small></div>
-      <div className="tool-link"><Package size={16}/> CPK builder <small>SOON</small></div>
-      <div className="sidebar-bottom"><div className="free-pill"><Sparkles size={14}/> FREE FOREVER</div><div className="version">FACE FORGE · PREVIEW 0.1.0</div></div>
-    </aside>
-    <main className="main">
-      <header className="topbar"><div><div className="eyebrow">THE MODDING WORKSHOP</div><h1>{mode==="single"?"Single Face Studio":mode==="batch"?"Batch Conversion":"Face Project Library"}</h1><p>Professional face conversion tools. Two generations. No paywall. Built by KFC GODMODS.</p></div><div className="top-status"><span className="status-led"/> LOCAL WORKSPACE <ChevronDown size={14}/></div></header>
-      {textureResult && <div className="texture-toast">{textureResult}</div>}
-      <div className="mode-switch" role="tablist" aria-label="Work mode"><button className={mode==="single"?"chosen":""} onClick={()=>setMode("single")}><ScanFace size={16}/> SINGLE FACE</button><button className={mode==="batch"?"chosen":""} onClick={()=>setMode("batch")}><Layers3 size={16}/> BATCH</button><button className={mode==="project"?"chosen":""} onClick={()=>setMode("project")}><FolderOpen size={16}/> PROJECT</button></div>
-      {mode==="batch" ? <section className="batch-workspace"><div className="section-head"><div><span className="eyebrow">MULTI-FACE WORKFLOW</span><h2>Batch intake & compatibility queue</h2></div><button className="primary-btn" onClick={addBatch} disabled={batchBusy}><FolderOpen size={15}/>{batchBusy?"Scanning…":"Add face folders"}</button></div><p className="mode-description">Select multiple PES face folders. FACE FORGE inventories each project, detects its generation and reports issues independently. Conversion stays gated until the matching model adapter is validated.</p>{batch.length? <div className="batch-list">{batch.map((item,i)=><div className="batch-row" key={item.root}><span className="batch-index">{String(i+1).padStart(2,"0")}</span><div className="batch-info"><strong>{item.root.split(/[\\/]/).filter(Boolean).pop()}</strong><small>{item.detectedGame.toUpperCase()} · {item.models} MODELS · {item.textures} TEXTURES · {formatBytes(item.totalBytes)}</small></div><span className={item.detectedGame==="unknown"||item.detectedGame==="mixed"?"status-warn":"status-ok"}>{item.detectedGame==="unknown"||item.detectedGame==="mixed"?"REVIEW":"SCANNED"}</span><button className="icon-action" onClick={()=>setBatch(current=>current.filter(x=>x.root!==item.root))}><XCircle size={15}/></button></div>)}</div>:<div className="batch-empty"><Layers3 size={30}/><strong>Your batch queue is empty</strong><span>Add multiple face folders to inspect them together.</span></div>}<div className="batch-summary"><span>{batch.length} PROJECTS IN QUEUE</span><span>MODEL CONVERSION: NOT YET ENABLED</span></div></section> : mode==="project" ? <section className="batch-workspace"><div className="section-head"><div><span className="eyebrow">LOCAL DATABASE</span><h2>Your face project library</h2></div><button className="primary-btn" onClick={()=>setMode("single")}><ScanFace size={15}/> Import a face</button></div><p className="mode-description">Keep track of face folders on this PC. The library stores project locations and scan summaries; original game assets remain where you put them.</p>{projectMessage&&<div className="texture-toast">{projectMessage}</div>}{savedProjects.length?<div className="batch-list">{savedProjects.map(item=><div className="batch-row" key={item.id}><span className="batch-index"><FolderOpen size={15}/></span><div className="batch-info"><strong>{item.name}</strong><small>{item.generation.toUpperCase()} · {item.models} MODELS · {item.textures} TEXTURES · ADDED {new Date(item.addedAt).toLocaleDateString()}</small><small>{item.root}</small></div><button className="small-action" onClick={()=>void inspectSaved(item)}>INSPECT</button><button className="icon-action" onClick={()=>setSavedProjects(current=>current.filter(x=>x.id!==item.id))}><XCircle size={15}/></button></div>)}</div>:<div className="batch-empty"><FolderOpen size={30}/><strong>No saved face projects yet</strong><span>Import a face in Single Face mode and save it to your library.</span></div>}<div className="batch-summary"><span>{savedProjects.length} SAVED PROJECTS</span><span>CPK DATABASE BUILD: VALIDATION GATE</span></div></section> : <>
-      <section className="direction-card">
-        <div className="direction-head"><div><span className="eyebrow">CONVERSION ROUTE</span><h2>Choose your direction</h2></div><div className="route-tag"><ArrowDownUp size={14}/> TWO-WAY ENGINE</div></div>
-        <div className="routes">
-          <button className={direction==="pes2021-to-pes2017"?"route selected":"route"} onClick={()=>{setDirection("pes2021-to-pes2017");setProject(null)}}><div className="game-icon newer">21</div><div className="route-copy"><strong>PES 2021</strong><span>FMDL · FTEX</span></div><ArrowRight className="route-arrow" size={20}/><div className="game-icon older">17</div><div className="route-copy"><strong>PES 2017</strong><span>MODEL · DDS</span></div><div className="route-radio"/></button>
-          <button className={direction==="pes2017-to-pes2021"?"route selected":"route"} onClick={()=>{setDirection("pes2017-to-pes2021");setProject(null)}}><div className="game-icon older">17</div><div className="route-copy"><strong>PES 2017</strong><span>MODEL · DDS</span></div><ArrowRight className="route-arrow" size={20}/><div className="game-icon newer">21</div><div className="route-copy"><strong>PES 2021</strong><span>FMDL · FTEX</span></div><div className="route-radio"/></button>
-        </div>
-        <div className="route-foot"><span><BadgeCheck size={14}/> {directionLabel}</span><span>Choose direction before importing a face</span></div>
-      </section>
-      <section className="workspace-grid">
-        <div className="import-panel">
-          <div className="section-head"><div><span className="eyebrow">STEP 01 / SOURCE</span><h2>Import face project</h2></div><span className="step-number">01</span></div>
-          <div className={"dropzone "+(dragging?"dragging":"")} onDragOver={e=>{e.preventDefault();setDragging(true)}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}>
-            <div className="upload-icon"><UploadCloud size={25}/></div>
-            <h3>Drop your face folder here</h3><p>Bring your {source} face folder into the workshop</p>
-            <div className="or-line"><span/> OR <span/></div>
-            <button className="primary-btn" onClick={choose} disabled={busy}><FolderOpen size={16}/>{busy?"Scanning project…":"Browse face folder"}</button>
-            <div className="drop-hint"><ShieldCheck size={13}/> Your original files are never modified</div>
-          </div>
-          {error && <div className="error-line"><XCircle size={15}/>{error}</div>}
-          {project && <div className="project-card"><button className="save-project-btn" onClick={addCurrentToLibrary}><FolderOpen size={13}/> SAVE TO PROJECT LIBRARY</button><div className="project-title"><CheckCircle2 size={17}/><strong>Project inspected</strong><button onClick={()=>setProject(null)}><XCircle size={15}/></button></div><div className="project-path">{project.root}</div><div className="project-stats"><div><strong>{project.fileCount}</strong><span>FILES</span></div><div><strong>{project.models}</strong><span>MODELS</span></div><div><strong>{project.textures}</strong><span>TEXTURES</span></div><div><strong>{formatBytes(project.totalBytes)}</strong><span>SIZE</span></div></div><div className="detected">Detected: <b>{project.detectedGame==="pes2021"?"PES 2021":project.detectedGame==="pes2017"?"PES 2017":project.detectedGame==="mixed"?"Mixed / hybrid":"Unknown"}</b></div>{project.warnings.map((w,i)=><div className="warning-line" key={i}><CircleHelp size={13}/>{w}</div>)}</div>}
-        </div>
-        <div className="analysis-panel">
-          <div className="section-head"><div><span className="eyebrow">STEP 02 / ANALYSIS</span><h2>Conversion readiness</h2></div><span className="step-number">02</span></div>
-          {project ? <div className="project-analysis"><div className="radar"><Gauge size={26}/></div><h3>{sourceMatches ? "Source matches this route" : "Check the source format"}</h3><p>{sourceMatches ? "Detected a " + source + " project. The inventory is ready for deeper compatibility checks." : "This project was detected as " + project.detectedGame.toUpperCase() + ". The selected route expects " + source + ". Change the route or inspect the correct source folder."}</p><div className="analysis-checks"><div><FileSearch size={15}/> Binary signature scan <span>COMPLETE</span></div><div><Layers3 size={15}/> Model / material translation <span>IN DEVELOPMENT</span></div><div><FileImage size={15}/> Texture transcoding <span>IN DEVELOPMENT</span></div><div><ShieldCheck size={15}/> Target-game validation <span>NOT RUN</span></div></div><div className="file-preview">{project.files.slice(0,5).map(file=><div key={file.path}><span>{file.kind}</span><b>{file.path}</b><small>{formatBytes(file.bytes)}</small></div>)}</div></div> : <div className="analysis-empty"><div className="radar"><Gauge size={28}/></div><h3>Waiting for your face</h3><p>We'll inspect every model, texture and companion file before preparing a conversion.</p><div className="analysis-checks"><div><FileSearch size={15}/> Source format detection <span>READY</span></div><div><Layers3 size={15}/> Mesh & material analysis <span>ENGINE WIP</span></div><div><FileImage size={15}/> Texture compatibility <span>ENGINE WIP</span></div><div><ShieldCheck size={15}/> Output validation <span>PLANNED</span></div></div></div>}
-          <div className="convert-footer"><div><span className="eyebrow">STEP 03 / CONVERT</span><p>{project?(sourceMatches?"Inventory complete · conversion engine still under development":"Source generation does not match the selected route"):"Import a face project to begin"}</p></div><button className="convert-btn" disabled={!canConvert}><Sparkles size={16}/> Convert to {target}</button></div>
-        </div>
-      </section>
-      </>}
-      <section className="face-integrity-strip"><div><BadgeCheck size={15}/><span><b>Face anatomy preservation</b><small>Head · neck · eyes · eyelids · mouth rig validation</small></span></div><div><Sparkles size={15}/><span><b>Hair & beard fidelity</b><small>Colour, alpha edges and facial movement checks</small></span></div><div><FileImage size={15}/><span><b>Skin & normal maps</b><small>Texture-space and shading compatibility checks</small></span></div></section>
-      <section className="bottom-strip"><div><HardDrive size={16}/><span><b>Local-first processing</b><small>Your face files stay on your PC</small></span></div><div><ShieldCheck size={16}/><span><b>Non-destructive workflow</b><small>Original source is preserved</small></span></div><div><FileArchive size={16}/><span><b>CPK export</b><small>Validated game-ready packaging · planned</small></span></div></section>
-      <footer><span>THEGODMODS FACE FORGE</span><span>KFC GODMODS · BUILT FOR THE COMMUNITY · FREE FOREVER</span></footer>
-    </main>
-  </div>;
+type Direction="pes2021-to-pes2017"|"pes2017-to-pes2021";type WorkMode="single"|"batch"|"project";
+const formatBytes=(bytes:number)=>bytes<1024?bytes+" B":bytes<1024*1024?(bytes/1024).toFixed(1)+" KB":(bytes/1024/1024).toFixed(1)+" MB";
+const gameName=(game:FaceProject["detectedGame"])=>game==="pes2021"?"PES 2021":game==="pes2017"?"PES 2017":game==="mixed"?"Mixed / hybrid":"Unknown";
+export default function App(){
+ const [mode,setMode]=useState<WorkMode>("single"),[direction,setDirection]=useState<Direction>("pes2021-to-pes2017");
+ const [project,setProject]=useState<FaceProject|null>(null),[batch,setBatch]=useState<FaceProject[]>([]),[library,setLibrary]=useState<FaceProject[]>([]);
+ const [busy,setBusy]=useState(false),[error,setError]=useState(""),[dragging,setDragging]=useState(false);
+ const [textureColorSpace,setTextureColorSpace]=useState<TextureColorSpace>("SRGB"),[textureBusy,setTextureBusy]=useState(false),[textureResult,setTextureResult]=useState("");
+ const source=direction==="pes2021-to-pes2017"?"PES 2021":"PES 2017",target=direction==="pes2021-to-pes2017"?"PES 2017":"PES 2021",expected=direction==="pes2021-to-pes2017"?"pes2021":"pes2017";
+ const inspect=useCallback(async(folder:string)=>window.faceForge.inspectFolder(folder),[]);
+ const chooseSingle=async()=>{setBusy(true);setError("");try{const folder=await window.faceForge.chooseFolder();if(folder)setProject(await inspect(folder));}catch(e){setError(e instanceof Error?e.message:"Could not inspect folder.");}finally{setBusy(false);}};
+ const chooseMany=async(destination:"batch"|"project")=>{setBusy(true);setError("");try{const folders=await window.faceForge.chooseFolders();if(!folders.length)return;const scanned:FaceProject[]=[];for(const folder of folders){try{scanned.push(await inspect(folder));}catch(e){setError(e instanceof Error?e.message:"A folder could not be scanned.");}}if(destination==="batch")setBatch(old=>[...old,...scanned]);else setLibrary(old=>{const seen=new Set(old.map(x=>x.root.toLowerCase()));return [...old,...scanned.filter(x=>!seen.has(x.root.toLowerCase()))];});}catch(e){setError(e instanceof Error?e.message:"Could not scan selected folders.");}finally{setBusy(false);}};
+ const onDrop=async(event:DragEvent)=>{event.preventDefault();setDragging(false);const file=event.dataTransfer.files[0];if(!file)return;const path=window.faceForge.getPathForDrop(file);if(!path){setError("Drop a face folder from Windows Explorer, not an individual file.");return;}setBusy(true);try{const scanned=await inspect(path);if(mode==="single")setProject(scanned);else if(mode==="batch")setBatch(old=>[...old,scanned]);else setLibrary(old=>old.some(x=>x.root===scanned.root)?old:[...old,scanned]);}catch(e){setError(e instanceof Error?e.message:"Could not inspect this folder.");}finally{setBusy(false);}};
+ const runTextureLab=async()=>{setTextureBusy(true);setTextureResult("");try{const result=await window.faceForge.convertTextureFile(textureColorSpace);if(result)setTextureResult("Converted "+result.format+" "+result.width+"×"+result.height+" → "+result.destination);}catch(e){setTextureResult(e instanceof Error?e.message:"Texture conversion failed.");}finally{setTextureBusy(false);}};
+ const directionLabel=useMemo(()=>direction==="pes2021-to-pes2017"?"NEW-GEN → CLASSIC":"CLASSIC → NEW-GEN",[direction]),activeCount=mode==="single"?(project?1:0):mode==="batch"?batch.length:library.length;
+ return <div className="shell"><aside className="sidebar">
+  <div className="brand"><div className="brand-mark"><img src="./assets/face-forge-mark.svg" alt=""/></div><div><strong>KFC GODMODS</strong><span>FACE FORGE</span></div></div>
+  <div className="side-label">WORK MODES</div>
+  <button className={"nav-item "+(mode==="single"?"active":"")} onClick={()=>setMode("single")}><ScanFace size={17}/> Single face {mode==="single"&&<span className="nav-dot"/>}</button>
+  <button className={"nav-item "+(mode==="batch"?"active":"")} onClick={()=>setMode("batch")}><Layers3 size={17}/> Batch converter {mode==="batch"&&<span className="nav-dot"/>}</button>
+  <button className={"nav-item "+(mode==="project"?"active":"")} onClick={()=>setMode("project")}><Database size={17}/> Project database {mode==="project"&&<span className="nav-dot"/>}</button>
+  <div className="side-label tools-label">TOOLKIT</div>
+  <button className="tool-link" onClick={runTextureLab} disabled={textureBusy}><FileImage size={16}/> Texture lab <small>{textureBusy?"WORKING":"DDS ↔ FTEX"}</small></button>
+  <select className="color-select" value={textureColorSpace} onChange={e=>setTextureColorSpace(e.target.value as TextureColorSpace)} aria-label="Texture color space"><option value="SRGB">Color / diffuse</option><option value="NORMAL">Normal map</option><option value="LINEAR">Linear data</option></select>
+  <div className="tool-link"><Box size={16}/> 3D preview <small>MODEL ADAPTER WIP</small></div><div className="tool-link"><Package size={16}/> CPK builder <small>VALIDATION GATED</small></div>
+  <div className="sidebar-bottom"><div className="free-pill"><Sparkles size={14}/> FREE FOREVER</div><div className="version">KFC GODMODS · FACE FORGE 0.2.0</div></div>
+ </aside><main className="main">
+  <header className="topbar"><div><div className="eyebrow">KFC GODMODS PRESENTS</div><h1>{mode==="single"?"Single Face Studio":mode==="batch"?"Batch Conversion":"Face Project Database"}</h1><p>{mode==="single"?"Inspect one face with detailed conversion diagnostics.":mode==="batch"?"Queue multiple face folders and review compatibility before conversion.":"Build and maintain a collection of face projects."}</p></div><div className="top-status"><span className="status-led"/> LOCAL WORKSPACE <ChevronDown size={14}/></div></header>
+  {textureResult&&<div className="texture-toast">{textureResult}</div>}
+  <section className="mode-banner"><div className="mode-copy"><span className="eyebrow">SELECT YOUR WORKFLOW</span><div className="mode-cards">
+   <button className={"mode-card "+(mode==="single"?"chosen":"")} onClick={()=>setMode("single")}><ScanFace size={21}/><b>SINGLE FACE</b><small>Inspect one face</small></button>
+   <button className={"mode-card "+(mode==="batch"?"chosen":"")} onClick={()=>setMode("batch")}><Users size={21}/><b>BATCH</b><small>Queue many faces</small></button>
+   <button className={"mode-card "+(mode==="project"?"chosen":"")} onClick={()=>setMode("project")}><Database size={21}/><b>PROJECT</b><small>Manage a face library</small></button>
+  </div></div><div className="mode-count"><strong>{activeCount.toString().padStart(2,"0")}</strong><span>{mode==="single"?"FACE LOADED":mode==="batch"?"IN QUEUE":"IN DATABASE"}</span></div></section>
+  <section className="direction-card"><div className="direction-head"><div><span className="eyebrow">CONVERSION ROUTE</span><h2>Choose your direction</h2></div><div className="route-tag"><ArrowDownUp size={14}/> BIDIRECTIONAL ENGINE</div></div>
+   <div className="routes"><button className={direction==="pes2021-to-pes2017"?"route selected":"route"} onClick={()=>{setDirection("pes2021-to-pes2017");setProject(null)}}><div className="game-icon newer">21</div><div className="route-copy"><strong>PES 2021</strong><span>FMDL · FTEX</span></div><ArrowRight className="route-arrow" size={20}/><div className="game-icon older">17</div><div className="route-copy"><strong>PES 2017</strong><span>MODEL · DDS</span></div><div className="route-radio"/></button>
+   <button className={direction==="pes2017-to-pes2021"?"route selected":"route"} onClick={()=>{setDirection("pes2017-to-pes2021");setProject(null)}}><div className="game-icon older">17</div><div className="route-copy"><strong>PES 2017</strong><span>MODEL · DDS</span></div><ArrowRight className="route-arrow" size={20}/><div className="game-icon newer">21</div><div className="route-copy"><strong>PES 2021</strong><span>FMDL · FTEX</span></div><div className="route-radio"/></button></div><div className="route-foot"><span><BadgeCheck size={14}/> {directionLabel}</span><span>Both directions are first-class targets</span></div>
+  </section>
+  <section className="workspace-grid"><div className="import-panel"><div className="section-head"><div><span className="eyebrow">STEP 01 / SOURCE</span><h2>{mode==="single"?"Import one face":mode==="batch"?"Add face folders":"Add folders to database"}</h2></div><span className="step-number">01</span></div>
+   <div className={"dropzone "+(dragging?"dragging":"")} onDragOver={e=>{e.preventDefault();setDragging(true)}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}><div className="upload-icon"><UploadCloud size={25}/></div><h3>{mode==="single"?"Drop your face folder here":mode==="batch"?"Drop a face folder to queue":"Drop a face folder to add it"}</h3><p>Supported source: {source} face assets</p><div className="or-line"><span/> OR <span/></div><button className="primary-btn" onClick={mode==="single"?chooseSingle:()=>chooseMany(mode)} disabled={busy}><FolderOpen size={16}/>{busy?"Scanning…":mode==="single"?"Browse face folder":"Select face folders"}</button><div className="drop-hint"><ShieldCheck size={13}/> Original files are never modified</div></div>
+   {error&&<div className="error-line"><XCircle size={15}/>{error}</div>}
+   {mode==="single"&&project&&<ProjectSummary project={project} source={source} expected={expected}/>}
+   {mode==="batch"&&<QueueList items={batch} expected={expected} onRemove={root=>setBatch(old=>old.filter(x=>x.root!==root))} empty="Your conversion queue is empty."/>}
+   {mode==="project"&&<QueueList items={library} expected={expected} onRemove={root=>setLibrary(old=>old.filter(x=>x.root!==root))} empty="Your project database is empty. Add face folders to start."/>}
+  </div><div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">STEP 02 / QUALITY CONTROL</span><h2>{mode==="single"?"Face analysis":mode==="batch"?"Queue analysis":"Database overview"}</h2></div><span className="step-number">02</span></div>
+   {mode==="single"&&project?<div className="project-analysis"><div className="radar"><Gauge size={26}/></div><h3>{project.detectedGame===expected?"Source matches this route":"Check the source format"}</h3><p>{gameName(project.detectedGame)} detected. Binary signatures and file hashes have been scanned.</p><AnalysisChecks project={project}/></div>
+   :mode==="batch"&&batch.length?<div className="batch-summary"><SummaryGrid items={batch} expected={expected}/><p>Each queued face is inventoried independently. Conversion remains locked until the model adapter and validation gates pass.</p></div>
+   :mode==="project"&&library.length?<div className="batch-summary"><SummaryGrid items={library} expected={expected}/><p>Projects are held in this session. Persistent project manifests and validated CPK assembly are next milestones.</p></div>
+   :<div className="analysis-empty"><div className="radar"><Gauge size={28}/></div><h3>{mode==="single"?"Waiting for your face":mode==="batch"?"Queue is ready":"Build your face database"}</h3><p>{mode==="single"?"Import a face to inspect its files and compatibility.":mode==="batch"?"Add multiple folders to inspect their source generation and assets.":"Add face folders to build a working collection."}</p><div className="analysis-checks"><div><FileSearch size={15}/> Binary format inspection <span>READY</span></div><div><Layers3 size={15}/> Geometry / rig translation <span>IN DEVELOPMENT</span></div><div><FileImage size={15}/> Texture conversion <span>PARTIAL</span></div><div><ShieldCheck size={15}/> Target-game validation <span>REQUIRED</span></div></div></div>}
+   <div className="convert-footer"><div><span className="eyebrow">STEP 03 / OUTPUT</span><p>{mode==="single"?"3D preview and conversion unlock after model adapters pass.":mode==="batch"?"Batch execution will use the same validated single-face pipeline.":"CPK export unlocks when all project faces pass target validation."}</p></div><button className="convert-btn" disabled><Sparkles size={16}/>{mode==="single"?"Convert face":mode==="batch"?"Convert queue":"Build project CPK"}</button></div>
+  </div></section>
+  <section className="bottom-strip"><div><HardDrive size={16}/><span><b>Local-first processing</b><small>Face files stay on your PC</small></span></div><div><ShieldCheck size={16}/><span><b>Non-destructive workflow</b><small>Original source is preserved</small></span></div><div><FileArchive size={16}/><span><b>CPK packaging</b><small>Release-gated until validated</small></span></div></section>
+  <footer><span>KFC GODMODS · FACE FORGE</span><span>BUILT FOR THE COMMUNITY. FREE FOR EVERYONE.</span></footer>
+ </main></div>;
 }
+function ProjectSummary({project,source,expected}:{project:FaceProject;source:string;expected:string}){return <div className="project-card"><div className="project-title"><CheckCircle2 size={17}/><strong>Project inspected</strong></div><div className="project-path">{project.root}</div><div className="project-stats"><div><strong>{project.fileCount}</strong><span>FILES</span></div><div><strong>{project.models}</strong><span>MODELS</span></div><div><strong>{project.textures}</strong><span>TEXTURES</span></div><div><strong>{formatBytes(project.totalBytes)}</strong><span>SIZE</span></div></div><div className="detected">Detected: <b>{gameName(project.detectedGame)}</b> · Route: <b>{project.detectedGame===expected?source+" source":"Mismatch"}</b></div>{project.warnings.slice(0,4).map((w,i)=><div className="warning-line" key={i}><CircleHelp size={13}/>{w}</div>)}</div>}
+function QueueList({items,expected,onRemove,empty}:{items:FaceProject[];expected:string;onRemove:(root:string)=>void;empty:string}){return <div className="queue-list">{items.length?items.map((item,i)=><div className="queue-row" key={item.root}><span className="queue-index">{String(i+1).padStart(2,"0")}</span><span className="queue-copy"><b>{item.root.split(/[\\/]/).pop()}</b><small>{gameName(item.detectedGame)} · {item.models} models · {item.textures} textures</small></span><span className={item.detectedGame===expected?"queue-ok":"queue-warn"}>{item.detectedGame===expected?"MATCH":"CHECK"}</span><button onClick={()=>onRemove(item.root)} aria-label="Remove face"><Trash2 size={14}/></button></div>):<div className="empty-list">{empty}</div>}</div>}
+function SummaryGrid({items,expected}:{items:FaceProject[];expected:string}){return <div className="summary-grid"><div><strong>{items.length}</strong><small>FACES</small></div><div><strong>{items.reduce((n,p)=>n+p.models,0)}</strong><small>MODELS</small></div><div><strong>{items.reduce((n,p)=>n+p.textures,0)}</strong><small>TEXTURES</small></div><div><strong>{items.filter(p=>p.detectedGame===expected).length}</strong><small>ROUTE MATCHES</small></div></div>}
+function AnalysisChecks({project}:{project:FaceProject}){return <div className="analysis-checks"><div><FileSearch size={15}/> Signature and hash scan <span>COMPLETE</span></div><div><Layers3 size={15}/> Model / rig translation <span>WIP</span></div><div><FileImage size={15}/> Texture validation <span>{project.textures?"DETECTED":"MISSING"}</span></div><div><ShieldCheck size={15}/> Target-game validation <span>NOT RUN</span></div></div>}
