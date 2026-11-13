@@ -623,7 +623,7 @@ fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
     // Keep the real game-facing ID separate from the Team Compiler's
     // temporary team/roster identity.
     if target_player_id.is_empty() || target_player_id.len() > 6 || !target_player_id.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err("Enter the player's numeric PES 2017 ID (up to six digits).".into());
+        return Err("Enter the numeric player ID belonging to this face (up to six digits).".into());
     }
     if target_player_id.bytes().all(|byte| byte == b'0') {
         return Err("The player ID cannot be zero.".into());
