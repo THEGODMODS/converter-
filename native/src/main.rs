@@ -160,17 +160,15 @@ fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate supported FACE payload structure without rewriting its versioned records.
-/// PES 2021 retains the legacy v4 eye path, and the pinned Team Compiler transports
-/// v5/v6 payloads into pre-Fox XML. This is byte-preserving transport, not rig retargeting.
+/// Validate the FACE payload's structure, not a guessed generation-specific version map.
+/// The pinned Team Compiler's face-diff reader checks the FACE magic and count-derived length,
+/// then carries the payload into the pre-Fox <dif> unchanged. FACE FORGE follows that contract:
+/// it does not invent a bone remap or reject a structurally valid payload solely by version.
+/// This is byte-preserving transport, not proof that every payload renders identically in-game.
 fn validate_face_diff_generation(bytes: &[u8], target: u16) -> Result<(), String> {
     validate_face_diff_payload(bytes)?;
-    let version = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
     match target {
-        2017 if version == 4 => Ok(()),
-        2021 if version == 4 || version == 5 || version == 6 => Ok(()),
-        2017 => Err(format!("PES 2017 requires FACE diff v4; source v{version} cannot be copied safely.")),
-        2021 => Err(format!("PES 2021 supports FACE diff v4/v5/v6; source v{version} is not supported.")),
+        2017 | 2021 => Ok(()),
         _ => Err(format!("Unsupported target PES generation: {target}.")),
     }
 }
@@ -1017,16 +1015,16 @@ mod face_diff_xml_tests {
     }
 
     #[test]
-    fn keeps_legacy_face_diff_v4_usable_in_pes_2021_but_fails_closed_for_pes_2017() {
+    fn preserves_structurally_valid_v4_v5_and_v6_payloads_for_both_target_generations() {
         let v4 = v4_fixture();
         let v5 = v5_fixture();
         let mut v6 = v5.clone();
         v6[4..8].copy_from_slice(&6u32.to_le_bytes());
-        assert!(validate_face_diff_generation(&v4, 2017).is_ok());
-        assert!(validate_face_diff_generation(&v4, 2021).is_ok());        assert!(validate_face_diff_generation(&v5, 2017).is_err());
-        assert!(validate_face_diff_generation(&v5, 2021).is_ok());
-        assert!(validate_face_diff_generation(&v6, 2017).is_err());
-        assert!(validate_face_diff_generation(&v6, 2021).is_ok());
+
+        for payload in [&v4, &v5, &v6] {
+            assert!(validate_face_diff_generation(payload, 2017).is_ok());
+            assert!(validate_face_diff_generation(payload, 2021).is_ok());
+        }
         assert!(validate_face_diff_generation(&v4, 2020).is_err());
     }
 
