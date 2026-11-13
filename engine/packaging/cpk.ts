@@ -47,6 +47,22 @@ export function buildCpk(files:CpkInputFile[]):Buffer{
 }
 
 type ParsedUtf={columns:Array<{name:string;type:number;storage:number;constant?:string|number|bigint|null}>;rows:Array<Record<string,string|number|bigint|null>>};
+function readUtfValue(plain:Buffer,type:number,position:number,stringsOffset:number):{value:string|number|bigint|null;bytes:number}{
+ switch(type){
+  case 0:return {value:plain.readUInt8(position),bytes:1};
+  case 1:return {value:plain.readInt8(position),bytes:1};
+  case 2:return {value:plain.readUInt16BE(position),bytes:2};
+  case 3:return {value:plain.readInt16BE(position),bytes:2};
+  case 4:return {value:plain.readUInt32BE(position),bytes:4};
+  case 5:return {value:plain.readInt32BE(position),bytes:4};
+  case 6:return {value:plain.readBigUInt64BE(position),bytes:8};
+  case 7:return {value:plain.readBigInt64BE(position),bytes:8};
+  case 8:return {value:plain.readFloatBE(position),bytes:4};
+  case 10:{const relative=plain.readUInt32BE(position),start=stringsOffset+relative;if(start<stringsOffset||start>=plain.length)throw new Error("UTF string pointer is outside its string table.");let finish=start;while(finish<plain.length&&plain[finish]!==0)finish++;if(finish===plain.length)throw new Error("Unterminated UTF string.");return {value:plain.toString("utf8",start,finish),bytes:4};}
+  case 11:return {value:null,bytes:8};
+  default:throw new Error("Unsupported UTF column type: "+type+".");
+ }
+}
 function readUtfTable(file:Buffer,offset:number,expectedName:string):ParsedUtf{
  if(offset<0||offset+16>file.length)throw new Error("CPK UTF table header is outside the archive.");
  const magic=file.toString("ascii",offset,offset+4),length=Number(file.readBigUInt64LE(offset+8));
@@ -55,16 +71,24 @@ function readUtfTable(file:Buffer,offset:number,expectedName:string):ParsedUtf{
  if(plain.toString("ascii",0,4)!=="@UTF"||plain.readUInt32BE(4)+8!==length)throw new Error("Invalid UTF table body.");
  const rowsOffset=plain.readUInt32BE(8)+8,stringsOffset=plain.readUInt32BE(12)+8,dataOffset=plain.readUInt32BE(16)+8,columnsCount=plain.readUInt16BE(24),rowLength=plain.readUInt16BE(26),rowCount=plain.readUInt32BE(28);
  if(columnsCount>256||rowCount>MAX_FILES||rowsOffset<32||stringsOffset>plain.length||dataOffset>plain.length||rowsOffset+rowCount*rowLength>plain.length)throw new Error("UTF table offsets or counts are invalid.");
- const readString=(relative:number)=>{const start=stringsOffset+relative;if(start<stringsOffset||start>=plain.length)throw new Error("UTF string pointer is outside its string table.");let end=start;while(end<plain.length&&plain[end]!==0)end++;if(end===plain.length)throw new Error("Unterminated UTF string.");return plain.toString("utf8",start,end);};
+ const readString=(relative:number)=>{const start=stringsOffset+relative;if(start<stringsOffset||start>=plain.length)throw new Error("UTF string pointer is outside its string table.");let finish=start;while(finish<plain.length&&plain[finish]!==0)finish++;if(finish===plain.length)throw new Error("Unterminated UTF string.");return plain.toString("utf8",start,finish);};
  const columns:Array<{name:string;type:number;storage:number;constant?:string|number|bigint|null}>=[];
  let descriptor=32;
- for(let i=0;i<columnsCount;i++){if(descriptor+5>plain.length)throw new Error("Truncated UTF column descriptor.");const flags=plain.readUInt8(descriptor),type=flags&15,storage=flags>>4,name=readString(plain.readUInt32BE(descriptor+1));descriptor+=5;let constant:string|number|bigint|null|undefined;
-  if(storage===3){if(type===10){constant=readString(plain.readUInt32BE(descriptor));descriptor+=4;}else if(type===4){constant=plain.readUInt32BE(descriptor);descriptor+=4;}else if(type===6){constant=plain.readBigUInt64BE(descriptor);descriptor+=8;}else throw new Error("Unsupported constant UTF column type.");}
-  else if(storage!==5&&storage!==1)throw new Error("Unsupported UTF storage type.");
+ for(let i=0;i<columnsCount;i++){
+  if(descriptor+5>plain.length)throw new Error("Truncated UTF column descriptor.");
+  const flags=plain.readUInt8(descriptor),type=flags&15,storage=flags>>4,name=readString(plain.readUInt32BE(descriptor+1));descriptor+=5;
+  let constant:string|number|bigint|null|undefined;
+  if(storage===3){const decoded=readUtfValue(plain,type,descriptor,stringsOffset);constant=decoded.value;descriptor+=decoded.bytes;}
+  else if(storage!==0&&storage!==1&&storage!==5)throw new Error("Unsupported UTF storage type: "+storage+".");
   columns.push({name,type,storage,constant});
  }
  const rows:Array<Record<string,string|number|bigint|null>>=[];
- for(let r=0;r<rowCount;r++){let p=rowsOffset+r*rowLength;const row:Record<string,string|number|bigint|null>={};for(const col of columns){let value:string|number|bigint|null=null;if(col.storage===3)value=col.constant??null;else if(col.storage===5){if(col.type===10){value=readString(plain.readUInt32BE(p));p+=4;}else if(col.type===4){value=plain.readUInt32BE(p);p+=4;}else if(col.type===6){value=plain.readBigUInt64BE(p);p+=8;}else throw new Error("Unsupported variable UTF column type.");}row[col.name]=value;}if(p>rowsOffset+(r+1)*rowLength)throw new Error("UTF row exceeds its declared length.");rows.push(row);}
+ for(let r=0;r<rowCount;r++){
+  let p=rowsOffset+r*rowLength;const row:Record<string,string|number|bigint|null>={};
+  for(const col of columns){let value:string|number|bigint|null=null;if(col.storage===3)value=col.constant??null;else if(col.storage===5){const decoded=readUtfValue(plain,col.type,p,stringsOffset);value=decoded.value;p+=decoded.bytes;}row[col.name]=value;}
+  if(p>rowsOffset+(r+1)*rowLength)throw new Error("UTF row exceeds its declared length.");
+  rows.push(row);
+ }
  return {columns,rows};
 }
 export type CpkInspection={valid:boolean;fileCount:number;files:Array<{path:string;size:number;offset:number}>;errors:string[]};
