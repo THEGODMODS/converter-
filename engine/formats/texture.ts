@@ -12,7 +12,7 @@ const formats:Record<number,{name:string;block:number;bytes:number;dxgi?:number;
  13:{name:"RGBA32F",block:1,bytes:16,dxgi:2},14:{name:"R10G10B10A2",block:1,bytes:4,dxgi:24},
  15:{name:"R11G11B10F",block:1,bytes:4,dxgi:26}
 };
-const dxgiToFtex=new Map<number,number>(Object.entries(formats).filter(([,v])=>v.dxgi!==undefined).map(([k,v])=>[v.dxgi!,Number(k)]));
+const dxgiToFtex=new Map<number,number>(Object.entries(formats).filter(([,v])=>v.dxgi!==undefined).map(([k,v])=>[v.dxgi!,Number(k)] as [number,number]));\nfor(const [dxgi,id] of [[72,2],[75,3],[78,4],[99,11]] as const)dxgiToFtex.set(dxgi,id);
 function mipSize(format:number,width:number,height:number,depth:number,mip:number):number{
  const f=formats[format];if(!f)throw new TextureFormatError("Unsupported FTEX pixel format "+format+".");
  const w=Math.max(width>>mip,1),h=Math.max(height>>mip,1),d=Math.max(depth>>mip,1);
