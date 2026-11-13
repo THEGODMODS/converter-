@@ -31,13 +31,28 @@
 - [ ] Separate tested adapters for each direction.
 - [ ] Round-trip and reference-scene regression tests.
 
-## Phase 4 — preview and packaging
-- [ ] Embedded 3D viewer with texture/material inspection.
-- [x] Initial deterministic CPK writer and structural TOC/payload validator (needs independent tool and game validation).
-- [ ] Export profiles for both target games.
-- [ ] Optional user-configured external tool adapters.
+## Phase 4 — preview, packaging and installation
+- [ ] Embedded 3D viewer with texture/material inspection and source/target comparison.
+- [x] Single Face, Batch and Project work-mode UI with local folder intake and review queues.
+- [x] Original KFC GODMODS brand artwork and Windows icon-generation pipeline.
+- [x] Initial deterministic CPK writer and structural TOC/payload validator (not yet independently certified).
+- [ ] Export profiles for both target games and face-ID/path validation.
+- [ ] CPK validation against independent CRI tooling and actual PES 2017.
+- [ ] Game install wizard: detect PES 2017 root and Download folder; preview all file operations.
+- [ ] DpFileList integration through a verified supported generator/tool adapter.
+- [ ] Automatic timestamped backups of replaced CPKs and DpFileList; restore/rollback workflow.
+- [ ] Optional user-configured external tool adapters; never bundle tools without licence review.
 
-## Phase 5 — release quality
+## Phase 5 — premium face fidelity
+- [ ] Head/neck alignment and seam QA.
+- [ ] Eyes, eyelids, oral mesh, jaw and facial-animation compatibility.
+- [ ] Hair alpha, normals, UVs, LOD/replay sharpness and colour-semantic preservation.
+- [ ] Beard mesh and jaw-weight compatibility.
+- [ ] Skin diffuse/alpha, normal and specular/roughness semantic mapping.
+- [ ] Skeleton retargeting, bone weights, facial morph/blendshape and auxiliary face data.
+- [ ] Animation regression fixtures and actual in-game close-up/replay testing.
+
+## Phase 6 — release quality
 - [ ] Batch queue, resume/cancel, logs and conversion history.
 - [ ] Windows installer, portable build, checksums and signed release metadata.
 - [ ] Test against legally obtained sample assets and real target installations.
