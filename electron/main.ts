@@ -27,6 +27,9 @@ function registerIpc(){
   if(typeof folder!=="string"||!path.isAbsolute(folder)||typeof relativePath!=="string"||relativePath.length>2048)throw new Error("Invalid preview source.");
   const root=path.resolve(folder),source=path.resolve(root,relativePath),prefix=root.endsWith(path.sep)?root:root+path.sep;
   if(!source.startsWith(prefix))throw new Error("Preview path escapes the selected face folder.");
+  const rootStat=await fs.promises.lstat(root);if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The selected face folder is no longer a safe directory.");
+  const realRoot=await fs.promises.realpath(root),realSource=await fs.promises.realpath(source),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+  if(!realSource.startsWith(realPrefix))throw new Error("Preview source resolves outside the selected face folder.");
   const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview source is not a safe supported file.");
   const data=await readFile(source),extension=path.extname(source).toLowerCase();
   let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],warnings:string[]=[];
