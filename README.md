@@ -1,6 +1,6 @@
 # THEGODMODS FACE FORGE
 
-Free, bidirectional PES face conversion studio.
+Free, bidirectional PES face conversion studio by KFC GODMODS.
 
 **Targets:** PES 2017 (MODEL/DDS) ↔ PES 2021 (FMDL/FTEX).
 
@@ -13,6 +13,21 @@ Free, bidirectional PES face conversion studio.
 - Detect real source formats from content and structure, not filename extensions alone.
 - Report partial support honestly and fail closed on unsupported assets.
 - Respect upstream licences and credits; do not bundle proprietary game assets or paid converter code.
+
+## Current implementation status
+
+The initial desktop shell, local face-folder inventory, binary header inspection, PES 2017 MODEL section-container parser/writer (including ESYS compression), PES 2021 FMDL block-container parser/writer (preserving unknown blocks), FTEX ↔ DDS conversion for a supported format subset, FACE diff eye/oral placement inspection, single/batch/project workspaces, original KFC GODMODS branding and Windows icon pipeline, canonical face-scene validation contract, and initial CPK writer/validator are committed on the development branch.
+
+**The complete face conversion is not ready yet.** We can now decode initial geometry in both source generations and review it in a static 3D viewport, but we do not yet have complete bidirectional target writers, PES 2017 bone-group/material linkage, face animation/morph transfer, textured preview, or in-game verification. Conversion buttons remain disabled. The CPK writer is an initial implementation and is not certified by independent CPK readers or either game.
+
+## Product modes
+- **Single Face:** inspect one face project and review conversion readiness.
+- **Batch:** queue multiple face folders for independent inspection.
+- **Project:** maintain a local face collection and prepare a future combined CPK build.
+
+The current modes provide intake and review workflows; actual face conversion, 3D preview, persistent project database, batch execution and game installation are not yet complete.
+
+See the [face fidelity specification](docs/FACE_FIDELITY_SPEC.md) for the head/neck, eyes/eyelids, mouth, hair, beard, skin, rig, CPK and safe installation acceptance requirements.
 
 ## Architecture
 - `app/`: React desktop UI.
@@ -32,7 +47,7 @@ Free, bidirectional PES face conversion studio.
 8. Preview supported assets and package to CPK only after validation.
 
 ## Development
-Requires Node.js 20+ and npm.
+Requires Node.js 24+ and npm.
 
 ```bash
 npm install

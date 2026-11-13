@@ -1,0 +1,6 @@
+import {describe,expect,it} from "vitest";
+import {parseFmdlContainer,writeFmdlContainer} from "../engine/formats/fmdl-container";
+describe("FMDL block container",()=>{
+ it("round-trips known and unknown blocks without discarding unknown data",()=>{const source={version:0x4001eb85,section0Bitmap:0n,section1Bitmap:0n,section0Blocks:[{id:12,entryCount:1,entrySize:8,data:Buffer.from("12345678")},{id:42,entryCount:1,data:Buffer.from("unknown-block-42")}],section1Blocks:[{id:2,data:Buffer.from([1,2,3,4])},{id:3,data:Buffer.from("face-extension")}],warnings:[]};const encoded=writeFmdlContainer(source),parsed=parseFmdlContainer(encoded),again=writeFmdlContainer(parsed);expect(parsed.section0Blocks.find(x=>x.id===42)?.data).toEqual(Buffer.from("unknown-block-42"));expect(parsed.section1Blocks.find(x=>x.id===3)?.data).toEqual(Buffer.from("face-extension"));expect(again).toEqual(encoded);});
+ it("rejects duplicate segment block IDs",()=>{expect(()=>writeFmdlContainer({version:0x4001eb85,section0Bitmap:0n,section1Bitmap:0n,section0Blocks:[{id:12,entryCount:1,entrySize:8,data:Buffer.alloc(8)},{id:12,entryCount:1,entrySize:8,data:Buffer.alloc(8)}],section1Blocks:[],warnings:[]})).toThrow(/duplicate/i);});
+});

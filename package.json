@@ -1,42 +1,63 @@
 {
   "name": "thegodmods-face-forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Free bidirectional PES 2017 and PES 2021 face conversion studio",
-  "main": "dist-electron/main.js",
+  "description": "Free bidirectional PES face conversion studio by KFC GODMODS",
+  "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && electron .\"",
-    "build": "tsc --noEmit && vite build && tsc -p electron/tsconfig.json",
+    "build": "tsc --noEmit && vite build && npm run build:electron",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
-    "dist:win": "npm run build && electron-builder --win nsis"
+    "dist:win": "npm run build && npm run build:icon && electron-builder --win nsis --publish never",
+    "predev": "npm run build:electron",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:icon": "node scripts/build-icon.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "three": "^0.180.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
     "concurrently": "^9.1.0",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.5",
-    "vitest": "^2.1.8",
-    "wait-on": "^8.0.1"
+    "electron": "45.3.1",
+    "electron-builder": "26.18.1",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.0",
+    "wait-on": "^8.0.1",
+    "sharp": "^0.35.5",
+    "png-to-ico": "^3.0.1",
+    "@types/three": "^0.180.0"
   },
   "build": {
     "appId": "com.thegodmods.faceforge",
-    "productName": "THEGODMODS FACE FORGE",
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
+    "productName": "KFC GODMODS FACE FORGE",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/face-forge.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -44,6 +65,14 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
-    "artifactName": "THEGODMODS-FACE-FORGE-${version}-Setup.${ext}"
-  }
+    "artifactName": "KFC-GODMODS-FACE-FORGE-${version}-Setup.${ext}",
+    "extraResources": [
+      {
+        "from": "assets/face-forge.ico",
+        "to": "face-forge.ico"
+      }
+    ],
+    "copyright": "Copyright © 2026 KFC GODMODS"
+  },
+  "author": "KFC GODMODS"
 }

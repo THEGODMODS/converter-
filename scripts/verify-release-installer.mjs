@@ -1,0 +1,14 @@
+import {createHash} from "node:crypto";
+import {readdir,readFile,writeFile,stat} from "node:fs/promises";
+import path from "node:path";
+const dir=path.resolve("release");
+const names=(await readdir(dir)).filter(name=>/^KFC-GODMODS-FACE-FORGE-.*-Setup\.exe$/i.test(name));
+if(names.length!==1)throw new Error(`Expected exactly one FACE FORGE installer, found ${names.length}.`);
+const name=names[0],file=path.join(dir,name),info=await stat(file),bytes=await readFile(file);
+if(info.size<10*1024*1024)throw new Error(`Installer is unexpectedly small (${info.size} bytes).`);
+if(bytes.subarray(0,2).toString("ascii")!=="MZ")throw new Error("Installer does not have a valid Windows PE/DOS signature.");
+const digest=createHash("sha256").update(bytes).digest("hex");
+await writeFile(file+".sha256",`${digest}  ${name}\n`,{flag:"wx"});
+console.log(`Verified Windows installer: ${name}`);
+console.log(`Size: ${info.size} bytes`);
+console.log(`SHA-256: ${digest}`);
