@@ -11,6 +11,7 @@ const api = {
   exportManifest: (folder:string):Promise<{destination:string;files:number;bytes:number}|null> => ipcRenderer.invoke("face:export-manifest",folder),
   previewModel: (folder:string,relativePath:string):Promise<FacePreviewData> => ipcRenderer.invoke("face:preview-model",folder,relativePath),
   convertNativeModel: (folder:string):Promise<{destination:string;report:{ok:boolean;target:number;outputs:string[];findings:{code:string;subject:{type:string;index?:number};detail:string}[]};textures:{converted:number;bytes:number;files:Array<{source:string;reference:string;destination:string;format:string;width:number;height:number}>}}|null> => ipcRenderer.invoke("face:convert-native-model",folder),
+  buildFoxFacePackage: (folder:string,virtualRoot:string):Promise<{fpk:string;fpkd:string;models:number;textures:number;bytes:number}|null> => ipcRenderer.invoke("face:build-fox-package",folder,virtualRoot),
   getPathForDrop: (file:File):string => webUtils.getPathForFile(file),
   convertTextureFile: (colorSpace:TextureColorSpace):Promise<{source:string;destination:string;format:string;width:number;height:number;bytes:number}|null> => ipcRenderer.invoke("texture:convert",colorSpace),
   convertTextureFolder: (colorSpace:TextureColorSpace):Promise<{source:string;destination:string;converted:number;bytes:number;files:Array<{source:string;destination:string;format:string;width:number;height:number}>}|null> => ipcRenderer.invoke("texture:convert-folder",colorSpace)
