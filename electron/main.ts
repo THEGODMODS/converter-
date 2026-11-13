@@ -8,6 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync=promisify(execFile);
 import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
+import { inferPesPlayerIdFromPath } from "../engine/player-id";
 import { inspectFaceDatabase } from "../engine/database";
 import { buildFaceProjectManifest } from "../engine/manifest";
 import { ddsToFtex, ftexToDds, type TextureColorSpace } from "../engine/formats/texture";
@@ -127,7 +128,7 @@ function registerIpc(){
  ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown,playerId:unknown)=>{
   trusted(event);
   if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017)throw new Error("This release supports PES 2021 → PES 2017 only.");
-  if(typeof playerId!=="string"||!/^[0-9]{1,6}$/.test(playerId)||/^0+$/.test(playerId))throw new Error("Enter the numeric player ID from your PES 2017 patch.");
+  if(typeof playerId!=="string"||!/^[0-9]{1,6}$/.test(playerId)||/^0+$/.test(playerId))throw new Error("Enter the numeric player ID belonging to this face.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
