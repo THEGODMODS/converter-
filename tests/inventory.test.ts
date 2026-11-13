@@ -8,13 +8,13 @@ import { inspectFaceFolder } from "../engine/inventory";
 
 
 function makeFpk(entries:Array<{name:string;data:Buffer}>,isFpkd=false):Buffer{
- const names=entries.map(x=>Buffer.from(x.name,"utf8")),nameBytes=Buffer.concat(names.flatMap(x=>[x,Buffer.from([0])]));
- const pad=(n:number)=>Buffer.alloc((16-n%16)%16),namesPadded=Buffer.concat([nameBytes,pad(nameBytes.length)]);
- const tableEnd=48+entries.length*48,nameStart=tableEnd,contentStart=nameStart+namesPadded.length;
- const contentParts:Buffer[]=[],rows:Buffer[]=[];let contentOffset=0,nameOffset=0;
- entries.forEach((entry,i)=>{const row=Buffer.alloc(48),name=names[i];row.writeBigUInt64LE(BigInt(contentStart+contentOffset),0);row.writeBigUInt64LE(BigInt(entry.data.length),8);row.writeBigUInt64LE(BigInt(nameStart+nameOffset),16);row.writeBigUInt64LE(BigInt(name.length),24);createHash("md5").update(name).digest().copy(row,32);rows.push(row);contentParts.push(entry.data,pad(entry.data.length));contentOffset+=entry.data.length+pad(entry.data.length).length;nameOffset+=name.length+1;});
- const content=Buffer.concat(contentParts),header=Buffer.alloc(48);header.write("foxfpk",0,"ascii");if(isFpkd)header.write("d",6,"ascii");else header[6]=0;header.write("win",7,"ascii");header.writeUInt32LE(contentStart+content.length,10);header.writeUInt32LE(2,32);header.writeUInt32LE(entries.length,36);
- return Buffer.concat([header,...rows,namesPadded,content]);
+ const names=entries.map(x=>Buffer.from(x.name,"utf8")),nameParts=names.flatMap(x=>[x,Buffer.from([0])]),nameTable=Buffer.concat(nameParts);
+ const align16=(n:number)=>Math.ceil(n/16)*16,pad=(n:number)=>Buffer.alloc(align16(n)-n);
+ const tableEnd=48+entries.length*48,nameStart=tableEnd,contentStart=align16(nameStart+nameTable.length);
+ const rows:Buffer[]=[],payloads:Buffer[]=[];let nameOffset=0,dataOffset=contentStart;
+ entries.forEach((entry,i)=>{const name=names[i],row=Buffer.alloc(48);row.writeUInt32LE(dataOffset,0);row.writeInt32LE(entry.data.length,8);row.writeInt32LE(nameStart+nameOffset,16);row.writeInt32LE(name.length,24);createHash("md5").update(name).digest().copy(row,32);rows.push(row);payloads.push(entry.data,pad(entry.data.length));dataOffset+=align16(entry.data.length);nameOffset+=name.length+1;});
+ const header=Buffer.alloc(48);header.write("foxfpk",0,"ascii");header[6]=isFpkd?0x64:0;header.write("win",7,"ascii");header.writeUInt32LE(dataOffset,10);header.writeUInt32LE(2,32);header.writeUInt32LE(entries.length,36);
+ return Buffer.concat([header,...rows,nameTable,pad(nameStart+nameTable.length),...payloads]);
 }
 
 describe("inspectFaceFolder",()=>{
