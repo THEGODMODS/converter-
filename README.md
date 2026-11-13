@@ -38,7 +38,7 @@ The initial desktop shell, local face-folder inventory, binary header inspection
 8. Preview supported assets and package to CPK only after validation.
 
 ## Development
-Requires Node.js 20+ and npm.
+Requires Node.js 24+ and npm.
 
 ```bash
 npm install
