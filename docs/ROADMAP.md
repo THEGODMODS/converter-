@@ -32,8 +32,8 @@
 - [x] Initial PES 2021 FMDL vertex/index, material instance, texture reference and bone-group decoder.
 - [ ] Complete PES 2017 section 0/4/5 bone-group, mesh/material linkage and companion MTL/XML mapping.
 - [ ] Expand FMDL LOD, mesh split, face-specific auxiliary and edge-case support.
-- [ ] Skeleton, bone weights, facial morph/blendshape and auxiliary face data compatibility.
-- [ ] Separate tested adapters for each direction.
+- [ ] Validate upstream skeleton/weight conversion against FACE FORGE-owned face fixtures; preserve or explicitly reject facial morph/blendshape and auxiliary face data.
+- [x] Integrate pinned native semantic model conversion for supported FMDL ↔ MODEL/MTL pairs, including upstream skeleton retargeting and structured loss findings.\n- [ ] FACE FORGE-owned folder-level adapters that resolve every model and dependency atomically.
 - [x] Explicitly gate both directions until target writers and rig/weight retargeting exist; do not emit placeholder output.
 - [ ] Round-trip and reference-scene regression tests.
 
@@ -74,7 +74,7 @@ A phase is not complete merely because its UI exists. Each conversion capability
 - [x] Pin and document dual-licensed upstream PES model conversion crates.
 - [x] Add native CLI wrapper for single FMDL ↔ MODEL + MTL/SKL conversion.
 - [x] Bundle native Windows executable in installer build and add native test gate.
-- [ ] Integrate FPK/FPKD extraction and repacking around face package conversion.
+- [x] Inventory and inspect FPK/FPKD companion archives with signature-based classification; reject unverified .kpfd assumptions.\n- [ ] Integrate atomic FPK/FPKD extraction, model conversion and repacking around whole-face package conversion.
 - [ ] Resolve and convert all FTEX/DDS dependencies, material/shader semantics and face-diff data.
 - [ ] Convert all face, hair, oral and auxiliary models as one atomic face package.
 - [ ] Add FACE FORGE-owned real face package fixtures and round-trip tests in both directions.
