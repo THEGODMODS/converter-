@@ -220,7 +220,8 @@ function registerIpc(){
   if(sourceStat.isSymbolicLink()||!sourceStat.isFile()||sourceStat.size>128*1024*1024)throw new Error("Texture source must be a regular file no larger than 128 MiB.");
   const input=await readFile(source);
   const converted=extension===".dds"?ddsToFtex(input,colorSpace as TextureColorSpace):extension===".ftex"?ftexToDds(input):null;
-  if(!converted)throw new Error("Choose a .dds or .ftex texture.");\n  if(converted.data.length>256*1024*1024)throw new Error("Converted texture exceeds the 256 MiB output safety limit.");
+  if(!converted)throw new Error("Choose a .dds or .ftex texture.");
+  if(converted.data.length>256*1024*1024)throw new Error("Converted texture exceeds the 256 MiB output safety limit.");
   const outputExtension=extension===".dds"?".ftex":".dds";
   const suggested=path.join(path.dirname(source),path.basename(source,path.extname(source))+".converted"+outputExtension);
   const save=await dialog.showSaveDialog(mainWindow!,{title:"Save converted texture",defaultPath:suggested,filters:[{name:outputExtension===".dds"?"DDS texture":"FTEX texture",extensions:[outputExtension.slice(1)]}]});
