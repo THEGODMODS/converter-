@@ -9,6 +9,11 @@ use ftex::{ColorSpace,dds_to_ftex,ftex_to_dds,info as ftex_info};
 fn required(args:&[String], name:&str)->Result<String,String>{let i=args.iter().position(|x|x==name).ok_or_else(||format!("Missing required argument {name}"))?;args.get(i+1).cloned().ok_or_else(||format!("Missing value for {name}"))}
 fn optional(args:&[String],name:&str)->Option<String>{args.iter().position(|x|x==name).and_then(|i|args.get(i+1)).cloned()}
 fn write(path:&Path,bytes:&[u8])->Result<(),String>{if let Some(parent)=path.parent(){fs::create_dir_all(parent).map_err(|e|format!("Create output directory: {e}"))?;}fs::write(path,bytes).map_err(|e|format!("Write {}: {e}",path.display()))}
+fn replace_texture_extension(value:&mut String,from:&str,to:&str)->Result<(),String>{
+ let (stem,extension)=value.rsplit_once('.').ok_or_else(||format!("Texture reference has no file extension: {value}"))?;
+ if !extension.eq_ignore_ascii_case(from){return Err(format!("Texture reference has unexpected source extension: {value} (expected .{from})"));}
+ *value=format!("{stem}.{to}");Ok(())
+}
 fn run()->Result<(),String>{
  let args:Vec<String>=env::args().collect();
  if args.get(1).map(String::as_str)==Some("convert-texture"){
@@ -90,7 +95,11 @@ fn run()->Result<(),String>{
  if fs::read_dir(&out).map_err(|e|format!("Read output folder: {e}"))?.next().is_some(){return Err("Output directory must be empty; no files were written.".into());}
  let model_count=bundles.len();let mut outputs=Vec::new();let mut pending_outputs:Vec<(String,Vec<u8>)>=Vec::new();let mut findings:Vec<serde_json::Value>=Vec::new();
  for (stem,bundle) in bundles{
-  let converted=convert(bundle,target_version).map_err(|e|format!("Cross-generation conversion rejected for {stem}: {e}"))?;
+  let mut converted=convert(bundle,target_version).map_err(|e|format!("Cross-generation conversion rejected for {stem}: {e}"))?;
+  match &mut converted.bundle {
+   NativeModelBundle::PreFox{mtl,..}=>{for material in &mut mtl.materials{for entry in &mut material.entries{if let pes_model::format::mtl::MaterialEntry::Sampler(sampler)=entry{replace_texture_extension(&mut sampler.path,"ftex","dds")?;}}}},
+   NativeModelBundle::Fox{model,..}=>{for material in &mut model.materials{for (_,texture) in &mut material.textures{replace_texture_extension(&mut texture.file_name,"dds","ftex")?;}}}
+  }
   for finding in &converted.findings{
    let subject=match &finding.subject {Subject::Model=>serde_json::json!({"type":"model"}),Subject::Mesh(index)=>serde_json::json!({"type":"mesh","index":index}),Subject::Material(index)=>serde_json::json!({"type":"material","index":index}),Subject::Bone(index)=>serde_json::json!({"type":"bone","index":index})};
    findings.push(serde_json::json!({"model":stem,"code":finding.code,"subject":subject,"detail":&finding.detail}));
