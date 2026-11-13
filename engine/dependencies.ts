@@ -10,6 +10,8 @@ export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]
  const textures=files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
  for(const model of files.filter(file=>(file.kind==="model-pes2021"||file.kind==="material-pes2017")&&file.assetReferences?.length)){
   for(const reference of model.assetReferences??[]){
+   const sourcePath=reference.replace(/\\/g,"/");
+   if(/^\/Assets\/pes16\/model\/character\/common\/sourceimages\/dummy_(?:nrm|srm)\.(?:ftex|dds|tga)$/i.test(sourcePath))continue;
    const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
    const relative=model.kind==="material-pes2017"?normalizeAsset(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference)):normalized;
    const exact=textures.filter(file=>{const candidate=normalizeAsset(file.path.split("!/").pop()??file.path);return candidate===relative||candidate===normalized;});
