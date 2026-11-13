@@ -114,21 +114,21 @@ function registerIpc(){
    data=await readFile(source);extension=path.extname(source).toLowerCase();
    if(extension===".model"){const mtlPath=path.join(path.dirname(source),path.basename(source,path.extname(source))+".mtl");if(fs.existsSync(mtlPath)){const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile()||mtlStat.size>32*1024*1024)throw new Error("Companion PES 2017 MTL is not a safe regular file.");companionMtl=await readFile(mtlPath);}}
   }
-  let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],warnings:string[]=[];
+  let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],materials:Array<{name:string;shader:string|null;textures:Record<string,string>}>=[],warnings:string[]=[];
   if(extension===".fmdl"){
-   const scene=decodePes2021Fmdl(parseFmdlContainer(data));generation="pes2021";
+   const scene=decodePes2021Fmdl(parseFmdlContainer(data));generation="pes2021";materials=scene.materials.map(material=>({name:material.name,shader:material.shader,textures:material.textures}));
    meshes=scene.meshes.map(mesh=>({name:mesh.name,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
    if(scene.bones.length)warnings.push(scene.bones.length+" source bones detected; preview is static and does not play facial animation.");
    if(scene.metadata.additionalLodLevels)warnings.push("Additional LOD levels are not shown in this preview.");
   }else if(extension===".model"){
-   const scene=decodePes2017Model(parseModelContainer(data),companionMtl);generation="pes2017";
+   const scene=decodePes2017Model(parseModelContainer(data),companionMtl);generation="pes2017";materials=scene.materials.map(material=>({name:material.name,shader:material.shader,textures:material.textures}));
    meshes=scene.meshes.map(mesh=>({name:mesh.name,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
    if(typeof scene.metadata.modelWarnings==="string"&&scene.metadata.modelWarnings)warnings.push(scene.metadata.modelWarnings);
    warnings.push("PES 2017 preview is static. External MTL shader/texture bindings and facial animation are not yet rendered.");
   }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
   if(!meshes.length)throw new Error("No renderable mesh geometry was found in this model.");
   const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
-  return {source:relativePath,generation,meshes,warnings};
+  return {source:relativePath,generation,meshes,materials,warnings};
  });
  ipcMain.handle("texture:convert-folder",async(event,colorSpace:unknown)=>{
   trusted(event);
