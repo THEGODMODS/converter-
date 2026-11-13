@@ -12,7 +12,7 @@ describe("direction-aware conversion assessment",()=>{
   expect(result.target).toBe("pes2017");
   expect(result.checks.find(x=>x.label==="Source model files")?.status).toBe("pass");
   expect(result.gate).toBe("blocked");
-  expect(result.blockingReasons.join(" ")).toContain("target model writer");
+  expect(result.blockingReasons.join(" ")).toContain("target-game model writer");
  });
  it("blocks the reverse route when the selected source generation does not match",()=>{
   const result=assessFaceConversion(base,"pes2017");
