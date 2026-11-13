@@ -9,6 +9,7 @@ export type Pes2017FaceCpkVerification = {
   faceMaterialPath: string;
   referencedModels: string[];
   referencedMaterials: string[];
+  referencedTextures: string[];
 };
 
 function decodeXmlAttribute(value: string): string {
@@ -102,15 +103,34 @@ function verifyFaceXmlReferences(
   const unique = (values: string[]) => [...new Set(values)];
   const resolvedModels = unique(models);
   const resolvedMaterials = unique(materials);
-  const head = resolvedModels.find((name) => /(?:^|\/)oral_face_high_win32\.model$/i.test(name));
-  const headMaterial = resolvedMaterials.find((name) => /(?:^|\/)face_high\.mtl$/i.test(name));
+  // Team Compiler's own face fixtures use face_high_*.model + face.mtl; the
+  // converted/common naming path can also produce oral_face_high_*.model.
+  const head = resolvedModels.find((name) => /(?:^|\/)(?:oral_)?face_high_win32\.model$/i.test(name));
+  const headMaterial = resolvedMaterials.find((name) => /(?:^|\/)(?:face_high|face)\.mtl$/i.test(name));
   if (!head) {
-    throw new Error("face.xml does not resolve its face_high head model to oral_face_high_win32.model.");
+    throw new Error("face.xml does not resolve a face_high_win32.model head mesh.");
   }
   if (!headMaterial) {
-    throw new Error("face.xml does not resolve the head material to face_high.mtl.");
+    throw new Error("face.xml does not resolve the face head material (face.mtl or face_high.mtl).");
   }
-  return { models: resolvedModels, materials: resolvedMaterials, head, headMaterial };
+
+  const textures: string[] = [];
+  for (const materialPath of resolvedMaterials) {
+    const materialEntry = files.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === materialPath);
+    if (!materialEntry) continue;
+    const materialXml = archiveBytes.subarray(materialEntry.offset, materialEntry.offset + materialEntry.size).toString("utf8");
+    for (const sampler of materialXml.matchAll(/<sampler\\b([^>]*)\\/?\\s*>/gi)) {
+      const attributes = new Map<string, string>();
+      for (const match of sampler[1].matchAll(/([A-Za-z_:][\\w:.-]*)\\s*=\\s*(["'])(.*?)\\2/gs)) {
+        attributes.set(match[1].toLowerCase(), decodeXmlAttribute(match[3]));
+      }
+      const texturePath = attributes.get("path");
+      if (!texturePath) throw new Error("Material sampler is missing its texture path: " + materialPath);
+      const resolved = resolve(texturePath, "texture");
+      textures.push(...resolved);
+    }
+  }
+  return { models: resolvedModels, materials: resolvedMaterials, head, headMaterial, textures };
 }
 
 /** Verify the Team Compiler's outer team CPK and requested nested player-face CPK. */
@@ -150,7 +170,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
 
     try {
       const xmlBytes = nestedBytes.subarray(faceXml.offset, faceXml.offset + faceXml.size);
-      const references = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path);
+      const references = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path, nestedBytes);
       return {
         outerInspection,
         faceCpkPath: candidate.path,
@@ -159,7 +179,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
         faceModelPath: references.head,
         faceMaterialPath: references.headMaterial,
         referencedModels: references.models,
-        referencedMaterials: references.materials,
+        referencedMaterials: references.materials,\n        referencedTextures: references.textures,
       };
     } catch (error) {
       failures.push(candidate.path + ": " + (error instanceof Error ? error.message : String(error)));
