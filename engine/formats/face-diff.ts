@@ -101,9 +101,7 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  const boneOffsets:FaceDiffBoneOffset[]=[];
  const earTransforms:FaceDiffEarTransform[]=[];
  let opaqueRecordOffsets:number[]=offsets;
- warnings.push("FACE diff auxiliary records are preserved opaquely; no unverified bone/ear semantics are assigned.");
- // The header declares two physical record classes: 16-byte entries in block one
- // and 32-byte entries in block two. Validate every version, not just legacy v4.
+ // Validate physical extents only for layouts backed by independent binary evidence.
  // Record meaning remains opaque until a version-specific mapping is proven.
  const v4Layout=version===4&&declaredBlock1Records===32&&declaredBlock2Records===6;
  const v5FullLayout=version===5&&declaredBlock1Records===33&&declaredBlock2Records===6;
@@ -165,6 +163,7 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
    if(error>4e-5)warnings.push("Jaw scalar does not match the documented sk_head-frame skf_jaw transform (max error "+error+").");
   }
  }else if(offsets.length>7&&offsets[6]===0x150&&offsets[7]===0x160){
+  warnings.push("Uncharacterized FACE diff records remain opaque; only the two documented eye landmarks are decoded.");
   // The face modifier reference reads the right/left eye-position vectors at
   // 0x150 and 0x160. This is the only semantic mapping applied to other profiles.
   for(const [index,boneName] of [[6,"skf_eye_r"],[7,"skf_eye_l"]] as const){
@@ -173,6 +172,7 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
   }
   opaqueRecordOffsets=offsets.filter((_,index)=>index!==6&&index!==7);
  }else{
+  warnings.push("Uncharacterized FACE diff records remain opaque; no unverified bone/ear semantics are assigned.");
   warnings.push("Eye-position record pointers do not match the independently documented 0x150/0x160 locations; those records remain opaque.");
  }
  const rightEyePosition=boneOffsets.find(record=>record.boneName==="skf_eye_r")?.position??null;
