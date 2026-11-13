@@ -127,7 +127,7 @@ function registerIpc(){
  ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown,playerId:unknown)=>{
   trusted(event);
   if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017)throw new Error("This release supports PES 2021 → PES 2017 only.");
-  if(typeof playerId!=="string"||!/^(70[1-9]|7[1-9][0-9]|8[0-9]{2}|9[01][0-9]|920)(0[1-9]|[12][0-9]|3[0-2])$/.test(playerId))throw new Error("Enter the actual five-digit PES 2017 player ID from your patch (supported team range 701–920, roster slot 01–32).");
+  if(typeof playerId!=="string"||!/^[0-9]{1,6}$/.test(playerId)||/^0+$/.test(playerId))throw new Error("Enter the numeric player ID from your PES 2017 patch.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
