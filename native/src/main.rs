@@ -334,7 +334,7 @@ fn inject_preserved_sidecars(
     let outer_entries = outer.entries().to_vec();
     let nested_index = outer_entries.iter().position(|entry| {
         entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{compiler_player_id}.cpk")))
-    }).ok_or_else(|| format!("Team Compiler CPK has no nested face archive for player {player_id}."))?;
+    }).ok_or_else(|| format!("Team Compiler CPK has no nested face archive for temporary player {compiler_player_id}."))?;
     let nested_entry = &outer_entries[nested_index];
     let nested_bytes = outer.read(nested_entry)
         .map_err(|e| format!("Read nested player CPK before sidecar preservation: {e}"))?;
@@ -395,7 +395,7 @@ fn inject_preserved_sidecars(
     // Read-back both archive levels and require every sidecar to be present.
     let mut check_outer = cpk::CpkArchive::open(Cursor::new(&rebuilt_outer))
         .map_err(|e| format!("Read back rebuilt Team CPK: {e}"))?;
-    let check_entry = check_outer.entries().iter().find(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{player_id}.cpk"))))
+    let check_entry = check_outer.entries().iter().find(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{target_player_id}.cpk"))))
         .ok_or_else(|| "Rebuilt Team CPK lost its nested player archive.".to_string())?.clone();
     let check_nested_bytes = check_outer.read(&check_entry).map_err(|e| format!("Read back rebuilt nested face CPK: {e}"))?;
     let mut check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
