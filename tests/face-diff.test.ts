@@ -90,7 +90,7 @@ describe("PES face_diff metadata and records",()=>{
  it("rejects overlapping legacy v4 record ranges without decoding their semantics",()=>{
   const bad=v4LegacyFixture();
   // The first 32 pointers address 16-byte records; block two addresses 32-byte records.
-  bad.writeUInt32LE(0x2f0,0x50+32*4);
+  bad.writeUInt32LE(0x2e0,0x50+32*4);
   expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
  });
  it("rejects non-finite values in scalar and record blocks",()=>{
