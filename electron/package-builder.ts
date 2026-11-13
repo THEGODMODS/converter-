@@ -33,8 +33,8 @@ export async function buildFoxFacePackage(convertedFolder:string,outputBase:stri
    if(item.size>MAX_FILE_BYTES)throw new Error("Package input exceeds the 256 MiB per-file limit: "+rel);
    total+=item.size;if(total>MAX_TOTAL_BYTES)throw new Error("Package inputs exceed the 1 GiB total limit.");
    const data=await readFile(absolute),extension=path.extname(rel).toLowerCase(),name=virtualName(nameRoot,rel);
-   if([".fmdl",".skl",".xml",".face_diff"].includes(extension))models.push({name,data});
-   else if([".ftex",".dds"].includes(extension))textures.push({name,data});
+   if([".fmdl",".skl",".xml"].includes(extension)||path.basename(rel).toLowerCase()==="face_diff.bin")models.push({name,data});
+   else if(extension===".ftex")textures.push({name,data});
    else throw new Error("Cannot safely classify converted file for Fox packaging: "+rel);
   }
  }
