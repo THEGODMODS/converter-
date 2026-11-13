@@ -11,8 +11,8 @@ export function analyzeRigCompatibility(source:FaceScene,target:FaceScene):RigCo
  target.bones.forEach((bone,i)=>{const key=normalize(bone.name);targetKeys.set(key,[...(targetKeys.get(key)??[]),i]);});
  const matched:BonePair[]=[],unmatchedSource:string[]=[],ambiguous:string[]=[];
  for(let i=0;i<source.bones.length;i++){const bone=source.bones[i],key=normalize(bone.name),targets=targetKeys.get(key)??[];if(!key||targets.length!==1||(sourceKeys.get(key)?.length??0)!==1){if(targets.length>1||(sourceKeys.get(key)?.length??0)>1)ambiguous.push(bone.name);else unmatchedSource.push(bone.name);continue;}
-  const targetIndex=targets[0],sourceChain=parentChain(source.bones,i).slice(0,-1),targetChain=parentChain(target.bones,targetIndex).slice(0,-1);
-  if(sourceChain.length&&targetChain.length&&sourceChain[sourceChain.length-1]!==targetChain[targetChain.length-1]){issues.push({severity:"warning",code:"PARENT_MISMATCH",message:"Matched bone has a different immediate parent: "+bone.name, bone:bone.name});}
+  const targetIndex=targets[0],sourceParent=bone.parentIndex===null?null:normalize(source.bones[bone.parentIndex].name),targetParent=target.bones[targetIndex].parentIndex===null?null:normalize(target.bones[target.bones[targetIndex].parentIndex].name);
+  if(sourceParent!==targetParent){issues.push({severity:"warning",code:"PARENT_MISMATCH",message:"Matched bone has a different immediate parent: "+bone.name, bone:bone.name});}
   matched.push({sourceIndex:i,targetIndex,sourceName:bone.name,targetName:target.bones[targetIndex].name,match:bone.name===target.bones[targetIndex].name?"exact-name":"normalized-name"});
  }
  const mappedTargets=new Set(matched.map(x=>x.targetIndex));
