@@ -33,7 +33,7 @@ Every URL host must be on the exact approved-host list. Paths are relative to th
 
 ## Publisher key and signing
 
-Generate an Ed25519 key pair in a secure offline directory outside the repository. The included utility writes a PKCS#8 private key with restrictive file permissions and an SPKI public key:
+Generate an Ed25519 key pair in a secure offline directory outside the repository. The included utility writes a PKCS#8 private key (mode 0600 where POSIX permissions apply) and an SPKI public key. On Windows, use a directory whose ACLs restrict access to the publisher account:
 
 ```sh
 npm run package:keygen -- godmods-2026 /secure/offline/face-forge-keys
