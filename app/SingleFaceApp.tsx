@@ -27,7 +27,7 @@ export default function SingleFaceApp(){
   if(!project||!preview)return;
   if(!validTarget.test(targetId)||!/[1-9]/.test(targetId)){setError("Enter the player ID from your PES 2017 patch.");return;}
   setConverting(true);setError("");setResult("");
-  try{const converted=await window.faceForge.convertCompleteFaceFolder(project.root,2017,targetId);if(converted){const cpk=Array.isArray(converted.report.cpkFiles)?(converted.report.cpkFiles as string[]).join(", "):"PES 2017 CPK";setResult("Conversion and nested face-CPK verification completed. Output: "+converted.destination+" · "+cpk+". In-game validation is still required.");}}
+  try{const converted=await window.faceForge.convertCompleteFaceFolder(project.root,2017,targetId);if(converted){setResult("Face converted successfully. Your PES 2017 files are saved in the folder you selected.");}}
   catch(e){console.error("FACE FORGE conversion failed",e);setError("Conversion could not complete. Your source files were left untouched. Check the PES 2017 player ID and face package, then try again.");}
   finally{setConverting(false);}
  };
