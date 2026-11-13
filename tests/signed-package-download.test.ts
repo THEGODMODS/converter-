@@ -21,7 +21,7 @@ afterEach(async()=>{vi.unstubAllGlobals();await Promise.all(roots.splice(0).map(
 describe("signed package download transaction",()=>{
  it("verifies and atomically installs every signed asset",async()=>{
   const f=await setup();
-  const fetchMock=vi.fn(async(url:RequestInfo|URL)=>String(url).endsWith(".json")?new Response(JSON.stringify(f.manifest),{status:200}):new Response(f.bytes,{status:200}));
+  const fetchMock=vi.fn(async(url:RequestInfo|URL,_init?:RequestInit)=>String(url).endsWith(".json")?new Response(JSON.stringify(f.manifest),{status:200}):new Response(f.bytes,{status:200}));
   vi.stubGlobal("fetch",fetchMock);
   const result=await installSignedPackage("https://packages.example.test/manifest.json",path.join(f.root,"packages"),f.trust);
   expect(result.files).toBe(1);
@@ -30,7 +30,7 @@ describe("signed package download transaction",()=>{
  });
  it("removes all staged files when downloaded bytes fail SHA-256 verification",async()=>{
   const f=await setup("original");
-  const fetchMock=vi.fn(async(url:RequestInfo|URL)=>String(url).endsWith(".json")?new Response(JSON.stringify(f.manifest),{status:200}):new Response("tampered",{status:200}));
+  const fetchMock=vi.fn(async(url:RequestInfo|URL,_init?:RequestInit)=>String(url).endsWith(".json")?new Response(JSON.stringify(f.manifest),{status:200}):new Response("tampered",{status:200}));
   vi.stubGlobal("fetch",fetchMock);
   await expect(installSignedPackage("https://packages.example.test/manifest.json",path.join(f.root,"packages"),f.trust)).rejects.toThrow(/SHA-256/i);
   const packageRoot=path.join(f.root,"packages","example-face");
