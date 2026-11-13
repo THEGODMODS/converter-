@@ -21,7 +21,7 @@ export default function SingleFaceApp(){
   }catch(e){console.error("FACE FORGE source inspection failed",e);setError("FACE FORGE could not read this folder. Choose an extracted PES 2021 face folder and try again.");}
   finally{setPreviewBusy(false);setBusy(false);}
  };
- const browse=async()=>{try{const folder=await window.faceForge.chooseFolder();if(folder)await loadFolder(folder);}catch(e){console.error("FACE FORGE folder picker failed",e);setError("The face folder could not be opened. Please try again.");}};
+ const browse=async()=>{try{const folder=await window.faceForge.chooseFolder();if(folder)await loadFolder(folder);}catch(e){console.error("FACE FORGE folder picker failed",e);setError("Could not open that face folder. Please try again.");}};
  const onDrop=async(event:DragEvent)=>{event.preventDefault();setDragging(false);const file=event.dataTransfer.files[0];if(!file)return;const folder=window.faceForge.getPathForDrop(file);if(!folder){setError("Drop a face folder from Windows Explorer, not an individual file.");return;}await loadFolder(folder);};
  const convert=async()=>{
   if(!project||!preview)return;
@@ -40,7 +40,7 @@ export default function SingleFaceApp(){
     <div className="import-panel"><div className="section-head"><div><span className="eyebrow">SOURCE</span><h2>Choose your PES 2021 face folder</h2></div><span className="step-number">01</span></div>
      <div className={"dropzone "+(dragging?"dragging":"")} onDragOver={event=>{event.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}><div className="upload-icon"><UploadCloud size={25}/></div><h3>Drop your face folder here</h3><p>Choose the face folder you want to convert</p><div className="or-line"><span/> OR <span/></div><button className="primary-btn" onClick={browse} disabled={busy}><FolderOpen size={16}/>{busy?"Inspecting face…":"Browse face folder"}</button><div className="drop-hint"><ShieldCheck size={13}/> Your original files stay untouched</div></div>
      {error&&<div className="error-line"><XCircle size={15}/>{error}</div>}
-      {project&&<div className="project-card"><div className="project-title"><CheckCircle2 size={17}/><strong>Face folder ready</strong></div><div className="project-path">{project.root}</div></div>}
+      {project&&<div className="project-card"><div className="project-title"><CheckCircle2 size={17}/><strong>Face folder ready</strong></div></div>}
     </div>
     <div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">PREVIEW</span><h2>Review the actual face</h2></div><span className="step-number">02</span></div>
      {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE</span></div><FacePreview preview={preview}/></>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>Your face preview will appear here.</p></div>}
