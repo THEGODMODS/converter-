@@ -30,7 +30,7 @@ describe("PES 2017 nested face CPK verification",()=>{
   });
   it("accepts a six-digit real PES player ID",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(faceFiles,"176104"),"176104");
-    expect(result.faceCpkPath).toMatch(/176104\\.cpk$/i);
+    expect(result.faceCpkPath).toMatch(/176104\.cpk$/i);
   });
   it("rejects an outer CPK that contains no nested face CPK",()=>{
     expect(()=>verifyPes2017FaceCpk(buildCpk([{path:"readme.txt",data:Buffer.from("not a face")}]),"71405")).toThrow(/nested player-face CPK/i);
