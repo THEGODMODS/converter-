@@ -33,11 +33,27 @@ References:
 
 ### FPK v2 container details
 
-The current FPK reader follows the published FoxRe v2 layout: 48-byte header; 48-byte entry rows made of 32-bit offset/size/name fields separated by reserved words; 16-byte package-reference rows; NUL-terminated names; and 16-byte-aligned payloads. The reader verifies the file-size field, table bounds, reserved fields, MD5 of stored filename bytes, package references and safe virtual paths. Real Fox package paths commonly begin with `/Assets/`; this is a package virtual root and is normalized to a relative inventory path, never used as an operating-system absolute path.
+The current FPK reader follows the published FoxRe v2 layout: 48-byte header; 48-byte entry rows containing four 64-bit fields (payload offset, payload size, name offset and name length) followed by a 16-byte MD5 filename checksum; NUL-terminated names; and 16-byte-aligned payloads. The TypeScript reader verifies the file-size field, table bounds, reserved header fields, MD5 of stored filename bytes, non-overlapping payload bounds and safe virtual paths. Non-zero package-reference tables are explicitly rejected until their record layout and resolution semantics are independently verified. Real Fox package paths commonly begin with `/Assets/`; this is a package virtual root and is normalized to a relative inventory path, never used as an operating-system absolute path.
 
 The package reference table matters: FPK and FPKD can depend on sibling packages. A face conversion report must retain those dependencies rather than assuming that a single FPK is the entire asset. The public GzsTool project also documents unpack/repack support for FPK and FPKD. FACE FORGE does not bundle GzsTool; its native reader is tested against generated fixtures matching the published layout, and still requires a real PES face package round-trip test before production certification.
 
 Reference: [FoxRe FPK / FPKD format layout](https://wannabecoderluc.github.io/foxre-wiki/formats/fpk/), [Atvaark GzsTool](https://github.com/Atvaark/GzsTool).
+
+### FACE diff controls currently understood
+
+Community tooling documents a FACE diff block-1 control region beginning at `0x08`. FACE FORGE's inspector exposes these little-endian float values without applying them to model geometry:
+
+| Offset | Values | Meaning |
+|---|---:|---|
+| `0x08` | 3 floats | Eye scale X/Y/Z |
+| `0x14` | 3 floats | Right-eye rotation: down/up, left/right, spin (spin reported untested by source) |
+| `0x20` | 3 floats | Left-eye rotation: down/up, left/right, spin (spin reported untested by source) |
+| `0x2C` | 4 floats | Top-left, top-right, bottom-left, bottom-right eyelid offsets |
+| `0x3C` | 3 floats | Oral interior position X/Y/Z |
+
+The inspector also reads the established eye-position vectors at `0x150` and `0x160`. Header counts at `0x48` and `0x4C` are used for a minimum-length check. The auxiliary block-1/block-2 record tables are **not** decoded into facial-bone transforms yet: a community field list names many `skf_*` landmarks, but does not by itself establish record stride, coordinate convention, transform semantics or a safe write-back algorithm. No rotation unit or coordinate-system conversion is assumed. The current feature is inspection only, not a FACE diff editor or cross-generation converter.
+
+Reference: [PES-FMDL-Blender face_diff.bin issue and field notes](https://github.com/the4chancup/pes-fmdl-blender/issues/1), [PES Face/Hair Modifier source](https://github.com/MjTs140914/PES_Face_Hair_Modifier/blob/master/Blender%202.79/PES_Face_Hair_Modifier.py).
 
 ## Bidirectional translation requirements
 
