@@ -236,6 +236,7 @@ function registerIpc(){
   }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
   if(generation==="pes2021"&&materials.length){
    const textureInventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
+   const textureFiles=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
    const normalize=(value:string)=>value.replaceAll("\\","/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
    for(const material of materials){
     const textureData:Record<string,string>={};
