@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync=promisify(execFile);
-import { inspectFaceFolder } from "../engine/inventory";
+import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
 import { inspectFaceDatabase } from "../engine/database";
 import { buildFaceProjectManifest } from "../engine/manifest";
 import { ddsToFtex, ftexToDds, type TextureColorSpace } from "../engine/formats/texture";
@@ -22,6 +22,7 @@ import { publishStagedOutput } from "./output-publish";
 import { verifyPes2017FaceCpk } from "../engine/packaging/face-cpk-validation";
 
 let mainWindow:BrowserWindow|null=null;
+const inspectedFaceProjects=new Map<string,FaceProject>();
 function trusted(event:Electron.IpcMainInvokeEvent){
  const url=event.senderFrame?.url??"";
  if(app.isPackaged){const expected=pathToFileURL(path.join(__dirname,"../../dist/index.html")).href;if(url!==expected)throw new Error("Untrusted renderer.");}
@@ -31,7 +32,7 @@ function registerIpc(){
  ipcMain.handle("face:choose-folder",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose PES face project folder",properties:["openDirectory"]});return result.canceled?null:result.filePaths[0]??null;});
  ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose face folders for batch or project",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
- ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");return inspectFaceFolder(folder);});
+ ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);inspectedFaceProjects.set(project.root,project);return project;});
  ipcMain.handle("face:export-manifest",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");const project=await inspectFaceFolder(folder);const manifest=buildFaceProjectManifest(project);if(!manifest.integrity.complete)throw new Error("Manifest integrity check failed; export was stopped.");const suggested=path.join(path.dirname(folder),path.basename(folder)+"-FACE-FORGE-manifest.json");const picked=await dialog.showSaveDialog(mainWindow!,{title:"Export face project manifest",defaultPath:suggested,filters:[{name:"FACE FORGE manifest",extensions:["json"]}]});if(picked.canceled||!picked.filePath)return null;if(path.extname(picked.filePath).toLowerCase()!==".json")throw new Error("Choose a .json manifest destination.");const payload=JSON.stringify(manifest,null,2)+"\n";await writeFile(picked.filePath,payload,{flag:"wx"});return {destination:picked.filePath,files:manifest.summary.fileCount,bytes:Buffer.byteLength(payload)};});
  ipcMain.handle("face:convert-native-model",async(event,folder:unknown)=>{
   trusted(event);
@@ -196,6 +197,8 @@ function registerIpc(){
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The selected face folder is no longer a safe directory.");
   const realRoot=await fs.promises.realpath(root);
   let data:Buffer,extension:string,companionMtl:Buffer|undefined,archiveEntries:Array<{name:string;data:Buffer}>=[];
+  const parsedArchives=new Map<string,ReturnType<typeof parseFpkArchive>>();
+  const readArchiveCached=async(archivePath:string)=>{const key=path.resolve(archivePath).toLowerCase();const cached=parsedArchives.get(key);if(cached)return cached;const parsed=parseFpkArchive(await readFile(archivePath));parsedArchives.set(key,parsed);return parsed;};
   const archiveMarker=relativePath.indexOf("!/");
   if(archiveMarker>=0){
    const archiveRelative=relativePath.slice(0,archiveMarker),memberName=relativePath.slice(archiveMarker+2).replaceAll("\\\\","/");
@@ -205,7 +208,7 @@ function registerIpc(){
    const realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
    if(!realArchive.startsWith(realPrefix))throw new Error("Preview archive resolves outside the selected face folder.");
    const stat=await fs.promises.lstat(archivePath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview archive is not a safe file.");
-   const archive=parseFpkArchive(await readFile(archivePath));
+   const archive=await readArchiveCached(archivePath);
    const member=archive.entries.find(entry=>entry.name.toLowerCase()===memberName.toLowerCase());
    if(!member)throw new Error("The requested model was not found inside the FPK archive. Re-scan the face folder.");
    if(member.size>256*1024*1024)throw new Error("Embedded model exceeds the preview size limit.");
@@ -232,28 +235,28 @@ function registerIpc(){
    warnings.push("PES 2017 preview is static. External MTL shader/texture bindings and facial animation are not yet rendered.");
   }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
   if(generation==="pes2021"&&materials.length){
-   const textureInventory=await inspectFaceFolder(root);
+   const textureInventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
    const normalize=(value:string)=>value.replaceAll("\\","/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
    for(const material of materials){
     const textureData:Record<string,string>={};
     for(const [slot,reference] of Object.entries(material.textures)){
-     const wanted=normalize(reference),base=wanted.split("/").pop()??wanted;
+     const wanted=normalize(reference);
      const textureFiles=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
-     const candidates=textureFiles.filter(file=>normalize(file.path.split("!/").pop()??file.path)===wanted);
-     const byName=candidates.length?candidates:textureFiles.filter(file=>(normalize(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
      const scorePath=(candidate:string,requested:string)=>{const a=candidate.split("/"),b=requested.split("/");let score=0;while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;return score;};
-     const ranked=byName.map(file=>({file,score:scorePath(normalize(file.path.split("!/").pop()??file.path),wanted)}));
+     // FMDL paths may be absolute game virtual paths while extracted folders
+     // and FPK members may start at different roots. Match the longest suffix.
+     const ranked=textureFiles.map(file=>({file,score:scorePath(normalize(file.path.split("!/").pop()??file.path),wanted)})).filter(item=>item.score>0);
      const bestScore=ranked.length?Math.max(...ranked.map(item=>item.score)):0;
      const best=ranked.filter(item=>item.score===bestScore).map(item=>item.file);
      const uniqueHashes=new Set(best.map(file=>file.sha256));
      const resolved=uniqueHashes.size===1&&best.length?[best[0]]:best.length===1?best:[];
-     if(!resolved.length){warnings.push("Texture "+reference+" for "+material.name+" was "+(byName.length?"ambiguous":"not found")+"; it is not shown in the preview.");continue;}
+     if(!resolved.length){warnings.push("Texture "+reference+" for "+material.name+" could not be matched uniquely; it is not shown in the preview.");continue;}
      const asset=resolved[0];let textureBytes:Buffer;
      if(asset.path.includes("!/")){
       const marker=asset.path.indexOf("!/"),archiveRelative=asset.path.slice(0,marker),memberName=asset.path.slice(marker+2);
       const archivePath=path.resolve(root,...archiveRelative.split("/")),realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
       if(!realArchive.startsWith(realPrefix))throw new Error("Preview texture archive resolves outside the selected face folder.");
-      const archive=archiveRelative===relativePath.slice(0,relativePath.indexOf("!/"))&&archiveEntries.length?{entries:archiveEntries}:parseFpkArchive(await readFile(realArchive));
+      const archive=await readArchiveCached(realArchive);
       const entry=archive.entries.find(item=>item.name.toLowerCase()===memberName.toLowerCase());if(!entry)throw new Error("Preview texture "+reference+" is missing from its FPK archive.");textureBytes=entry.data;
      }else{
       const texturePath=path.resolve(root,...asset.path.split("/")),realTexture=await fs.promises.realpath(texturePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
