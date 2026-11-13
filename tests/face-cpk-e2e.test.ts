@@ -23,7 +23,14 @@ e2e("synthetic structural PES 2021 to PES 2017 package conversion fixture",()=>{
     const preservedSidecars = Array.isArray(report.preservedSidecars) ? report.preservedSidecars as string[] : [];
     for (const sidecar of preservedSidecars) {
       const basename = sidecar.split(/[\\/]/).pop()!.toLowerCase();
-      expect(verifications.some(result => result.faceInspection.files.some(entry => path.posix.basename(entry.path).toLowerCase() === basename))).toBe(true);
+      const found = verifications.some(result => result.faceInspection.files.some(entry => path.posix.basename(entry.path).toLowerCase() === basename));
+      if (!found) {
+        const archiveEntries = verifications.map(result => ({
+          outer: result.outerInspection.files.map(entry => entry.path),
+          nestedFace: result.faceInspection.files.map(entry => entry.path),
+        }));
+        throw new Error("Preserved sidecar " + sidecar + " was not found in the nested face CPK. Archive entries: " + JSON.stringify(archiveEntries));
+      }
     }
   });
 });
