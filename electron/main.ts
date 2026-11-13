@@ -36,23 +36,32 @@ function registerIpc(){
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
   const packages=inventory.files.filter(file=>file.kind==="container-fpk"&&!file.path.includes("!/"));
   const looseModels=inventory.files.filter(file=>["model-pes2017","model-pes2017-compressed","model-pes2021"].includes(file.kind)&&!file.path.includes("!/"));
-  let selectedPath:string|undefined;
-  if(packages.length===1)selectedPath=path.resolve(root,...packages[0].path.split("/"));
-  else if(packages.length===0&&looseModels.length===1)selectedPath=path.resolve(root,...looseModels[0].path.split("/"));
-  else{const picked=await dialog.showOpenDialog(mainWindow!,{title:"Select a face model package (or choose one model)",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model","fpk"]}]});if(picked.canceled||!picked.filePaths[0])return null;selectedPath=picked.filePaths[0];}
-  const modelPath=path.resolve(selectedPath),realModel=await fs.promises.realpath(modelPath),prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
-  if(!realModel.startsWith(prefix))throw new Error("The selected model must be inside the inspected source folder.");
-  const stat=await fs.promises.lstat(modelPath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("The selected model is not a safe supported file.");
-  const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"?"fpk":null;
-  if(!sourceFormat)throw new Error("Select a .fmdl, .model or face .fpk package. The paired .fpkd file is a companion archive, not a standalone model.");
-  const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target,"--model",modelPath];
-  const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
-  if(sourceFormat==="model"){
-   const mtlPath=sibling(".mtl");if(!fs.existsSync(mtlPath))throw new Error("The PES 2017 .model needs its matching .mtl material file beside it.");
-   const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile())throw new Error("The companion MTL is not a safe regular file.");
-   args.push("--material",mtlPath);
-  }else if(sourceFormat==="fmdl"){
-   const sklPath=sibling(".skl");if(fs.existsSync(sklPath)){const sklStat=await fs.promises.lstat(sklPath);if(sklStat.isSymbolicLink()||!sklStat.isFile())throw new Error("The companion SKL is not a safe regular file.");args.push("--skeleton",sklPath);}
+  let selectedPaths:string[]=[];
+  if(packages.length===1)selectedPaths=[path.resolve(root,...packages[0].path.split("/"))];
+  else if(packages.length>1)throw new Error("This folder contains multiple FPK packages. Convert each face package separately until package-set dependency mapping is supported.");
+  else selectedPaths=looseModels.map(file=>path.resolve(root,...file.path.split("/")));
+  if(!selectedPaths.length)throw new Error("No supported loose models or FPK package were discovered in this face folder.");
+  const prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+  for(const modelPath of selectedPaths){
+   const realModel=await fs.promises.realpath(modelPath);
+   if(!realModel.startsWith(prefix))throw new Error("A selected model is outside the inspected source folder.");
+   const stat=await fs.promises.lstat(modelPath);
+   if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("A selected model is not a safe supported file.");
+  }
+  const extensions=new Set(selectedPaths.map(file=>path.extname(file).toLowerCase()));
+  if(extensions.size!==1)throw new Error("Mixed model generations detected. Separate the PES 2017 and PES 2021 assets before conversion.");
+  const extension=[...extensions][0],sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"?"fpk":null;
+  if(!sourceFormat)throw new Error("Select .fmdl, .model or a face .fpk package. The paired .fpkd file is a companion archive, not a standalone model.");
+  const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target];
+  for(const modelPath of selectedPaths)args.push("--model",modelPath);
+  for(const modelPath of selectedPaths){
+   const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
+   if(sourceFormat==="model"){
+    const mtlPath=sibling(".mtl");if(!fs.existsSync(mtlPath))throw new Error("The PES 2017 model "+path.basename(modelPath)+" needs its matching .mtl file.");
+    const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile())throw new Error("A companion MTL is not a safe regular file.");
+   }else if(sourceFormat==="fmdl"){
+    const sklPath=sibling(".skl");if(fs.existsSync(sklPath)){const sklStat=await fs.promises.lstat(sklPath);if(sklStat.isSymbolicLink()||!sklStat.isFile())throw new Error("A companion SKL is not a safe regular file.");}
+   }
   }
   const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for converted model files",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
