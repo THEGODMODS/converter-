@@ -68,6 +68,18 @@ function registerIpc(){
   if(!sourceFormat)throw new Error("Select .fmdl, .model or a face .fpk package. The paired .fpkd file is a companion archive, not a standalone model.");
   const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target];
   if(sourceFormat==="fpk")args.push("--textures-managed-externally");
+  if(sourceFormat==="model"){
+   const diffFile=inventory.files.find(file=>file.kind==="face-diff"&&!file.path.includes("!/")&&path.posix.dirname(file.path)===".");
+   const xmlFile=inventory.files.find(file=>file.path.toLowerCase()==="face.xml");
+   const auxiliary=diffFile??xmlFile;
+   if(auxiliary){
+    const auxiliaryPath=path.resolve(root,...auxiliary.path.split("/")),realAuxiliary=await fs.promises.realpath(auxiliaryPath);
+    if(!realAuxiliary.startsWith(prefix))throw new Error("A face calibration sidecar is outside the inspected source folder.");
+    const auxiliaryStat=await fs.promises.lstat(auxiliaryPath);
+    if(auxiliaryStat.isSymbolicLink()||!auxiliaryStat.isFile()||auxiliaryStat.size>16*1024*1024)throw new Error("The face calibration sidecar is not a safe regular file.");
+    args.push(diffFile?"--face-diff":"--face-xml",auxiliaryPath);
+   }
+  }
   for(const modelPath of selectedPaths)args.push("--model",modelPath);
   for(const modelPath of selectedPaths){
    const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
