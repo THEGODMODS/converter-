@@ -38,7 +38,7 @@ function registerIpc(){
   const modelPath=path.resolve(picked.filePaths[0]),realModel=await fs.promises.realpath(modelPath),prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
   if(!realModel.startsWith(prefix))throw new Error("The selected model must be inside the inspected source folder.");
   const stat=await fs.promises.lstat(modelPath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("The selected model is not a safe supported file.");
-  const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"||extension===".fpkd"?"fpk":null;
+  const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"?"fpk":null;
   if(!sourceFormat)throw new Error("Select a .fmdl, .model or face .fpk package. The paired .fpkd file is a companion archive, not a standalone model.");
   const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target,"--model",modelPath];
   const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
@@ -51,7 +51,7 @@ function registerIpc(){
   }
   const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for converted model files",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
-  const output=destination.filePaths[0],realOutput=await fs.promises.realpath(output);if(realOutput===realRoot||realOutput.startsWith(prefix))throw new Error("Choose an output folder outside the inspected source project.");const outputEntries=await fs.promises.readdir(realOutput);if(outputEntries.length)throw new Error("Choose an empty output folder. FACE FORGE will not overwrite existing files.");
+  const output=destination.filePaths[0],outputStat=await fs.promises.lstat(output);if(outputStat.isSymbolicLink()||!outputStat.isDirectory())throw new Error("Choose a real output directory, not a symbolic link.");const realOutput=await fs.promises.realpath(output);if(realOutput===realRoot||realOutput.startsWith(prefix))throw new Error("Choose an output folder outside the inspected source project.");const outputEntries=await fs.promises.readdir(realOutput);if(outputEntries.length)throw new Error("Choose an empty output folder. FACE FORGE will not overwrite existing files.");
   const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
   if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the native engine enabled.");
   args.push("--out",output);
