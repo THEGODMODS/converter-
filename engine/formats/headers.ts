@@ -33,7 +33,7 @@ export function inspectModelHeader(data:Buffer):FormatInspection{
   if(version<16||version>19)return fail("MODEL",`Unrecognized MODEL version ${version}; known PES 2017 versions are 16–19.`);
   if(sectionOffset<24||sectionOffset+12>data.length)return fail("MODEL","Section array offset is outside the file.");
   const recordOffset=data.readUInt32LE(sectionOffset),recordCount=data.readUInt32LE(sectionOffset+4),recordSize=data.readUInt32LE(sectionOffset+8);
-  if(recordCount>4096||recordSize<4||recordOffset+recordCount*recordSize>data.length)return fail("MODEL","Section array header or records are invalid.");
+  if(recordOffset<12||recordCount>4096||recordSize<4||sectionOffset+recordOffset+recordCount*recordSize>data.length)return fail("MODEL","Section array header or records are invalid.");
   return {valid:true,format:"PES 2014–2017 MODEL",version,details:[`MODEL format version ${version}`,`${recordCount} section records`]};
 }
 
@@ -42,7 +42,7 @@ export function inspectFtexHeader(data:Buffer):FormatInspection{
   if(data.toString("ascii",0,4)!=="FTEX")return fail("FTEX","Missing FTEX signature.");
   const version=data.readFloatLE(4),pixelFormat=data.readUInt16LE(8);
   const width=data.readUInt16LE(10),height=data.readUInt16LE(12),depth=data.readUInt16LE(14);
-  const mipCount=data.readUInt8(16),textureType=data.readUInt32LE(24),variantCount=data.readUInt8(28);
+  const mipCount=data.readUInt8(16),textureType=data.readUInt32LE(28),variantCount=data.readUInt8(32);
   if(version<2.025||version>2.045)return fail("FTEX",`Unsupported FTEX version ${version.toFixed(3)}.`);
   if(!supportedFtexFormats.has(pixelFormat))return fail("FTEX",`Unsupported FTEX pixel format ${pixelFormat}.`);
   if(!width||!height||!depth||!mipCount)return fail("FTEX","Width, height, depth and mip count must be non-zero.");
