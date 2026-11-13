@@ -35,9 +35,9 @@ pub fn validate_face_package_members(paths: &[String]) -> Result<(), String> {
         if !folded.insert(lower.clone()) {
             return Err(format!("Duplicate case-insensitive package member: {path}"));
         }
-        if !lower.ends_with(".fmdl") && !lower.ends_with(".skl") && !lower.ends_with(".ftex") {
+        if !lower.ends_with(".fmdl") && !lower.ends_with(".skl") && !lower.ends_with(".ftex") && lower != "face_diff.bin" {
             return Err(format!(
-                "Unhandled package member: {path}. This build converts FMDL, paired SKL and FTEX members. FACE diff, XML, FOX scene and unknown sidecars remain blocked until their semantics are converted or preserved."
+                "Unhandled package member: {path}. This build converts FMDL, paired SKL and FTEX members. XML, FOX scene and unknown sidecars remain blocked until their semantics are converted or preserved."
             ));
         }
     }
@@ -84,6 +84,16 @@ mod tests {
             "Assets/sourceimages/skin.ftex".to_string(),
         ];
         assert!(validate_face_package_members(&paths).is_ok());
+    }
+
+    #[test]
+    fn accepts_face_diff_only_as_the_known_face_sidecar() {
+        let paths = vec!["face_high.fmdl".to_string(), "hair_high.fmdl".to_string(), "face_diff.bin".to_string()];
+        assert!(validate_face_package_members(&paths).is_ok());
+        for name in ["other.bin", "nested/face_diff.bin"] {
+            let paths = vec!["face_high.fmdl".to_string(), name.to_string()];
+            assert!(validate_face_package_members(&paths).is_err());
+        }
     }
 
     #[test]
