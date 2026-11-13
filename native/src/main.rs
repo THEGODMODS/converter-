@@ -359,11 +359,11 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
         return Err("The selected face folder contains no .fmdl or .model assets, including its FPK/FPKD archives.".into());
     }
 
-    fs::write(data.join("teams_list.txt"), "ID\\tName\\n714\\t/ff/\\n")
+    fs::write(data.join("teams_list.txt"), "ID\tName\n714\t/ff/\n")
         .map_err(|e| format!("Write isolated Team compiler team list: {e}"))?;
     let pes_version = if target == 2017 { 17 } else { 21 };
     let settings_text = format!(
-        "[common]\\npes_version = {pes_version}\\npes_folder_path = {:?}\\n\\n[team-compiler]\\ncpk_name = \\"4cc_99_test\\"\\noutput_folder_path = {:?}\\nteams_list_path = \\"teams_list.txt\\"\\nstrict_file_type_check = true\\npass_through = false\\n",
+        "[common]\npes_version = {pes_version}\npes_folder_path = {:?}\n\n[team-compiler]\ncpk_name = \"4cc_99_test\"\noutput_folder_path = {:?}\nteams_list_path = \"teams_list.txt\"\nstrict_file_type_check = true\npass_through = false\n",
         pes.to_string_lossy().to_string(),
         output.to_string_lossy().to_string()
     );
