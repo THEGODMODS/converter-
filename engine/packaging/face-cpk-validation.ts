@@ -96,7 +96,8 @@ function verifyFaceXmlReferences(
       }
       const texturePath = attributes.get("path");
       if (!texturePath) throw new Error("Material sampler is missing its texture path: " + materialPath);
-      const materialDirectory = materialEntry.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();\n      textures.push(...resolve(texturePath, "texture", materialDirectory));
+      const materialDirectory = materialEntry.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
+      textures.push(...resolve(texturePath, "texture", materialDirectory));
     }
   }
   return { models: resolvedModels, materials: resolvedMaterials, head, headMaterial, textures: unique(textures) };
