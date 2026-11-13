@@ -33,13 +33,13 @@ function registerIpc(){
   if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid source project folder.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source project is not a safe directory.");
-  const realRoot=await fs.promises.realpath(root),picked=await dialog.showOpenDialog(mainWindow!,{title:"Select the face model to convert",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model","fpk","fpkd"]}]});
+  const realRoot=await fs.promises.realpath(root),picked=await dialog.showOpenDialog(mainWindow!,{title:"Select the face model to convert",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model","fpk"]}]});
   if(picked.canceled||!picked.filePaths[0])return null;
   const modelPath=path.resolve(picked.filePaths[0]),realModel=await fs.promises.realpath(modelPath),prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
   if(!realModel.startsWith(prefix))throw new Error("The selected model must be inside the inspected source folder.");
   const stat=await fs.promises.lstat(modelPath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("The selected model is not a safe supported file.");
   const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":extension===".fpk"||extension===".fpkd"?"fpk":null;
-  if(!sourceFormat)throw new Error("Select a .fmdl or .model file.");
+  if(!sourceFormat)throw new Error("Select a .fmdl, .model or face .fpk package. The paired .fpkd file is a companion archive, not a standalone model.");
   const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target,"--model",modelPath];
   const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
   if(sourceFormat==="model"){
