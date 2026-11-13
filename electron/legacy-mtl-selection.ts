@@ -26,7 +26,7 @@ export function resolveLegacyMtlForModel(modelPath:string,materialFiles:LegacyMt
  const matchStem=rawStem.startsWith("oral_")&&rawStem.endsWith("_win32")?rawStem.slice(5,-6):rawStem;
  const inFolder=(folder:string)=>chooseInFolder(matchStem,materialFiles.filter(file=>(file.kind===undefined||file.kind==="material-pes2017")&&folderOf(file.path).toLowerCase()===folder.toLowerCase()));
  const own=inFolder(ownFolder);if(own)return own.path;
- const root=modelFolder===undefined?folderOf(normalizedModel):modelFolder==="."?"":modelFolder;
+ const root=modelFolder===undefined?path.posix.dirname(ownFolder):modelFolder==="."?"":modelFolder;
  if(root.toLowerCase()!==ownFolder.toLowerCase()){const parent=inFolder(root);if(parent)return parent.path;}
  return null;
 }
