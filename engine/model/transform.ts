@@ -16,3 +16,19 @@ export function computeBindPoseRetargetMatrix(sourceBindWorld:Mat4,targetBindWor
 export function normalize3(v:Vec3):Vec3{const length=Math.hypot(...v);if(!Number.isFinite(length)||length<EPSILON)throw new Error("Cannot normalize a zero-length or invalid vector.");return [v[0]/length,v[1]/length,v[2]/length];}
 /** Correct normal transform for affine transforms: inverse-transpose of the linear part. */
 export function transformNormal4(m:Mat4,n:Vec3):Vec3{const inv=invert4(m);return normalize3([inv[0]*n[0]+inv[1]*n[1]+inv[2]*n[2],inv[4]*n[0]+inv[5]*n[1]+inv[6]*n[2],inv[8]*n[0]+inv[9]*n[1]+inv[10]*n[2]]);}
+
+export type BoneRetargetTransform={sourceIndex:number;targetIndex:number;matrix:Mat4};
+/** Build explicit per-bone source-bind-world → target-bind-world transforms.
+ * The caller must provide decoded, convention-normalized world bind matrices.
+ */
+export function buildBoneRetargetTransforms(sourceBindWorld:readonly Mat4[],targetBindWorld:readonly Mat4[],pairs:readonly {sourceIndex:number;targetIndex:number}[]):BoneRetargetTransform[]{
+ if(!sourceBindWorld.length||!targetBindWorld.length)throw new Error("Source and target bind-pose matrices are required.");
+ const seenSource=new Set<number>(),seenTarget=new Set<number>();
+ return pairs.map(pair=>{
+  if(!Number.isInteger(pair.sourceIndex)||pair.sourceIndex<0||pair.sourceIndex>=sourceBindWorld.length)throw new Error("Bone map references a source bone outside the source skeleton.");
+  if(!Number.isInteger(pair.targetIndex)||pair.targetIndex<0||pair.targetIndex>=targetBindWorld.length)throw new Error("Bone map references a target bone outside the target skeleton.");
+  if(seenSource.has(pair.sourceIndex)||seenTarget.has(pair.targetIndex))throw new Error("Bone retarget map must be one-to-one; duplicate source or target mapping found.");
+  seenSource.add(pair.sourceIndex);seenTarget.add(pair.targetIndex);
+  return {sourceIndex:pair.sourceIndex,targetIndex:pair.targetIndex,matrix:computeBindPoseRetargetMatrix(sourceBindWorld[pair.sourceIndex],targetBindWorld[pair.targetIndex])};
+ });
+}
