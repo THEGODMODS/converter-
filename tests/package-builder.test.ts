@@ -18,7 +18,7 @@ describe("Fox face package builder",()=>{
   await writeFile(path.join(textureDirectory,"face_c.ftex"),Buffer.from("valid-test-texture"));
   const result=await buildFoxFacePackage(converted,out,"Assets/pes16/model/character/face/real/12345");
   const fpk=parseFpkArchive(await readFile(result.fpk)),fpkd=parseFpkArchive(await readFile(result.fpkd));
-  expect(fpk.kind).toBe("fpk");expect(fpk.entries.map(x=>x.name)).toEqual(["Assets/pes16/model/character/face/real/12345/face_high.fmdl","Assets/pes16/model/character/face/real/12345/face_high.skl","Assets/pes16/model/character/face/real/12345/hair_high.fmdl","Assets/pes16/model/character/face/real/12345/face_diff.bin"]);
+  expect(fpk.kind).toBe("fpk");expect(fpk.entries.map(x=>x.name)).toEqual(["Assets/pes16/model/character/face/real/12345/face_diff.bin","Assets/pes16/model/character/face/real/12345/face_high.fmdl","Assets/pes16/model/character/face/real/12345/face_high.skl","Assets/pes16/model/character/face/real/12345/hair_high.fmdl"]);
   expect(fpkd.kind).toBe("fpkd");expect(fpkd.entries.map(x=>x.name)).toEqual(["Assets/pes16/model/character/face/real/12345/sourceimages/#windx11/face_c.ftex"]);
   expect(result.models).toBe(4);expect(result.textures).toBe(1);expect(result.faceDiffDefaulted).toBe(true);expect(result.faceDiffVersion).toBe(5);
  });
