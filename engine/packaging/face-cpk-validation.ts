@@ -35,7 +35,7 @@ function localReference(value: string): string | null {
 }
 
 /** Parse the model entries conservatively and prove every player-local path resolves inside this CPK. */
-function verifyFaceXmlReferences(xmlBytes: Buffer, files: Array<{path:string;size:number;offset:number}>) {
+function verifyFaceXmlReferences(xmlBytes: Buffer, files: Array<{path:string;size:number;offset:number}>, faceXmlPath: string) {
   const xml = xmlBytes.toString("utf8");
   if (xml.includes("\u0000") || !/^\s*<\?xml\b[\s\S]*?\?>/i.test(xml) || !/<config(?:\s|>)/i.test(xml) || !/<\/config\s*>\s*$/i.test(xml)) {
     throw new Error("face.xml is not a complete UTF-8 config document.");
@@ -44,11 +44,23 @@ function verifyFaceXmlReferences(xmlBytes: Buffer, files: Array<{path:string;siz
   const modelTags = [...xml.matchAll(/<model\b([^>]*)\/?\s*>/gi)];
   if (!modelTags.length) throw new Error("face.xml contains no model entries.");
   const archivePaths = files.map(file => file.path.replaceAll("\\", "/").toLowerCase());
+  const xmlDirectory = faceXmlPath.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
+  const resolve = (raw: string, kind: string): string[] => {
+    const ref = localReference(raw);
+    if (ref === null) return []; // Shared Common references are not stored in the player CPK.
+    if (/[?#[\]{}]/.test(ref)) throw new Error("face.xml contains an unsupported " + kind + " reference: " + raw);
+    const target = (xmlDirectory ? xmlDirectory + "/" : "") + ref;
+    const escaped = target.replace(/[.+^$()|\\]/g, "\\  const archivePaths = files.map(file => file.path.replaceAll("\\", "/").toLowerCase());
   const resolve = (raw: string, kind: string): string[] => {
     const ref = localReference(raw);
     if (ref === null) return []; // Shared Common references are not stored in the player CPK.
     if (/[?#[\]{}]/.test(ref)) throw new Error("face.xml contains an unsupported " + kind + " reference: " + raw);
     const escaped = ref.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*");
+    const matcher = new RegExp("^" + escaped + "$", "i");
+    const matches = archivePaths.filter(path => matcher.test(path));
+    if (!matches.length) throw new Error("face.xml " + kind + " reference does not resolve inside the nested face CPK: " + raw);
+    return matches;
+  };").replaceAll("*", ".*");
     const matcher = new RegExp("^" + escaped + "$", "i");
     const matches = archivePaths.filter(path => matcher.test(path));
     if (!matches.length) throw new Error("face.xml " + kind + " reference does not resolve inside the nested face CPK: " + raw);
@@ -105,7 +117,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
     }
     try {
       const xmlBytes = nestedBytes.subarray(faceXml.offset, faceXml.offset + faceXml.size);
-      const refs = verifyFaceXmlReferences(xmlBytes, faceInspection.files);
+      const refs = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path);
       return {outerInspection,faceCpkPath:candidate.path,faceInspection,faceXmlPath:faceXml.path,faceModelPath:refs.head,faceMaterialPath:refs.headMaterial,referencedModels:refs.models,referencedMaterials:refs.materials};
     } catch (error) {
       failures.push(candidate.path + ": " + (error instanceof Error ? error.message : String(error)));
