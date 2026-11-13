@@ -137,13 +137,15 @@ function registerIpc(){
   if(sourceStat.isSymbolicLink()||!sourceStat.isDirectory())throw new Error("Choose a real source folder, not a shortcut.");
   const realSource=await fs.promises.realpath(sourceRoot);
   const files:Array<{source:string;relative:string;data:Buffer;format:string;width:number;height:number}>=[];
-  let totalBytes=0;
-  async function scan(dir:string,relative=""):Promise<void>{
+  let totalBytes=0,visitedEntries=0;
+  async function scan(dir:string,relative="",depth=0):Promise<void>{
+   if(depth>32)throw new Error("Texture folder nesting exceeds the 32-level safety limit.");
    const entries=await fs.promises.readdir(dir,{withFileTypes:true});
    for(const entry of entries){
+    visitedEntries++;if(visitedEntries>10000)throw new Error("Texture folder contains more than 10,000 entries; narrow the selected source folder.");
     const absolute=path.join(dir,entry.name),rel=path.posix.join(relative,entry.name),stat=await fs.promises.lstat(absolute);
     if(stat.isSymbolicLink())throw new Error("Texture batch stopped: symbolic link found at "+rel+".");
-    if(stat.isDirectory()){await scan(absolute,rel);continue;}
+    if(stat.isDirectory()){await scan(absolute,rel,depth+1);continue;}
     if(!stat.isFile())continue;
     const ext=path.extname(entry.name).toLowerCase();
     if(ext!==".dds"&&ext!==".ftex")continue;
