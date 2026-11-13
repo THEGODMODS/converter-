@@ -49,7 +49,7 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 
 ## Executive result
 
-**Release status: NOT READY.** The repository has a substantial engineering foundation and a limited native single-model conversion path. It does not yet provide a complete, fidelity-preserving, bidirectional face-folder converter. Batch and project screens are primarily intake/review workflows, not complete conversion workflows. No actual target-game validation is recorded.
+**Release status: NOT READY.** The first PES 2021 → PES 2017 single-face package route is now wired through the pinned Team Compiler, with source checks and nested CPK validation. It still needs successful CI, a real end-to-end fixture run, dependency-closure proof and PES 2017 in-game validation. PES 2017 → PES 2021 is deliberately deferred and disabled. Batch and project screens remain intake/review workflows, not complete conversion workflows.
 
 ## Confirmed implemented foundations
 
