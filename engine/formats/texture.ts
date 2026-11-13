@@ -24,7 +24,7 @@ function readFrame(data:Buffer,offset:number,chunks:number,rawSize:number,compre
  if(chunks===0){const bytes=range(offset,compressedSize||rawSize);try{return compressedSize?inflateSync(bytes):Buffer.from(bytes);}catch{throw new TextureFormatError("FTEX frame decompression failed.");}}
  if(chunks>65535)throw new TextureFormatError("FTEX chunk count is unreasonable.");
  const table=range(offset,chunks*8),parts:Buffer[]=[];
- for(let i=0;i<chunks;i++){const p=i*8,cs=table.readUInt16LE(p),us=table.readUInt16LE(p+2),relative=table.readUInt32LE(p+4)&0x7fffffff;const bytes=range(offset+relative,cs);let decoded:Buffer;try{decoded=cs===us?Buffer.from(bytes):inflateSync(bytes);}catch{throw new TextureFormatError("FTEX chunk decompression failed.");}if(decoded.length!==us)throw new TextureFormatError("FTEX chunk size does not match its descriptor.");parts.push(decoded);}
+ for(let i=0;i<chunks;i++){const p=i*8,cs=table.readUInt16LE(p),us=table.readUInt16LE(p+2),relative=table.readUInt32LE(p+4)&0x7fffffff;if(relative<chunks*8)throw new TextureFormatError("FTEX chunk payload overlaps its descriptor table.");const bytes=range(offset+relative,cs);let decoded:Buffer;try{decoded=cs===us?Buffer.from(bytes):inflateSync(bytes);}catch{throw new TextureFormatError("FTEX chunk decompression failed.");}if(decoded.length!==us)throw new TextureFormatError("FTEX chunk size does not match its descriptor.");parts.push(decoded);}
  return Buffer.concat(parts);
 }
 export function inspectFtex(data:Buffer):TextureInfo{
