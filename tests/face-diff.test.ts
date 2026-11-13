@@ -83,6 +83,8 @@ describe("PES face_diff metadata and records",()=>{
   expect(()=>inspectFaceDiff(duplicate)).toThrow(/duplicate pointer/i);
   const overlap=v5Fixture();overlap.writeUInt32LE(0xf0,0x50+33*4);
   expect(()=>inspectFaceDiff(overlap)).toThrow(/duplicate pointer|records overlap/i);
+  const trailing=Buffer.alloc(976);v5Fixture().copy(trailing);trailing.writeUInt32LE(0x3c0,0x50);
+  expect(()=>inspectFaceDiff(trailing)).toThrow(/invalid or unaligned absolute offset/i);
  });
  it("rejects non-finite values in scalar and record blocks",()=>{
   for(const offset of [0x08,0x14,0x20,0x2c,0x3c,0xf0,0x300]){
