@@ -25,9 +25,10 @@ export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]
    if(/^\/Assets\/pes16\/model\/character\/common\/sourceimages\/dummy_(?:nrm|srm)\.(?:ftex|dds|tga)$/i.test(sourcePath))continue;
    const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
    const relative=model.kind==="material-pes2017"?normalizeAsset(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference)):normalized;
-   const exact=textures.filter(file=>{const candidate=normalizeAsset(file.path.split("!/").pop()??file.path);return candidate===relative||candidate===normalized;});
+   const escapesRoot=model.kind==="material-pes2017"&&(relative===".."||relative.startsWith("../"));
+   const exact=escapesRoot?[]:textures.filter(file=>{const candidate=normalizeAsset(file.path.split("!/").pop()??file.path);return candidate===relative||candidate===normalized;});
    let candidates=exact;
-   if(!candidates.length){
+   if(!candidates.length&&!escapesRoot){
     const scored=textures.map(file=>({file,score:suffixScore(normalizeAsset(file.path.split("!/").pop()??file.path),relative.startsWith("../")?"":relative)||suffixScore(normalizeAsset(file.path.split("!/").pop()??file.path),normalized)})).filter(item=>item.score>0);
     const best=scored.length?Math.max(...scored.map(item=>item.score)):0;
     candidates=best?scored.filter(item=>item.score===best).map(item=>item.file):textures.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
