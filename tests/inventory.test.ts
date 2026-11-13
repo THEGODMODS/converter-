@@ -54,7 +54,7 @@ describe("inspectFaceFolder",()=>{
       expect(result.files[0].kind).toBe("model-pes2017-compressed");
     }finally{await rm(root,{recursive:true,force:true});}
   });
-  it("recognizes PES face FPK packages and their sidecars without pretending to extract models",async()=>{
+  it("recognizes PES face FPK packages and their sidecars with generated archive fixtures",async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
     try{
       await mkdir(path.join(root,"#Win"));
@@ -71,7 +71,7 @@ describe("inspectFaceFolder",()=>{
       expect(result.textures).toBe(1);
       expect(result.models).toBe(2);
       expect(result.files.some(file=>file.path.endsWith("!/face_high.fmdl")&&file.kind==="model-pes2021")).toBe(true);
-      expect(result.warnings.some(warning=>warning.includes("Extracted and validated 2 PES 2021 model"))).toBe(true);
+      expect(result.warnings.some(warning=>warning.includes("Parsed 2 PES 2021 model candidate"))).toBe(true);
     }finally{await rm(root,{recursive:true,force:true});}
   });
 
