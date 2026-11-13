@@ -51,7 +51,7 @@ function registerIpc(){
   }
   const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for converted model files",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
-  const output=destination.filePaths[0];if(path.resolve(output)===path.dirname(modelPath))throw new Error("Choose a separate output folder; source files must remain untouched.");const outputEntries=await fs.promises.readdir(output);if(outputEntries.length)throw new Error("Choose an empty output folder. FACE FORGE will not overwrite existing files.");
+  const output=destination.filePaths[0],realOutput=await fs.promises.realpath(output);if(realOutput===realRoot||realOutput.startsWith(prefix))throw new Error("Choose an output folder outside the inspected source project.");const outputEntries=await fs.promises.readdir(realOutput);if(outputEntries.length)throw new Error("Choose an empty output folder. FACE FORGE will not overwrite existing files.");
   const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
   if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the native engine enabled.");
   args.push("--out",output);
