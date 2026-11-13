@@ -68,7 +68,7 @@ fn run()->Result<(),String>{
  let target_version=if target==2017{pes_version::PesVersion::Pes17}else{pes_version::PesVersion::Pes21};
  fs::create_dir_all(&out).map_err(|e|format!("Create output folder: {e}"))?;
  if fs::read_dir(&out).map_err(|e|format!("Read output folder: {e}"))?.next().is_some(){return Err("Output directory must be empty; no files were written.".into());}
- let mut outputs=Vec::new();let mut findings:Vec<serde_json::Value>=Vec::new();
+ let model_count=bundles.len();let mut outputs=Vec::new();let mut findings:Vec<serde_json::Value>=Vec::new();
  for (stem,bundle) in bundles{
   let converted=convert(bundle,target_version).map_err(|e|format!("Cross-generation conversion rejected for {stem}: {e}"))?;
   for finding in &converted.findings{
@@ -97,6 +97,6 @@ fn run()->Result<(),String>{
    }
   }
  }
- let report=serde_json::json!({"ok":true,"target":target,"model_count":bundles.len(),"outputs":outputs,"findings":findings}); Ok(())
+ let report=serde_json::json!({"ok":true,"target":target,"model_count":model_count,"outputs":outputs,"findings":findings}); Ok(())
 }
 fn main(){if let Err(error)=run(){eprintln!("FACE_FORGE_CONVERSION_ERROR: {error}");process::exit(2);}}
