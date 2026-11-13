@@ -15,7 +15,7 @@ export function analyzeRigCompatibility(source:FaceScene,target:FaceScene):RigCo
   if(sourceChain.length&&targetChain.length&&sourceChain[sourceChain.length-1]!==targetChain[targetChain.length-1]){issues.push({severity:"warning",code:"PARENT_MISMATCH",message:"Matched bone has a different immediate parent: "+bone.name, bone:bone.name});}
   matched.push({sourceIndex:i,targetIndex,sourceName:bone.name,targetName:target.bones[targetIndex].name,match:bone.name===target.bones[targetIndex].name?"exact-name":"normalized-name"});
  }
- const mappedTargets=new Set(matched.map(x=>x.targetIndex));for(let i=0;i<target.bones.length;i++)if(!mappedTargets.has(i))unmatchedSource.includes(target.bones[i].name)||undefined;
+ const mappedTargets=new Set(matched.map(x=>x.targetIndex));
  const unmatchedTarget=target.bones.filter((_,i)=>!mappedTargets.has(i)).map(x=>x.name);
  for(const name of ambiguous)issues.push({severity:"error",code:"AMBIGUOUS_BONE",message:"Bone name is ambiguous and will not be auto-mapped: "+name,bone:name});
  for(const name of unmatchedSource)issues.push({severity:"warning",code:"UNMATCHED_SOURCE_BONE",message:"Source bone has no unique target match: "+name,bone:name});
