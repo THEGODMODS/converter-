@@ -123,30 +123,28 @@ fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
         }
         offsets.push(offset);
     }
-    // The real v4 sample establishes the 32 x 16-byte + 6 x 32-byte ranges.
-    // The real v5 sample has a different pointer arrangement despite the same
-    // header counts, so do not apply v4 range/overlap assumptions to v5/v6.
-    if version == 4 && count_a == 32 && count_b == 6 {
-        let mut ranges = Vec::with_capacity(offset_count);
-        for (index, offset) in offsets.iter().copied().enumerate() {
-            let size = if index < count_a { 0x10 } else { 0x20 };
-            let end = offset.checked_add(size).ok_or("FACE diff record range overflow.")?;
-            if end > required {
-                return Err(format!("FACE diff record {index} exceeds the count-derived record area."));
-            }
-            for at in (offset..end).step_by(4) {
-                let value = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
-                if !value.is_finite() {
-                    return Err(format!("FACE diff record {index} contains a non-finite value."));
-                }
-            }
-            ranges.push((offset, end));
+    // Validate the declared physical record extents for every FACE version.
+    // Semantic names/transforms remain opaque until generation-specific mappings
+    // are verified against independent real fixtures.
+    let mut ranges = Vec::with_capacity(offset_count);
+    for (index, offset) in offsets.iter().copied().enumerate() {
+        let size = if index < count_a { 0x10 } else { 0x20 };
+        let end = offset.checked_add(size).ok_or("FACE diff record range overflow.")?;
+        if end > required {
+            return Err(format!("FACE diff record {index} exceeds the count-derived record area."));
         }
-        ranges.sort_unstable_by_key(|range| range.0);
-        for pair in ranges.windows(2) {
-            if pair[1].0 < pair[0].1 {
-                return Err("FACE diff records overlap.".into());
+        for at in (offset..end).step_by(4) {
+            let value = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+            if !value.is_finite() {
+                return Err(format!("FACE diff record {index} contains a non-finite value."));
             }
+        }
+        ranges.push((offset, end));
+    }
+    ranges.sort_unstable_by_key(|range| range.0);
+    for pair in ranges.windows(2) {
+        if pair[1].0 < pair[0].1 {
+            return Err("FACE diff records overlap.".into());
         }
     }
     Ok(())
