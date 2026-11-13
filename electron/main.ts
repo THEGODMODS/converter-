@@ -156,7 +156,7 @@ function registerIpc(){
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
     const archiveBytes=await readFile(archivePath),inspection=inspectCpk(archiveBytes);
     if(!inspection.valid||inspection.fileCount===0)throw new Error("Independent CPK read-back failed for "+archiveName+": "+inspection.errors.join("; "));
-    if(!inspection.files.some(entry=>/\\.(?:fmdl|model)$/i.test(entry.path)))throw new Error("CPK "+archiveName+" contains no recognizable face model asset.");
+    if(!inspection.files.some(entry=>/\.(?:fmdl|model)$/i.test(entry.path)))throw new Error("CPK "+archiveName+" contains no recognizable face model asset.");
     const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
     archiveVerification.push({archive:archiveName,fileCount:inspection.fileCount,entries});
    }
