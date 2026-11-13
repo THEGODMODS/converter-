@@ -64,7 +64,7 @@ export function parseFpkArchive(data:Buffer):FpkArchive{
 }
 /** Deterministic Fox v2 writer. Names are emitted as /Assets/... virtual paths. */
 export function writeFpkArchive(kind:"fpk"|"fpkd",entries:Iterable<{name:string;data:Buffer}>):Buffer{
- const sorted=[...entries].map(entry=>({name:normalizeVirtualName(entry.name),storedName:"/"+normalizeVirtualName(entry.name),data:Buffer.from(entry.data)})).sort((a,b)=>a.name.localeCompare(b.name));
+ const sorted=[...entries].map(entry=>({name:normalizeVirtualName(entry.name),storedName:"/"+normalizeVirtualName(entry.name),data:Buffer.from(entry.data)})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
  if(sorted.length>MAX_ENTRIES)fail("entry count exceeds the safety limit.");
  const seen=new Set<string>();let total=0;
  for(const entry of sorted){const key=entry.name.toLowerCase();if(seen.has(key))fail("duplicate output entry path "+entry.name+".");seen.add(key);if(entry.data.length>MAX_ENTRY_SIZE)fail("entry exceeds the per-file size limit.");total+=entry.data.length;if(total>MAX_TOTAL_SIZE)fail("total unpacked size exceeds the safety limit.");}
