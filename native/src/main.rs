@@ -1,4 +1,4 @@
-use std::{env, fs, path::{Path,PathBuf}, process, sync::{Arc,Mutex}, time::{SystemTime,UNIX_EPOCH}};
+use std::{env, fs, io::Cursor, path::{Path,PathBuf}, process, sync::{Arc,Mutex}, time::{SystemTime,UNIX_EPOCH}};
 use crossbeam_channel::unbounded;
 use studio_core::{AppPaths,PipelineEvent,Settings,ShellRequest,StudioTool,ToolContext};
 use team_compiler::Tool as TeamCompilerTool;
@@ -317,6 +317,93 @@ fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
     Ok(changed)
 }
 
+/// Re-inject Fox-only sidecars after Team Compiler export. The upstream
+/// Team Compiler filters .fclo files from its Pre-Fox output, so source inventory
+/// alone is not evidence of preservation. Rebuild the nested player CPK and
+/// outer team CPK with the original sidecar bytes, then verify them by read-back.
+fn inject_preserved_sidecars(
+    outer_path: &Path,
+    player_root: &Path,
+    player_id: &str,
+    sidecars: &[String],
+) -> Result<(), String> {
+    if sidecars.is_empty() { return Ok(()); }
+    let outer_bytes = fs::read(outer_path).map_err(|e| format!("Read Team Compiler CPK before sidecar preservation: {e}"))?;
+    let mut outer = cpk::CpkArchive::open(Cursor::new(outer_bytes))
+        .map_err(|e| format!("Open Team Compiler CPK for sidecar preservation: {e}"))?;
+    let outer_entries = outer.entries().to_vec();
+    let nested_index = outer_entries.iter().position(|entry| {
+        entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{player_id}.cpk")))
+    }).ok_or_else(|| format!("Team Compiler CPK has no nested face archive for player {player_id}."))?;
+    let nested_entry = &outer_entries[nested_index];
+    let nested_bytes = outer.read(nested_entry)
+        .map_err(|e| format!("Read nested player CPK before sidecar preservation: {e}"))?;
+    let mut nested = cpk::CpkArchive::open(Cursor::new(nested_bytes))
+        .map_err(|e| format!("Open nested player CPK before sidecar preservation: {e}"))?;
+    let nested_entries = nested.entries().to_vec();
+    let mut nested_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "FACE FORGE PLAYER FACE")
+        .map_err(|e| format!("Create rebuilt nested face CPK: {e}"))?;
+    let mut existing = std::collections::HashSet::new();
+    for entry in &nested_entries {
+        existing.insert(entry.path.trim_start_matches('/').to_ascii_lowercase());
+        let bytes = nested.read(entry).map_err(|e| format!("Read nested CPK entry {}: {e}", entry.path))?;
+        nested_writer.add(&entry.path, &bytes, None)
+            .map_err(|e| format!("Copy nested CPK entry {}: {e}", entry.path))?;
+    }
+    for sidecar in sidecars {
+        let relative = Path::new(sidecar);
+        if relative.is_absolute() || relative.components().any(|part| !matches!(part, std::path::Component::Normal(_))) {
+            return Err(format!("Unsafe preserved sidecar path: {sidecar}"));
+        }
+        let source = player_root.join(relative);
+        let metadata = fs::symlink_metadata(&source).map_err(|e| format!("Inspect preserved sidecar {}: {e}", sidecar))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 256 * 1024 * 1024 {
+            return Err(format!("Preserved sidecar is missing, unsafe or oversized: {sidecar}"));
+        }
+        let archive_name = relative.to_string_lossy().replace('\\', "/");
+        if !existing.insert(archive_name.to_ascii_lowercase()) {
+            return Err(format!("Sidecar collides with an existing nested CPK entry: {archive_name}"));
+        }
+        let bytes = fs::read(&source).map_err(|e| format!("Read preserved sidecar {}: {e}", sidecar))?;
+        nested_writer.add(&archive_name, &bytes, None)
+            .map_err(|e| format!("Add preserved sidecar {} to nested face CPK: {e}", sidecar))?;
+    }
+    let rebuilt_nested = nested_writer.finish().map_err(|e| format!("Finish rebuilt nested face CPK: {e}"))?.into_inner();
+    let mut outer_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "FACE FORGE TEAM")
+        .map_err(|e| format!("Create rebuilt Team CPK: {e}"))?;
+    for (index, entry) in outer_entries.iter().enumerate() {
+        let bytes = if index == nested_index {
+            rebuilt_nested.as_slice()
+        } else {
+            // The outer archive reader borrows its backing buffer; read all
+            // original members before replacing the archive file.
+            let data = outer.read(entry).map_err(|e| format!("Read outer CPK entry {}: {e}", entry.path))?;
+            outer_writer.add(&entry.path, &data, None)
+                .map_err(|e| format!("Copy outer CPK entry {}: {e}", entry.path))?;
+            continue;
+        };
+        outer_writer.add(&entry.path, bytes, None)
+            .map_err(|e| format!("Replace nested face CPK {}: {e}", entry.path))?;
+    }
+    let rebuilt_outer = outer_writer.finish().map_err(|e| format!("Finish rebuilt Team CPK: {e}"))?.into_inner();
+    // Read-back both archive levels and require every sidecar to be present.
+    let mut check_outer = cpk::CpkArchive::open(Cursor::new(&rebuilt_outer))
+        .map_err(|e| format!("Read back rebuilt Team CPK: {e}"))?;
+    let check_entry = check_outer.entries().iter().find(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{player_id}.cpk"))))
+        .ok_or_else(|| "Rebuilt Team CPK lost its nested player archive.".to_string())?.clone();
+    let check_nested_bytes = check_outer.read(&check_entry).map_err(|e| format!("Read back rebuilt nested face CPK: {e}"))?;
+    let mut check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
+        .map_err(|e| format!("Validate rebuilt nested face CPK: {e}"))?;
+    for sidecar in sidecars {
+        let basename = Path::new(sidecar).file_name().and_then(|v| v.to_str()).unwrap_or(sidecar);
+        if !check_nested.entries().iter().any(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(basename))) {
+            return Err(format!("Sidecar preservation read-back failed for {sidecar}."));
+        }
+    }
+    fs::write(outer_path, rebuilt_outer).map_err(|e| format!("Write rebuilt Team CPK: {e}"))?;
+    Ok(())
+}
+
 fn companion_fmdl_for_skeleton(skeleton: &Path) -> PathBuf {
     if skeleton.file_stem().and_then(|value| value.to_str()).is_some_and(|stem| stem.eq_ignore_ascii_case("fcl_hair_sim")) {
         skeleton.with_file_name("fcl_hair.fmdl")
@@ -598,6 +685,9 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let cpk_files: Vec<_> = output_files.iter().filter(|name| name.to_ascii_lowercase().ends_with(".cpk")).cloned().collect();
     if cpk_files.is_empty() {
         return Err("Upstream Team compiler reported success but produced no CPK archive.".into());
+    }
+    for archive_name in &cpk_files {
+        inject_preserved_sidecars(&output.join(archive_name), &player, target_player_id, &source_inventory.preserved_sidecars)?;
     }
     let report = serde_json::json!({
         "ok": true,
