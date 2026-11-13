@@ -6,6 +6,10 @@ import { pathToFileURL } from "node:url";
 import { inspectFaceFolder } from "../engine/inventory";
 import { inspectFaceDatabase } from "../engine/database";
 import { ddsToFtex, ftexToDds, type TextureColorSpace } from "../engine/formats/texture";
+import { parseModelContainer } from "../engine/formats/model-container";
+import { decodePes2017Geometry } from "../engine/formats/model-geometry";
+import { parseFmdlContainer } from "../engine/formats/fmdl-container";
+import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
 
 let mainWindow:BrowserWindow|null=null;
 function trusted(event:Electron.IpcMainInvokeEvent){
@@ -18,6 +22,29 @@ function registerIpc(){
  ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose face folders for batch or project",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
  ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");return inspectFaceFolder(folder);});
+ ipcMain.handle("face:preview-model",async(event,folder:unknown,relativePath:unknown)=>{
+  trusted(event);
+  if(typeof folder!=="string"||!path.isAbsolute(folder)||typeof relativePath!=="string"||relativePath.length>2048)throw new Error("Invalid preview source.");
+  const root=path.resolve(folder),source=path.resolve(root,relativePath),prefix=root.endsWith(path.sep)?root:root+path.sep;
+  if(!source.startsWith(prefix))throw new Error("Preview path escapes the selected face folder.");
+  const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview source is not a safe supported file.");
+  const data=await readFile(source),extension=path.extname(source).toLowerCase();
+  let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],warnings:string[]=[];
+  if(extension===".fmdl"){
+   const scene=decodePes2021Fmdl(parseFmdlContainer(data));generation="pes2021";
+   meshes=scene.meshes.map(mesh=>({name:mesh.name,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
+   if(scene.bones.length)warnings.push(scene.bones.length+" source bones detected; preview is static and does not play facial animation.");
+   if(scene.metadata.additionalLodLevels)warnings.push("Additional LOD levels are not shown in this preview.");
+  }else if(extension===".model"){
+   const container=parseModelContainer(data),geometry=decodePes2017Geometry(container.sections[1]?.data??Buffer.alloc(0));generation="pes2017";
+   meshes=geometry.map(mesh=>({name:mesh.name,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
+   warnings.push(...geometry.flatMap(mesh=>mesh.warnings));
+   warnings.push("PES 2017 material, bone-group and facial-rig links are not yet reconstructed; this is a geometry-only preview.");
+  }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
+  if(!meshes.length)throw new Error("No renderable mesh geometry was found in this model.");
+  const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
+  return {source:relativePath,generation,meshes,warnings};
+ });
  ipcMain.handle("texture:convert",async(event,colorSpace:unknown)=>{
   trusted(event);
   if(colorSpace!=="LINEAR"&&colorSpace!=="SRGB"&&colorSpace!=="NORMAL")throw new Error("Invalid texture color-space selection.");
