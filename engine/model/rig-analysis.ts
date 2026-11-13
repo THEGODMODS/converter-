@@ -11,8 +11,8 @@ export function analyzeRigCompatibility(source:FaceScene,target:FaceScene):RigCo
  target.bones.forEach((bone,i)=>{const key=normalize(bone.name);targetKeys.set(key,[...(targetKeys.get(key)??[]),i]);});
  const matched:BonePair[]=[],unmatchedSource:string[]=[],ambiguous:string[]=[];
  for(let i=0;i<source.bones.length;i++){const bone=source.bones[i],key=normalize(bone.name),targets=targetKeys.get(key)??[];if(!key||targets.length!==1||(sourceKeys.get(key)?.length??0)!==1){if(targets.length>1||(sourceKeys.get(key)?.length??0)>1)ambiguous.push(bone.name);else unmatchedSource.push(bone.name);continue;}
-  const targetIndex=targets[0],sourceParent=bone.parentIndex===null?null:normalize(source.bones[bone.parentIndex].name),targetParent=target.bones[targetIndex].parentIndex===null?null:normalize(target.bones[target.bones[targetIndex].parentIndex].name);
-  if(sourceParent!==targetParent){issues.push({severity:"warning",code:"PARENT_MISMATCH",message:"Matched bone has a different immediate parent: "+bone.name, bone:bone.name});}
+  const targetIndex=targets[0],sourceAncestors=parentChain(source.bones,i).slice(0,-1),targetAncestors=parentChain(target.bones,targetIndex).slice(0,-1);
+  if(JSON.stringify(sourceAncestors)!==JSON.stringify(targetAncestors)){issues.push({severity:"warning",code:"PARENT_MISMATCH",message:"Matched bone has a different ancestor hierarchy: "+bone.name, bone:bone.name});}
   matched.push({sourceIndex:i,targetIndex,sourceName:bone.name,targetName:target.bones[targetIndex].name,match:bone.name===target.bones[targetIndex].name?"exact-name":"normalized-name"});
  }
  const mappedTargets=new Set(matched.map(x=>x.targetIndex));
@@ -20,9 +20,10 @@ export function analyzeRigCompatibility(source:FaceScene,target:FaceScene):RigCo
  for(const name of ambiguous)issues.push({severity:"error",code:"AMBIGUOUS_BONE",message:"Bone name is ambiguous and will not be auto-mapped: "+name,bone:name});
  for(const name of unmatchedSource)issues.push({severity:"warning",code:"UNMATCHED_SOURCE_BONE",message:"Source bone has no unique target match: "+name,bone:name});
  for(const name of unmatchedTarget)issues.push({severity:"warning",code:"UNMATCHED_TARGET_BONE",message:"Target skeleton contains a bone with no source match: "+name,bone:name});
- const sourceHasTransforms=source.bones.every(b=>!!(b.sourceMatrix||b.sourceTransform||b.inverseBindMatrix)),targetHasTransforms=target.bones.every(b=>!!(b.sourceMatrix||b.sourceTransform||b.inverseBindMatrix));
- if(!sourceHasTransforms||!targetHasTransforms)issues.push({severity:"warning",code:"MISSING_TRANSFORMS",message:"One or both skeletons lack complete transform data; name matches cannot establish bind-pose equivalence."});
- const parentMismatch=issues.some(x=>x.code==="PARENT_MISMATCH"),safe=issues.every(x=>x.severity!=="error")&&ambiguous.length===0&&unmatchedSource.length===0&&matched.length>0&&sourceHasTransforms&&targetHasTransforms&&!parentMismatch;
+ const hasVerifiedBindMatrices=(bones:FaceBone[])=>bones.length>0&&bones.every(b=>{const matrix=b.inverseBindMatrix??b.sourceMatrix;return !!matrix&&matrix.length===16&&matrix.every(Number.isFinite);});
+ const sourceHasTransforms=hasVerifiedBindMatrices(source.bones),targetHasTransforms=hasVerifiedBindMatrices(target.bones);
+ if(!sourceHasTransforms||!targetHasTransforms)issues.push({severity:"warning",code:"MISSING_OR_UNVERIFIED_BIND_MATRICES",message:"Complete finite 4x4 bind matrices are required; partial 3x4 or opaque transform data cannot certify retargeting."});
+ const parentMismatch=issues.some(x=>x.code==="PARENT_MISMATCH"),safe=issues.every(x=>x.severity!=="error")&&ambiguous.length===0&&unmatchedSource.length===0&&unmatchedTarget.length===0&&matched.length>0&&sourceHasTransforms&&targetHasTransforms&&!parentMismatch;
  return {sourceBones:source.bones.length,targetBones:target.bones.length,matched,unmatchedSource,unmatchedTarget,ambiguous,issues,safeForAutomaticRetarget:safe};
 }
 export type WeightAudit={vertices:number;skinnedVertices:number;unskinnedVertices:number;invalidInfluences:number;nonNormalizedWeights:number;maximumInfluences:number;issues:RigIssue[]};
