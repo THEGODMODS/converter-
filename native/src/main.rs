@@ -2,20 +2,22 @@ use std::{env, fs, path::{Path,PathBuf}, process};
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
 use model_convert::{convert, NativeModelBundle};
+use fpk::FpkFile;
 
 fn required(args:&[String], name:&str)->Result<String,String>{let i=args.iter().position(|x|x==name).ok_or_else(||format!("Missing required argument {name}"))?;args.get(i+1).cloned().ok_or_else(||format!("Missing value for {name}"))}
 fn optional(args:&[String],name:&str)->Option<String>{args.iter().position(|x|x==name).and_then(|i|args.get(i+1)).cloned()}
 fn write(path:&Path,bytes:&[u8])->Result<(),String>{if let Some(parent)=path.parent(){fs::create_dir_all(parent).map_err(|e|format!("Create output directory: {e}"))?;}fs::write(path,bytes).map_err(|e|format!("Write {}: {e}",path.display()))}
 fn run()->Result<(),String>{
- let args:Vec<String>=env::args().collect();if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native convert-model --source-format fmdl|model --target 2017|2021 --model FILE [--material FILE] [--skeleton FILE] --out DIR".into());}
+ let args:Vec<String>=env::args().collect();if args.get(1).map(String::as_str)!=Some("convert-model"){return Err("Usage: face-forge-native convert-model --source-format fmdl|model|fpk --target 2017|2021 --model FILE [--material FILE] [--skeleton FILE] --out DIR".into());}
  let source_format=required(&args,"--source-format")?;let target_text=required(&args,"--target")?;let model_path=PathBuf::from(required(&args,"--model")?);let out=PathBuf::from(required(&args,"--out")?);
  let target:u16=target_text.parse().map_err(|_|"Target must be 2017 or 2021".to_string())?;if target!=2017&&target!=2021{return Err("Target must be 2017 or 2021".into());}
  if !model_path.is_file(){return Err(format!("Source model does not exist: {}",model_path.display()));}
  let bytes=fs::read(&model_path).map_err(|e|format!("Read source model: {e}"))?;
  let bundle=match source_format.as_str(){
+  "fpk"=>{if target!=2017{return Err("An FPK source is a PES 2021 Fox package; choose PES 2017 as target.".into());}let archive=FpkFile::read(&bytes).map_err(|e|format!("Decode FPK/FPKD package: {e}"))?;let candidates:Vec<_>=archive.entries().filter(|(name,_)|name.to_ascii_lowercase().ends_with(".fmdl")).collect();if candidates.len()!=1{return Err(format!("Expected exactly one FMDL model in this face FPK; found {}. Select a package with one face model or use direct FMDL input.",candidates.len()));}let (name,data)=candidates[0];let file=FmdlFile::read(data).map_err(|e|format!("Decode packaged FMDL {name}: {e}"))?;let model=FoxModel::from_file(&file).map_err(|e|format!("Resolve packaged FMDL references: {e}"))?;let skl_name=format!("{}.skl",name.trim_end_matches(".fmdl"));let skl=archive.get(&skl_name).map(|data|SklFile::read(data).map_err(|e|format!("Decode companion SKL {skl_name}: {e}"))).transpose()?;NativeModelBundle::Fox{model,skl}},
   "fmdl"=>{if target==2021{return Err("Source and target are both PES 2021; select the opposite target generation.".into());}let file=FmdlFile::read(&bytes).map_err(|e|format!("Decode FMDL: {e}"))?;let model=FoxModel::from_file(&file).map_err(|e|format!("Resolve FMDL references: {e}"))?;let skl=if let Some(p)=optional(&args,"--skeleton"){let data=fs::read(&p).map_err(|e|format!("Read SKL: {e}"))?;Some(SklFile::read(&data).map_err(|e|format!("Decode SKL: {e}"))?)}else{None};NativeModelBundle::Fox{model,skl}},
   "model"=>{if target==2017{return Err("Source and target are both PES 2017; select the opposite target generation.".into());}let file=PreFoxModel::read(&bytes).map_err(|e|format!("Decode MODEL: {e}"))?;let model=PreFoxSemanticModel::from_file(&file).map_err(|e|format!("Resolve MODEL geometry: {e}"))?;let mtl_path=optional(&args,"--material").ok_or("PES 2017 MODEL conversion requires its companion .mtl file")?;let mtl_bytes=fs::read(&mtl_path).map_err(|e|format!("Read MTL: {e}"))?;let mtl=MaterialSet::read(&mtl_bytes).map_err(|e|format!("Decode MTL: {e}"))?;NativeModelBundle::PreFox{model,mtl}},
-  _=>return Err("--source-format must be fmdl or model".into())
+  _=>return Err("--source-format must be fmdl, fpk or model".into())
  };
  let target_version=if target==2017{pes_version::PesVersion::Pes17}else{pes_version::PesVersion::Pes21};
  let converted=convert(bundle,target_version).map_err(|e|format!("Cross-generation conversion rejected: {e}"))?;
