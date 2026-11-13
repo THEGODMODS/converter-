@@ -22,7 +22,10 @@
 - [ ] Explicit unsupported-format reporting.
 
 ## Phase 3 — model conversion adapters
-- [ ] Document PES 2017 MODEL structures and PES 2021 FMDL structures.
+- [x] Parse and serialize PES 2017 MODEL section containers, including ESYS zlib wrappers.
+- [x] Parse and serialize PES 2021 FMDL block containers while preserving unknown blocks.
+- [ ] Decode PES 2017 MODEL mesh, material and skeleton structures.
+- [ ] Decode PES 2021 FMDL mesh, material and skeleton structures.
 - [ ] Mesh topology, vertex attributes, UV sets, normals, tangents and material mapping.
 - [ ] Skeleton, bone weights, facial morph/blendshape and auxiliary face data compatibility.
 - [ ] Separate tested adapters for each direction.
