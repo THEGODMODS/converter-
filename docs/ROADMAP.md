@@ -16,7 +16,7 @@
 - [ ] Project manifest and reproducible diagnostics.
 
 ## Phase 2 — texture conversion
-- [ ] FTEX header/format research and independent decoder tests.
+- [x] FTEX header/format research and initial decoder tests.
 - [x] DDS header inspection for common legacy and DX10 formats.
 - [x] Initial FTEX ↔ DDS container conversion for supported formats, mip levels and compressed payloads (needs broad fixture coverage and game testing).
 - [ ] Explicit unsupported-format reporting.
@@ -26,7 +26,7 @@
 - [x] Parse and serialize PES 2021 FMDL block containers while preserving unknown blocks.
 - [ ] Decode PES 2017 MODEL mesh, material and skeleton structures.
 - [ ] Decode PES 2021 FMDL mesh, material and skeleton structures.
-- [ ] Mesh topology, vertex attributes, UV sets, normals, tangents and material mapping.
+- [x] Initial PES 2017 MODEL section-1 vertex/face decoder with strict bounds and semantic validation.\n- [x] Initial PES 2021 FMDL vertex/index, material instance, texture reference and bone-group decoder.\n- [ ] Complete PES 2017 section 0/4/5 bone-group, mesh/material linkage and companion MTL/XML mapping.\n- [ ] Expand FMDL LOD, mesh split, face-specific auxiliary and edge-case support.
 - [ ] Skeleton, bone weights, facial morph/blendshape and auxiliary face data compatibility.
 - [ ] Separate tested adapters for each direction.
 - [ ] Round-trip and reference-scene regression tests.
@@ -53,7 +53,7 @@
 - [ ] Animation regression fixtures and actual in-game close-up/replay testing.
 
 ## Phase 6 — release quality
-- [ ] Batch queue, resume/cancel, logs and conversion history.
+- [x] Single-face, batch intake and local project-database workspaces.\n- [ ] Batch conversion execution, resume/cancel, logs and conversion history.
 - [ ] Windows installer, portable build, checksums and signed release metadata.
 - [ ] Test against legally obtained sample assets and real target installations.
 - [ ] Publish supported-format matrix and known limitations.
