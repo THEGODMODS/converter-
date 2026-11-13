@@ -17,6 +17,7 @@ import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
 import { parseFpkArchive } from "../engine/formats/fpk";
 import { convertFaceTextureDependencies } from "./texture-bundle";
 import { buildFoxFacePackage } from "./package-builder";
+import { publishStagedOutput } from "./output-publish";
 
 let mainWindow:BrowserWindow|null=null;
 function trusted(event:Electron.IpcMainInvokeEvent){
@@ -112,24 +113,10 @@ function registerIpc(){
    const result=await execFileAsync(binary,args,{timeout:180000,maxBuffer:4*1024*1024,windowsHide:true});
    let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("Native converter returned an invalid result report.");}
    const textures=await convertFaceTextureDependencies(conversionProject,root,stageOutput,target);
-   const latestStat=await fs.promises.lstat(realOutput);
-   if(latestStat.isSymbolicLink()||!latestStat.isDirectory()||await fs.promises.realpath(realOutput)!==realOutput)throw new Error("The selected output folder changed during conversion; staged files were not published.");
-   if((await fs.promises.readdir(realOutput)).length)throw new Error("The selected output folder is no longer empty. Existing files were left untouched; choose another output folder.");
-   await fs.promises.rename(realOutput,backupOutput);
-   outputMoved=true;
-   try{
-    await fs.promises.rename(stageOutput,realOutput);
-   }catch(error){
-    await fs.promises.rename(backupOutput,realOutput);
-    outputMoved=false;
-    throw error;
-   }
-   // Publication succeeded. From here on, cleanup is best-effort and must
-   // never roll back or delete the user's newly published conversion.
+   const published=await publishStagedOutput(stageOutput,realOutput);
    outputMoved=false;
-   try{await fs.promises.rm(backupOutput,{recursive:true,force:true});}catch{}
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
-   return {destination:realOutput,report,textures};
+   return {destination:published,report,textures};
   }catch(error){
    if(outputMoved){
     try{if(!(await fs.promises.lstat(realOutput)).isSymbolicLink())await fs.promises.rm(realOutput,{recursive:true,force:true});}catch{}
