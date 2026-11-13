@@ -238,9 +238,16 @@ function registerIpc(){
     const textureData:Record<string,string>={};
     for(const [slot,reference] of Object.entries(material.textures)){
      const wanted=normalize(reference),base=wanted.split("/").pop()??wanted;
-     const candidates=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017").filter(file=>normalize(file.path.split("!/").pop()??file.path)===wanted);
-     const resolved=candidates.length===1?candidates:candidates.length===0?textureInventory.files.filter(file=>(file.kind==="texture-pes2021"||file.kind==="texture-pes2017")&&(normalize(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base):candidates;
-     if(resolved.length!==1){warnings.push("Texture "+reference+" for "+material.name+" was "+(resolved.length?"ambiguous":"not found")+"; it is not shown in the preview.");continue;}
+     const textureFiles=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
+     const candidates=textureFiles.filter(file=>normalize(file.path.split("!/").pop()??file.path)===wanted);
+     const byName=candidates.length?candidates:textureFiles.filter(file=>(normalize(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
+     const scorePath=(candidate:string,requested:string)=>{const a=candidate.split("/"),b=requested.split("/");let score=0;while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;return score;};
+     const ranked=byName.map(file=>({file,score:scorePath(normalize(file.path.split("!/").pop()??file.path),wanted)}));
+     const bestScore=ranked.length?Math.max(...ranked.map(item=>item.score)):0;
+     const best=ranked.filter(item=>item.score===bestScore).map(item=>item.file);
+     const uniqueHashes=new Set(best.map(file=>file.sha256));
+     const resolved=uniqueHashes.size===1&&best.length?[best[0]]:best.length===1?best:[];
+     if(!resolved.length){warnings.push("Texture "+reference+" for "+material.name+" was "+(byName.length?"ambiguous":"not found")+"; it is not shown in the preview.");continue;}
      const asset=resolved[0];let textureBytes:Buffer;
      if(asset.path.includes("!/")){
       const marker=asset.path.indexOf("!/"),archiveRelative=asset.path.slice(0,marker),memberName=asset.path.slice(marker+2);
