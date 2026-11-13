@@ -24,12 +24,12 @@ export function assertTrustedPackageUrl(value:string,hosts:readonly string[]):UR
 function safePackagePath(value:string):boolean{
  if(!value||value.length>240||value.startsWith("/")||value.includes("\\")||/^[a-z]:/i.test(value)||value.includes(":"))return false;
  const parts=value.split("/");
- if(parts.some(part=>!part||part==="."||part===".."||/[<>:"|?*\\x00-\\x1f]/.test(part)||/[. ]$/.test(part)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\.|$)/i.test(part)))return false;
+ if(parts.some(part=>!part||part==="."||part===".."||/[<>:"|?*\x00-\x1f]/.test(part)||/[. ]$/.test(part)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part)))return false;
  return true;
 }
 export function verifySignedPackageManifest(input:unknown,trust:PackageTrust):SignedPackageManifest{
  if(!record(input)||!exactKeys(input,["schema","packageId","version","displayName","files","signature"]))throw new Error("Package manifest has an invalid top-level structure.");
- if(input.schema!==1||typeof input.packageId!=="string"||!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(input.packageId)||typeof input.version!=="string"||!/^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(input.version)||typeof input.displayName!=="string"||!input.displayName.trim()||input.displayName.length>120||!Array.isArray(input.files)||!input.files.length||input.files.length>PACKAGE_LIMITS.files)throw new Error("Package manifest metadata or file count is invalid.");
+ if(input.schema!==1||typeof input.packageId!=="string"||!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(input.packageId)||typeof input.version!=="string"||!/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(input.version)||typeof input.displayName!=="string"||!input.displayName.trim()||input.displayName.length>120||!Array.isArray(input.files)||!input.files.length||input.files.length>PACKAGE_LIMITS.files)throw new Error("Package manifest metadata or file count is invalid.");
  if(!record(input.signature)||!exactKeys(input.signature,["algorithm","keyId","value"])||input.signature.algorithm!=="Ed25519"||typeof input.signature.keyId!=="string"||typeof input.signature.value!=="string"||!/^[A-Za-z0-9_-]{1,64}$/.test(input.signature.keyId)||!/^[A-Za-z0-9+/]{86}==$/.test(input.signature.value))throw new Error("Package signature metadata is invalid.");
  const keyPem=trust.publicKeys[input.signature.keyId];if(!keyPem)throw new Error("This package was signed by an untrusted publisher key.");
  let total=0;const seen=new Set<string>();
