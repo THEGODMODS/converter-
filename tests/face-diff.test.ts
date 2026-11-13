@@ -25,14 +25,16 @@ describe("PES face_diff metadata and records",()=>{
   expect(parsed.eyelidOffsets.bottomRight).toBeCloseTo(-5.24513,4);
   expect(parsed.jawOffset.every(Number.isFinite)).toBe(true);
  });
- it("keeps real v5 auxiliary records opaque instead of assigning unverified bone and ear names",()=>{
+ it("decodes only the independently documented eye landmarks and keeps other real v5 records opaque",()=>{
   const parsed=inspectFaceDiff(v5Fixture());
   expect(parsed.fileBytes).toBe(960);
-  expect(parsed.opaqueRecordOffsets).toHaveLength(38);
-  expect(parsed.boneOffsets).toHaveLength(0);
+  expect(parsed.opaqueRecordOffsets).toHaveLength(36);
+  expect(parsed.boneOffsets).toHaveLength(2);
+  expect(parsed.boneOffsets[0]).toMatchObject({index:6,boneName:"skf_eye_r",recordOffset:0x150});
+  expect(parsed.boneOffsets[1]).toMatchObject({index:7,boneName:"skf_eye_l",recordOffset:0x160});
+  expect(parsed.rightEyePosition).toEqual([-1226.805908203125,0.0005901341210119426,0.0012315147323533893]);
+  expect(parsed.leftEyePosition).toEqual([-1226.8057861328125,0.0006091122631914914,-0.0016260736156255007]);
   expect(parsed.earTransforms).toHaveLength(0);
-  expect(parsed.rightEyePosition).toBeNull();
-  expect(parsed.leftEyePosition).toBeNull();
  });
  it("accepts the independently sourced real legacy v4 fixture and validates its record ranges",()=>{
   const parsed=inspectFaceDiff(v4Fixture());
@@ -40,8 +42,8 @@ describe("PES face_diff metadata and records",()=>{
   expect(parsed.version).toBe(4);
   expect(parsed.declaredBlock1Records).toBe(32);
   expect(parsed.declaredBlock2Records).toBe(6);
-  expect(parsed.opaqueRecordOffsets).toHaveLength(38);
-  expect(parsed.boneOffsets).toHaveLength(0);
+  expect(parsed.opaqueRecordOffsets).toHaveLength(36);
+  expect(parsed.boneOffsets).toHaveLength(2);
   expect(parsed.earTransforms).toHaveLength(0);
  });
  it("rejects invalid magic, truncated headers and count-derived truncation",()=>{
@@ -59,10 +61,21 @@ describe("PES face_diff metadata and records",()=>{
   const outOfRange=v5Fixture();outOfRange.writeUInt32LE(0x3b0,0x50);
   expect(()=>inspectFaceDiff(outOfRange)).toThrow(/out of range/i);
  });
+ it("recognizes the observed 33-bone v5 record-count profile",()=>{
+  const data=Buffer.alloc(0x3c0);data.write("FACE",0,"ascii");data.writeUInt32LE(5,4);
+  data.writeFloatLE(1,0x08);data.writeFloatLE(1,0x0c);data.writeFloatLE(1,0x10);
+  data.writeUInt32LE(33,0x48);data.writeUInt32LE(6,0x4c);
+  for(let i=0;i<33;i++)data.writeUInt32LE(0xf0+i*0x10,0x50+i*4);
+  for(let i=0;i<6;i++)data.writeUInt32LE(0x300+i*0x20,0x50+(33+i)*4);
+  const parsed=inspectFaceDiff(data);
+  expect(parsed.declaredBlock1Records).toBe(33);
+  expect(parsed.boneOffsets).toHaveLength(2);
+  expect(parsed.opaqueRecordOffsets).toHaveLength(37);
+ });
  it("rejects overlapping v4 record ranges without interpreting their semantics",()=>{
   const bad=v4Fixture();
   // First second-block record spans 0x2f0..0x310; this pointer overlaps it at 0x300.
-  bad.writeUInt32LE(0x300,0x50+31*4);
+  bad.writeUInt32LE(0x310,0x50+31*4);
   expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
  });
  it("rejects overlapping v5 record ranges instead of preserving malformed pointers",()=>{
