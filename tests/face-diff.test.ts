@@ -25,7 +25,7 @@ function v5Fixture(){
 function v4LegacyFixture(){
  const data=Buffer.alloc(944);data.write("FACE",0,"ascii");data.writeUInt32LE(4,4);
  data.writeUInt32LE(32,0x48);data.writeUInt32LE(6,0x4c);
- const offsets=[...Array.from({length:33},(_,i)=>0xf0+i*0x10),...Array.from({length:5},(_,i)=>0x310+i*0x20)];
+ const offsets=[...Array.from({length:32},(_,i)=>0xf0+i*0x10),...Array.from({length:6},(_,i)=>0x2f0+i*0x20)];
  offsets.forEach((offset,i)=>data.writeUInt32LE(offset,0x50+i*4));
  return data;
 }
@@ -86,6 +86,12 @@ describe("PES face_diff metadata and records",()=>{
   expect(()=>inspectFaceDiff(overlap)).toThrow(/duplicate pointer|records overlap/i);
   const trailing=Buffer.alloc(976);v5Fixture().copy(trailing);trailing.writeUInt32LE(0x3c0,0x50);
   expect(()=>inspectFaceDiff(trailing)).toThrow(/invalid or unaligned absolute offset/i);
+ });
+ it("rejects overlapping legacy v4 record ranges without decoding their semantics",()=>{
+  const bad=v4LegacyFixture();
+  // The first 32 pointers address 16-byte records; block two addresses 32-byte records.
+  bad.writeUInt32LE(0x2f0,0x50+32*4);
+  expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
  });
  it("rejects non-finite values in scalar and record blocks",()=>{
   for(const offset of [0x08,0x14,0x20,0x2c,0x3c,0xf0,0x300]){
