@@ -5,7 +5,7 @@ export type ConversionAssessment={source:FaceSourceGeneration;target:FaceSourceG
 type ProjectFile={path:string;kind:string;formatValid?:boolean};
 type ProjectInput={detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";files:ProjectFile[];models:number;textures:number};
 const modelKind=(generation:FaceSourceGeneration)=>generation==="pes2021"?"model-pes2021":"model-pes2017";
-const basename=(value:string)=>value.replaceAll("\\\\","/").split("/").at(-1)??value;
+const basename=(value:string)=>value.split(/[\\/]/).at(-1)??value;
 export function assessFaceConversion(project:ProjectInput,source:FaceSourceGeneration):ConversionAssessment{
  const target:FaceSourceGeneration=source==="pes2021"?"pes2017":"pes2021",files=project.files;
  const sourceModels=files.filter(file=>file.kind===modelKind(source)||source==="pes2017"&&file.kind==="model-pes2017-compressed");
