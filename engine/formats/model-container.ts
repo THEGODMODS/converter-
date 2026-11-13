@@ -30,7 +30,7 @@ export function writeModelContainer(container:ModelContainer,compress=container.
  for(let i=0;i<container.sections.length;i++){const section=container.sections[i];if(section.index!==i)throw new Error("MODEL section indices must be contiguous and ordered.");records.writeUInt32LE(relative,i*4);sections.push(Buffer.from(section.data));relative+=section.data.length;}
  const arrayHeader=Buffer.alloc(12);arrayHeader.writeUInt32LE(recordOffset,0);arrayHeader.writeUInt32LE(container.sections.length,4);arrayHeader.writeUInt32LE(4,8);
  const header=Buffer.alloc(24);header.write("MODEL\0\0\0",0,"binary");header.writeUInt32LE(tocOffset,8);header.writeUInt16LE(container.unknown1,12);header.writeUInt16LE(container.version,14);header.writeUInt32LE(container.unknown2,16);header.writeUInt32LE(container.flags,20);
- const plain=Buffer.concat([header,arrayHeader,container.arrayHeaderExtra,records,...sections]);
+ const plain=Buffer.concat([header,Buffer.alloc(8),arrayHeader,container.arrayHeaderExtra,records,...sections]);
  if(!compress)return plain;
  const wrapper=Buffer.alloc(16);wrapper.write("ESYS",4,"ascii");return Buffer.concat([wrapper,deflateSync(plain,{level:9})]);
 }
