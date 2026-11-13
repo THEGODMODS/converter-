@@ -153,6 +153,9 @@ function registerIpc(){
     const real=await fs.promises.realpath(absolute),prefix=realSource.endsWith(path.sep)?realSource:realSource+path.sep;
     if(!real.startsWith(prefix))throw new Error("Texture path resolves outside the selected source folder.");
     const input=await readFile(absolute),converted=ext===".dds"?ddsToFtex(input,colorSpace as TextureColorSpace):ftexToDds(input);
+    if(converted.data.length>128*1024*1024)throw new Error("Converted texture exceeds the 128 MiB per-file output safety limit: "+rel);
+    const outputTotal=files.reduce((sum,file)=>sum+file.data.length,converted.data.length);
+    if(outputTotal>512*1024*1024)throw new Error("Texture batch exceeds the 512 MiB converted-output safety limit.");
     files.push({source:absolute,relative:rel,data:converted.data,format:converted.info.formatName,width:converted.info.width,height:converted.info.height});
    }
   }
@@ -180,9 +183,9 @@ function registerIpc(){
   if(colorSpace!=="LINEAR"&&colorSpace!=="SRGB"&&colorSpace!=="NORMAL")throw new Error("Invalid texture color-space selection.");
   const picked=await dialog.showOpenDialog(mainWindow!,{title:"Choose a DDS or FTEX texture",properties:["openFile"],filters:[{name:"PES textures",extensions:["dds","ftex"]}]});
   if(picked.canceled||!picked.filePaths[0])return null;
-  const source=picked.filePaths[0],extension=path.extname(source).toLowerCase(),input=await readFile(source);
+  const source=picked.filePaths[0],extension=path.extname(source).toLowerCase(),sourceStat=await fs.promises.lstat(source);\n  if(sourceStat.isSymbolicLink()||!sourceStat.isFile()||sourceStat.size>128*1024*1024)throw new Error("Texture source must be a regular file no larger than 128 MiB.");\n  const input=await readFile(source);
   const converted=extension===".dds"?ddsToFtex(input,colorSpace as TextureColorSpace):extension===".ftex"?ftexToDds(input):null;
-  if(!converted)throw new Error("Choose a .dds or .ftex texture.");
+  if(!converted)throw new Error("Choose a .dds or .ftex texture.");\n  if(converted.data.length>256*1024*1024)throw new Error("Converted texture exceeds the 256 MiB output safety limit.");
   const outputExtension=extension===".dds"?".ftex":".dds";
   const suggested=path.join(path.dirname(source),path.basename(source,path.extname(source))+".converted"+outputExtension);
   const save=await dialog.showSaveDialog(mainWindow!,{title:"Save converted texture",defaultPath:suggested,filters:[{name:outputExtension===".dds"?"DDS texture":"FTEX texture",extensions:[outputExtension.slice(1)]}]});
