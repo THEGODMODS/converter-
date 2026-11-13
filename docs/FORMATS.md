@@ -7,6 +7,7 @@ Community format references describe PES 2014–2017 face assets as MODEL + DDS 
 - Newer generation: `face_high.fmdl`, `hair_high.fmdl`, `oral.fmdl`, `.ftex` textures and FPK containers.
 - Older generation: `.model` mesh assets, material metadata and DDS textures. Some MODEL files use a 16-byte ESYS-prefixed zlib wrapper before the uncompressed MODEL stream; detection must validate the decompressed header and bound output size.
 - Texture naming conventions vary; examples include face diffuse/alpha, normal, specular/roughness, hair and oral maps.
+- Face packages may include `face_diff.bin` with a `FACE` signature. The current reader validates and extracts stable eye-scale, mouth-position, and left/right eye-position vectors at documented offsets. These values are retained in PES-native component order; coordinate conversion and any eyelid/facial-rig rewrite remain separate, fixture-gated work.
 
 ## Conversion is not extension renaming
 A working adapter must understand the binary model schema and translate mesh buffers, vertex layouts, indices, UVs, normals, tangents, materials, skeleton/bone weights and any face-specific auxiliary data. Texture conversion must preserve supported compression, channel order, alpha semantics and mip levels. A CPK is only a delivery container.
