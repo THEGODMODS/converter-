@@ -10,9 +10,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
-    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:win": "npm run build && npm run build:icon && electron-builder --win nsis",
     "predev": "npm run build:electron",
-    "build:electron": "tsc -p electron/tsconfig.json"
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:icon": "node scripts/build-icon.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -30,7 +31,9 @@
     "typescript": "5.9.3",
     "vite": "8.3.8",
     "vitest": "5.1.0",
-    "wait-on": "^8.0.1"
+    "wait-on": "^8.0.1",
+    "sharp": "^0.34.5",
+    "png-to-ico": "^3.0.1"
   },
   "build": {
     "appId": "com.thegodmods.faceforge",
@@ -51,7 +54,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "assets/face-forge.ico"
     },
     "nsis": {
       "oneClick": false,
