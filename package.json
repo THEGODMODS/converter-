@@ -10,10 +10,11 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
-    "dist:win": "npm run build && npm run build:icon && electron-builder --win nsis --publish never",
+    "dist:win": "npm run build && npm run build:icon && npm run build:native && electron-builder --win nsis --publish never",
     "predev": "npm run build:electron",
     "build:electron": "tsc -p electron/tsconfig.json",
-    "build:icon": "node scripts/build-icon.mjs"
+    "build:icon": "node scripts/build-icon.mjs",
+    "build:native": "cargo build --release --manifest-path native/Cargo.toml"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -70,6 +71,10 @@
       {
         "from": "assets/face-forge.ico",
         "to": "face-forge.ico"
+      },
+      {
+        "from": "native/target/release/face-forge-native.exe",
+        "to": "face-forge-native.exe"
       }
     ],
     "copyright": "Copyright © 2026 KFC GODMODS"
