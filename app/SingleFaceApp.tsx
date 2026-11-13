@@ -3,7 +3,7 @@ import type {DragEvent} from "react";
 import {CheckCircle2,FolderOpen,LoaderCircle,ShieldCheck,Sparkles,UploadCloud,XCircle} from "lucide-react";
 import type {FaceProject,FacePreviewData} from "./types";
 import FacePreview from "./FacePreview";
-const validTarget=/^(70[1-9]|7[1-9][0-9]|8[0-9]{2}|9[01][0-9]|920)(0[1-9]|1[0-9]|2[0-3])$/;
+const validTarget=/^[1-9][0-9]{2,3}(0[1-9]|[12][0-9]|3[0-2])$/;
 export default function SingleFaceApp(){
  const [project,setProject]=useState<FaceProject|null>(null),[targetId,setTargetId]=useState(""),[preview,setPreview]=useState<FacePreviewData|null>(null);
  const [busy,setBusy]=useState(false),[previewBusy,setPreviewBusy]=useState(false),[converting,setConverting]=useState(false),[dragging,setDragging]=useState(false);
@@ -11,7 +11,7 @@ export default function SingleFaceApp(){
  const loadFolder=async(folder:string)=>{
   setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setTargetId("");
   try{
-   const scanned=await window.faceForge.inspectFolder(folder);setProject(scanned);
+   const scanned=await window.faceForge.inspectFolder(folder);setProject(scanned);const folderId=folder.split(/[\\/]/).filter(Boolean).pop()??"";if(validTarget.test(folderId))setTargetId(folderId);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
    const models=scanned.files.filter(file=>file.kind==="model-pes2021"),head=models.find(file=>/face_high\.fmdl$/i.test(file.path));
    if(!head)throw new Error("The source folder does not contain a valid face_high.fmdl head model.");
@@ -25,7 +25,7 @@ export default function SingleFaceApp(){
  const onDrop=async(event:DragEvent)=>{event.preventDefault();setDragging(false);const file=event.dataTransfer.files[0];if(!file)return;const folder=window.faceForge.getPathForDrop(file);if(!folder){setError("Drop a face folder from Windows Explorer, not an individual file.");return;}await loadFolder(folder);};
  const convert=async()=>{
   if(!project||!preview)return;
-  if(!validTarget.test(targetId)){setError("Enter a PES 2017 destination ID in team+slot format: team 701–920 followed by roster slot 01–23. Example: 71405 means team 714, slot 05. Do not enter the source PES 2021 face ID.");return;}
+  if(!validTarget.test(targetId)){setError("Enter the same player ID used by this face in PES. Use 5 or 6 digits; the final two digits identify roster slot 01–32.");return;}
   setConverting(true);setError("");setResult("");
   try{const converted=await window.faceForge.convertCompleteFaceFolder(project.root,2017,targetId);if(converted){const cpk=Array.isArray(converted.report.cpkFiles)?(converted.report.cpkFiles as string[]).join(", "):"PES 2017 CPK";setResult("Conversion and nested face-CPK verification completed. Output: "+converted.destination+" · "+cpk+". In-game validation is still required.");}}
   catch(e){setError(e instanceof Error?e.message:"PES 2021 → PES 2017 conversion failed.");}
@@ -44,7 +44,7 @@ export default function SingleFaceApp(){
     </div>
     <div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">STEP 02 / PREVIEW</span><h2>Review the actual face</h2></div><span className="step-number">02</span></div>
      {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE · SCROLL TO ZOOM</span></div><FacePreview preview={preview}/>{preview.warnings.map((warning,index)=>)}</>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>The preview appears only after real FMDL triangle geometry is decoded. File names and material references alone are not a preview.</p></div>}
-     <div className="convert-footer"><div><span className="eyebrow">STEP 03 / OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">PES 2017 DESTINATION ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="e.g. 71405" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>Enter your PES 2017 custom ID: team 701–920 + roster slot 01–23. Example: 71405. Do not enter the PES 2021 source face ID.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">That is not a valid destination ID. Use 5 digits in team + slot format, e.g. 71405. The 6-digit ID in your PES 2021 folder is the source ID, not the PES 2017 destination.</small>}</div>}<p>Convert the complete PES 2021 face into a PES 2017 nested face CPK. Nothing is installed automatically.</p></div><button className="convert-btn" onClick={convert} disabled={!project||!preview||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
+     <div className="convert-footer"><div><span className="eyebrow">STEP 03 / OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">PLAYER FACE ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="e.g. 176104" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>Use this player’s existing PES ID. It is filled automatically when the selected folder is named with the player ID.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a 5- or 6-digit player ID whose final two digits are a roster slot from 01 to 32.</small>}</div>}<p>Convert the complete PES 2021 face into a PES 2017 nested face CPK. Nothing is installed automatically.</p></div><button className="convert-btn" onClick={convert} disabled={!project||!preview||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
      {result&&<div className="texture-toast">{result}</div>}
     </div>
    </section>
