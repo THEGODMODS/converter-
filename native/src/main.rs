@@ -581,15 +581,23 @@ fn extract_face_archives(
     Ok(())
 }
 
-fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
-    if target != 2017 {
-        return Err("The first FACE FORGE release supports PES 2021 → PES 2017 only. PES 2017 → PES 2021 is deferred.".into());
-    }
+fn split_pes2017_target_player_id(target_player_id: &str) -> Result<(&str, &str), String> {
     if target_player_id.len() != 5 || !target_player_id.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err("Target PES 2017 player ID must contain exactly five digits.".into());
     }
     let team_id = &target_player_id[..3];
-    let player_slot = &target_player_id[3..5];
+    let team_number = team_id.parse::<u16>().map_err(|_| "Target PES 2017 team ID is invalid.")?;
+    if !(701..=920).contains(&team_number) {
+        return Err(format!("Target PES 2017 ID {target_player_id} is invalid: its first three digits must be a PES 2017 team ID from 701 through 920. The source PES 2021 face ID is not a PES 2017 target ID."));
+    }
+    Ok((team_id, &target_player_id[3..5]))
+}
+
+fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
+    if target != 2017 {
+        return Err("The first FACE FORGE release supports PES 2021 → PES 2017 only. PES 2017 → PES 2021 is deferred.".into());
+    }
+    let (team_id, player_slot) = split_pes2017_target_player_id(target_player_id)?;
     let input_metadata = fs::symlink_metadata(input).map_err(|e| format!("Inspect face input: {e}"))?;
     if input_metadata.file_type().is_symlink() || !input_metadata.is_dir() {
         return Err("Complete face conversion requires a real source folder.".into());
@@ -1045,5 +1053,22 @@ mod face_source_path_tests {
             companion_fmdl_for_skeleton(std::path::Path::new("Players/05 - A/face_high.skl")),
             std::path::PathBuf::from("Players/05 - A/face_high.fmdl")
         );
+    }
+}
+#[cfg(test)]
+mod pes2017_target_id_tests {
+    use super::split_pes2017_target_player_id;
+
+    #[test]
+    fn accepts_valid_pes2017_team_and_slot_ids() {
+        assert_eq!(split_pes2017_target_player_id("70105").unwrap(), ("701", "05"));
+        assert_eq!(split_pes2017_target_player_id("92099").unwrap(), ("920", "99"));
+    }
+
+    #[test]
+    fn rejects_source_face_ids_and_out_of_range_team_prefixes() {
+        for id in ["15958", "70005", "92105", "99999", "1234", "abcde"] {
+            assert!(split_pes2017_target_player_id(id).is_err(), "{id}");
+        }
     }
 }
