@@ -30,3 +30,5 @@
 .face-integrity-strip b{font-size:9px;color:#d7e1ec}
 .face-integrity-strip small{font-size:8px;line-height:1.5;color:#7e8b9d;margin-top:5px}
 @media(max-width:1050px){.main{padding:25px 22px}.face-integrity-strip{grid-template-columns:1fr}.mode-switch{width:100%}.mode-switch button{flex:1;justify-content:center;padding:9px 5px}}
+
+.database-root{margin:12px 0;padding:10px 12px;border:1px solid #2b3a4a;border-radius:8px;background:#101a25;color:#a7b5c7;font-size:9px;overflow-wrap:anywhere;letter-spacing:.4px}.mode-switch,.mode-card{outline-offset:3px}.mode-card:focus-visible,.nav-item:focus-visible,.primary-btn:focus-visible{outline:2px solid #a9e879}
