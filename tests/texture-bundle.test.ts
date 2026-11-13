@@ -5,6 +5,7 @@ import path from "node:path";
 import type {FaceProject} from "../engine/inventory";
 import {ddsToFtex,inspectFtex} from "../engine/formats/texture";
 import {convertFaceTextureDependencies} from "../electron/texture-bundle";
+import {writeFpkArchive} from "../engine/formats/fpk";
 
 const roots:string[]=[];
 afterEach(async()=>{for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});});
@@ -22,6 +23,24 @@ describe("whole-face texture dependency conversion",()=>{
   const result=await convertFaceTextureDependencies(inventory,root,output,"2017");
   expect(result.converted).toBe(1);expect(result.files[0].destination).toBe("Assets/sourceimages/#windx11/face.dds");
   expect((await readFile(path.join(output,"Assets/sourceimages/#windx11/face.dds"))).toString("ascii",0,4)).toBe("DDS ");
+ });
+ it("resolves and converts an FTEX dependency embedded in an FPK package",async()=>{
+  const root=await temp(),output=path.join(root,"out");await mkdir(output);
+  const ftex=ddsToFtex(rgbaDds(),"SRGB").data;
+  const archive=writeFpkArchive("fpk",[
+   {name:"Assets/face/head.fmdl",data:Buffer.from("model-fixture")},
+   {name:"Assets/sourceimages/skin.ftex",data:ftex}
+  ]);
+  await writeFile(path.join(root,"face.fpk"),archive);
+  const modelPath="face.fpk!/Assets/face/head.fmdl",texturePath="face.fpk!/Assets/sourceimages/skin.ftex";
+  const inventory=project([
+   {path:modelPath,bytes:10,kind:"model-pes2021",sha256:""},
+   {path:texturePath,bytes:ftex.length,kind:"texture-pes2021",sha256:""}
+  ],[{source:modelPath,reference:"/Assets/sourceimages/skin.ftex",status:"resolved",candidates:[texturePath]}]);
+  const result=await convertFaceTextureDependencies(inventory,root,output,"2017");
+  expect(result.converted).toBe(1);
+  expect(result.files[0].destination).toBe("Assets/sourceimages/skin.dds");
+  expect((await readFile(path.join(output,"Assets/sourceimages/skin.dds"))).toString("ascii",0,4)).toBe("DDS ");
  });
  it("converts DDS to FTEX using the MTL sampler color-space declaration",async()=>{
   const root=await temp(),output=path.join(root,"out");await mkdir(output);
