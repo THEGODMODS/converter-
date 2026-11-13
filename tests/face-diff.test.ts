@@ -62,7 +62,7 @@ describe("PES face_diff metadata and records",()=>{
  it("rejects overlapping v4 record ranges without interpreting their semantics",()=>{
   const bad=v4Fixture();
   // First second-block record spans 0x2f0..0x310; this pointer overlaps it at 0x300.
-  bad.writeUInt32LE(0x300,0x50+33*4);
+  bad.writeUInt32LE(0x300,0x50+31*4);
   expect(()=>inspectFaceDiff(bad)).toThrow(/records overlap/i);
  });
  it("rejects non-finite header calibration and v4 record values",()=>{
