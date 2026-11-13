@@ -236,7 +236,8 @@ function registerIpc(){
   if(malformed)throw new Error("The selected model contains no valid triangle surface for preview ("+malformed.name+"). The file header and material bindings alone are not a 3D face preview.");
   const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
   const triangleCount=meshes.reduce((sum,mesh)=>sum+mesh.indices.length/3,0);
-  if(!triangleCount)throw new Error("The selected model contains no renderable triangles.");
+  const hasVisibleSurface=meshes.some(mesh=>{for(let i=0;i<mesh.indices.length;i+=3){const a=mesh.indices[i]*3,b=mesh.indices[i+1]*3,c=mesh.indices[i+2]*3;const abx=mesh.positions[b]-mesh.positions[a],aby=mesh.positions[b+1]-mesh.positions[a+1],abz=mesh.positions[b+2]-mesh.positions[a+2],acx=mesh.positions[c]-mesh.positions[a],acy=mesh.positions[c+1]-mesh.positions[a+1],acz=mesh.positions[c+2]-mesh.positions[a+2];const x=aby*acz-abz*acy,y=abz*acx-abx*acz,z=abx*acy-aby*acx;if(x*x+y*y+z*z>1e-16)return true;}return false;});
+  if(!triangleCount||!hasVisibleSurface)throw new Error("The selected model contains no non-degenerate triangle surface to display.");
   return {source:relativePath,generation,meshes,materials,warnings};
  });
  ipcMain.handle("texture:convert-folder",async(event,colorSpace:unknown)=>{
