@@ -1,0 +1,11 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import sharp from "sharp";
+import pngToIco from "png-to-ico";
+const root=process.cwd(),source=path.join(root,"public/face-forge.svg"),assets=path.join(root,"assets");
+await fs.mkdir(assets,{recursive:true});
+const png=path.join(assets,"face-forge-256.png");
+await sharp(source,{density:384}).resize(256,256).png().toFile(png);
+const ico=await pngToIco(png);
+await fs.writeFile(path.join(assets,"face-forge.ico"),ico);
+console.log("Generated FACE FORGE Windows icon.");
