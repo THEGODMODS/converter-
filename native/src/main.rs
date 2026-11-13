@@ -408,7 +408,7 @@ mod face_diff_xml_tests {
     #[test]
     fn reads_legacy_xml_dif_payload_for_reverse_conversion() {
         let encoded = base64_encode(&fixture());
-        let xml = format!("<?xml version=\\"1.0\\"?><config><dif>\\n{encoded}\\n</dif></config>");
+        let xml = format!("<?xml version=\"1.0\"?><config><dif>\n{encoded}\n</dif></config>");
         assert_eq!(legacy_face_diff_from_xml(xml.as_bytes()).unwrap(), Some(fixture()));
         assert_eq!(legacy_face_diff_from_xml(b"<config/>").unwrap(), None);
     }
