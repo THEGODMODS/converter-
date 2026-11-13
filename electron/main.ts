@@ -14,6 +14,7 @@ function trusted(event:Electron.IpcMainInvokeEvent){
 }
 function registerIpc(){
  ipcMain.handle("face:choose-folder",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose PES face project folder",properties:["openDirectory"]});return result.canceled?null:result.filePaths[0]??null;});
+ ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Add face folders to batch",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
  ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");return inspectFaceFolder(folder);});
  ipcMain.handle("texture:convert",async(event,colorSpace:unknown)=>{
   trusted(event);
