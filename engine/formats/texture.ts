@@ -51,7 +51,7 @@ function ddsHeader(info:TextureInfo):Buffer{
  header.writeUInt32LE(compressed?mipSize(info.pixelFormat,info.width,info.height,info.depth,0):info.width*f.bytes,20);
  header.writeUInt32LE(info.depth,24);header.writeUInt32LE(info.mipCount,28);
  header.writeUInt32LE(32,76);header.writeUInt32LE(dx10||f.fourCC?0x4:0x41,80);header.write(fourCC,84,"ascii");
- if(info.pixelFormat===0){header.writeUInt32LE(32,88);header.writeUInt32LE(0x00ff0000,92);header.writeUInt32LE(0x0000ff00,96);header.writeUInt32LE(0x000000ff,100);header.writeUInt32LE(0xff000000,104);}
+ if(info.pixelFormat===0&&!dx10){header.writeUInt32LE(32,88);header.writeUInt32LE(0x00ff0000,92);header.writeUInt32LE(0x0000ff00,96);header.writeUInt32LE(0x000000ff,100);header.writeUInt32LE(0xff000000,104);}
  let caps=0x1000,caps2=0;if(info.mipCount>1)caps|=0x8|0x400000;if(info.cubeMap){caps|=0x8;caps2=0xfe00;}if(info.depth>1){caps|=0x8;caps2=0x200000;}
  header.writeUInt32LE(caps,108);header.writeUInt32LE(caps2,112);
  if(dx10){header.writeUInt32LE(dxgi!,128);header.writeUInt32LE(info.depth>1?4:3,132);header.writeUInt32LE(info.cubeMap?4:0,136);header.writeUInt32LE(1,140);header.writeUInt32LE(0,144);}
