@@ -1,0 +1,11 @@
+[package]
+name = "face-forge-native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+model_convert = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
+fmdl = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
+pes_model = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
+pes_version = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
