@@ -1,6 +1,6 @@
 use std::{env, fs, path::{Path,PathBuf}, process};
 mod package_policy;
-use package_policy::{ftex_target_path, validate_face_package_members};
+use package_policy::{ftex_target_path, normalize_fox_virtual_path, validate_face_package_members};
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
 use model_convert::{convert, NativeModelBundle, Subject};
@@ -41,8 +41,9 @@ fn run()->Result<(),String>{
     let bytes=fs::read(archive_path).map_err(|e|format!("Read source Fox archive {}: {e}",archive_path.display()))?;
     let archive=FpkFile::read(&bytes).map_err(|e|format!("Decode source FPK/FPKD {}: {e}",archive_path.display()))?;
     for (name,data) in archive.entries(){
-     if !seen.insert(name.to_ascii_lowercase()){return Err(format!("The paired FPK/FPKD archives contain a duplicate virtual path: {name}"));}
-     archive_entries.push((name.to_owned(),data.to_vec()));
+     let normalized=normalize_fox_virtual_path(name)?;
+     if !seen.insert(normalized.to_ascii_lowercase()){return Err(format!("The paired FPK/FPKD archives contain a duplicate virtual path: {normalized}"));}
+     archive_entries.push((normalized,data.to_vec()));
     }
    }
    // Validate every member before conversion. In particular, do not accept
