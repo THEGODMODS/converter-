@@ -37,7 +37,7 @@ export default function App(){
   <div className="sidebar-bottom"><div className="free-pill"><Sparkles size={14}/> FREE FOREVER</div><div className="version">KFC GODMODS · FACE FORGE 0.2.0</div></div>
  </aside><main className="main">
   <header className="topbar"><div><div className="eyebrow">KFC GODMODS PRESENTS</div><h1>{mode==="single"?"Single Face Studio":mode==="batch"?"Batch Conversion":"Face Project Database"}</h1><p>{mode==="single"?"Inspect one face with detailed conversion diagnostics.":mode==="batch"?"Queue multiple face folders and review compatibility before conversion.":"Build and maintain a collection of face projects."}</p></div><div className="top-status"><span className="status-led"/> LOCAL WORKSPACE <ChevronDown size={14}/></div></header>
-  <div className="release-notice"><ShieldAlert size={15}/><span><b>PRE-RELEASE INSPECTION BUILD</b> — Face conversion and game installation are not enabled. Use this build to inspect assets, review supported geometry and test the desktop workflow.</span></div>
+  <div className="release-notice"><ShieldCheck size={15}/><span><b>PRE-RELEASE INSPECTION BUILD</b> — Face conversion and game installation are not enabled. Use this build to inspect assets, review supported geometry and test the desktop workflow.</span></div>
   {textureResult&&<div className="texture-toast">{textureResult}</div>}
   <section className="mode-banner"><div className="mode-copy"><span className="eyebrow">SELECT YOUR WORKFLOW</span><div className="mode-cards">
    <button className={"mode-card "+(mode==="single"?"chosen":"")} onClick={()=>setMode("single")}><ScanFace size={21}/><b>SINGLE FACE</b><small>Inspect one face</small></button>
