@@ -648,7 +648,7 @@ fn main(){if let Err(error)=run(){eprintln!("FACE_FORGE_CONVERSION_ERROR: {error
 
 #[cfg(test)]
 mod face_diff_xml_tests {
-    use super::{base64_encode, decode_base64, legacy_face_diff_from_xml, legacy_face_xml, validate_face_diff_payload};
+    use super::{base64_encode, decode_base64, legacy_face_diff_from_xml, legacy_face_xml, validate_face_diff_generation, validate_face_diff_payload};
 
     fn v4_fixture() -> Vec<u8> {
         decode_base64(include_str!("../../tests/fixtures/face-diff-real-v4.b64")).unwrap()
@@ -659,7 +659,7 @@ mod face_diff_xml_tests {
     }
 
     #[test]
-    fn validates_real_v4_and_v5_face_diffs_without_generation_specific_copy_guards() {
+    fn validates_and_roundtrips_real_v4_and_v5_payloads_without_mutating_bytes() {
         let v4 = v4_fixture();
         let v5 = v5_fixture();
         assert_eq!(v4.len(), 944);
@@ -673,6 +673,16 @@ mod face_diff_xml_tests {
             let xml = legacy_face_xml(Some(payload), &["face_high".into()]).unwrap();
             assert_eq!(legacy_face_diff_from_xml(&xml).unwrap(), Some(payload.to_vec()));
         }
+    }
+
+    #[test]
+    fn enforces_target_generation_for_face_diff_payloads() {
+        let v4 = v4_fixture();
+        let v5 = v5_fixture();
+        assert!(validate_face_diff_generation(&v4, 2017).is_ok());
+        assert!(validate_face_diff_generation(&v4, 2021).is_err());
+        assert!(validate_face_diff_generation(&v5, 2017).is_err());
+        assert!(validate_face_diff_generation(&v5, 2021).is_ok());
     }
 
     #[test]
