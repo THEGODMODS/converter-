@@ -2,7 +2,7 @@
 
 PES face conversion studio by KFC GODMODS.
 
-**First-release target:** PES 2021 (FMDL/FTEX) → PES 2017 (MODEL/DDS). Reverse conversion is deliberately out of scope until this direction is proven.
+**First-release target:** PES 2021 (FMDL/FTEX) → PES 2017 (MODEL/DDS). PES 2017 → PES 2021 is marked **In Development** and remains disabled until this direction is proven.
 
 > Status: pre-release. The complete-folder pipeline is integrated with the pinned Unlimited Tool Works Team Compiler and independently checks the generated team CPK and nested player-face CPK. A complete real head-face fixture and PES 2017 in-game acceptance test are still required before claiming production readiness.
 
@@ -73,4 +73,4 @@ PES MODEL semantic import/export, a canonical model representation, material tra
 version-specific skeleton retargeting. Its upstream test suite includes real PES 2017 and PES
 2021 model fixtures. Licence notices are in `native/UPSTREAM_NOTICES.md`.
 
-The current FACE FORGE UI exposes **single-face folder conversion** for PES 2021 → PES 2017. It uses the pinned Team Compiler for multi-model conversion and CPK package assembly, then performs independent archive read-back and hash verification. The reverse route is disabled. The release still requires a complete real head-face fixture and target-game validation; the synthetic CI package test is structural only. Batch conversion, textured preview, game installation/rollback and reverse conversion are not enabled.
+The current FACE FORGE UI exposes **single-face folder conversion** for PES 2021 → PES 2017. It uses the pinned Team Compiler for multi-model conversion and CPK package assembly, then performs independent archive read-back and hash verification. The reverse route is visibly marked **In Development** and remains disabled. The release still requires a complete real head-face fixture and target-game validation; the synthetic CI package test is structural only. Batch conversion, textured preview, game installation/rollback and reverse conversion are not enabled.
