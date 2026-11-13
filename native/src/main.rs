@@ -160,6 +160,25 @@ fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Enforce the target game's FACE diff generation. Structural validity alone
+/// does not make a source-generation payload safe to install in another game.
+fn validate_face_diff_generation(bytes: &[u8], target: u16) -> Result<(), String> {
+    validate_face_diff_payload(bytes)?;
+    let version = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    let accepted = match target {
+        2017 => version == 4,
+        2021 => version == 5 || version == 6,
+        _ => return Err(format!("Unsupported target PES generation: {target}.")),
+    };
+    if !accepted {
+        let expected = if target == 2017 { "FACE v4" } else { "FACE v5 or v6" };
+        return Err(format!(
+            "Cannot use FACE v{version} for PES {target}; this target requires {expected}. A semantic FACE diff retarget is required."
+        ));
+    }
+    Ok(())
+}
+
 fn legacy_face_diff_from_xml(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
     let text = std::str::from_utf8(bytes).map_err(|_| "Legacy face.xml is not UTF-8.")?;
     let document = roxmltree::Document::parse(text).map_err(|error| format!("Legacy face.xml is malformed: {error}"))?;
@@ -601,7 +620,7 @@ fn run()->Result<(),String>{
  }
  if source_format=="fpk" {
   if let Some(face_diff)=package_face_diff.as_deref() {
-   validate_face_diff_payload(face_diff)?;
+   validate_face_diff_generation(face_diff,target)?;
   }
   let xml=legacy_face_xml(package_face_diff.as_deref(),&model_stems)?;
   outputs.push("face.xml".into());
