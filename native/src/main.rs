@@ -1106,7 +1106,7 @@ mod face_source_path_tests {
 }
 #[cfg(test)]
 mod pes2017_target_id_tests {
-    use super::split_pes2017_target_player_id;
+    use super::validate_target_player_id;
 
     #[test]
     fn identical_loose_and_archive_face_diff_is_deduplicated() {
@@ -1138,15 +1138,16 @@ mod pes2017_target_id_tests {
     }
 
     #[test]
-    fn accepts_valid_pes2017_team_and_slot_ids() {
-        assert_eq!(split_pes2017_target_player_id("70101").unwrap(), ("701", "01"));
-        assert_eq!(split_pes2017_target_player_id("92032").unwrap(), ("920", "32"));
+    fn accepts_real_player_ids_without_compiler_team_prefix_assumptions() {
+        for id in ["1", "15958", "176104", "70101", "999999"] {
+            assert!(validate_target_player_id(id).is_ok(), "{id}");
+        }
     }
 
     #[test]
-    fn rejects_pes2021_source_ids_and_invalid_pes2017_targets() {
-        for id in ["176104", "15958", "70005", "92105", "99999", "71400", "71433", "1234", "abcde"] {
-            assert!(split_pes2017_target_player_id(id).is_err(), "{id}");
+    fn rejects_non_numeric_empty_or_oversized_player_ids() {
+        for id in ["", "0000000", "abcde", "17 6104", "1234567"] {
+            assert!(validate_target_player_id(id).is_err(), "{id}");
         }
     }
 }
