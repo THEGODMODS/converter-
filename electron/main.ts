@@ -95,7 +95,6 @@ function registerIpc(){
   const output=destination.filePaths[0],outputStat=await fs.promises.lstat(output);if(outputStat.isSymbolicLink()||!outputStat.isDirectory())throw new Error("Choose a real output directory, not a symbolic link.");const realOutput=await fs.promises.realpath(output);if(realOutput===realRoot||realOutput.startsWith(prefix))throw new Error("Choose an output folder outside the inspected source project.");const outputEntries=await fs.promises.readdir(realOutput);if(outputEntries.length)throw new Error("Choose an empty output folder. FACE FORGE will not overwrite existing files.");
   const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
   if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the native engine enabled.");
-  args.push("--out",output);
   const dependencySources=new Set<string>();
   for(const modelPath of selectedPaths){
    const relative=path.relative(root,modelPath).replaceAll("\\","/");
@@ -104,15 +103,38 @@ function registerIpc(){
    else for(const file of inventory.files)if(file.path.startsWith(relative+"!/")&&file.kind==="model-pes2021")dependencySources.add(file.path);
   }
   const conversionProject={...inventory,dependencies:inventory.dependencies.filter(item=>dependencySources.has(item.source))};
+  const stageParent=await fs.promises.mkdtemp(path.join(path.dirname(realOutput),".face-forge-stage-"));
+  const stageOutput=path.join(stageParent,"output"),backupOutput=path.join(stageParent,"empty-output-backup");
+  await fs.promises.mkdir(stageOutput);
+  args.push("--out",stageOutput);
+  let outputMoved=false;
   try{
    const result=await execFileAsync(binary,args,{timeout:180000,maxBuffer:4*1024*1024,windowsHide:true});
    let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("Native converter returned an invalid result report.");}
-   const textures=await convertFaceTextureDependencies(conversionProject,root,output,target);
-   return {destination:output,report,textures};
+   const textures=await convertFaceTextureDependencies(conversionProject,root,stageOutput,target);
+   const latestStat=await fs.promises.lstat(realOutput);
+   if(latestStat.isSymbolicLink()||!latestStat.isDirectory()||await fs.promises.realpath(realOutput)!==realOutput)throw new Error("The selected output folder changed during conversion; staged files were not published.");
+   if((await fs.promises.readdir(realOutput)).length)throw new Error("The selected output folder is no longer empty. Existing files were left untouched; choose another output folder.");
+   await fs.promises.rename(realOutput,backupOutput);
+   outputMoved=true;
+   try{
+    await fs.promises.rename(stageOutput,realOutput);
+   }catch(error){
+    await fs.promises.rename(backupOutput,realOutput);
+    outputMoved=false;
+    throw error;
+   }
+   await fs.promises.rm(backupOutput,{recursive:true,force:true});
+   await fs.promises.rm(stageParent,{recursive:true,force:true});
+   return {destination:realOutput,report,textures};
   }catch(error){
-   for(const entry of await fs.promises.readdir(output)){try{await fs.promises.rm(path.join(output,entry),{recursive:true,force:true});}catch{}}
+   if(outputMoved){
+    try{if(!(await fs.promises.lstat(realOutput)).isSymbolicLink())await fs.promises.rm(realOutput,{recursive:true,force:true});}catch{}
+    try{await fs.promises.rename(backupOutput,realOutput);}catch{}
+   }
+   await fs.promises.rm(stageParent,{recursive:true,force:true});
    const detail=error instanceof Error?error.message:String(error);
-   throw new Error("Native PES conversion failed: "+detail);
+   throw new Error("Native PES conversion failed; the selected output folder was not intentionally cleared: "+detail);
   }
  });
  ipcMain.handle("face:build-fox-package",async(event,folder:unknown,virtualRoot:unknown)=>{
