@@ -29,6 +29,8 @@ The current modes provide intake and review workflows; actual face conversion, 3
 
 See the [face fidelity specification](docs/FACE_FIDELITY_SPEC.md) for the head/neck, eyes/eyelids, mouth, hair, beard, skin, rig, CPK and safe installation acceptance requirements.
 
+See the [full evidence-based implementation audit](docs/IMPLEMENTATION_AUDIT.md) for the current release blockers and acceptance checklist.
+
 ## Architecture
 - `app/`: React desktop UI.
 - `electron/`: isolated desktop main process and typed IPC.
