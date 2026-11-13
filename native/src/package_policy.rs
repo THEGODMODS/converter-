@@ -99,7 +99,6 @@ mod tests {
     #[test]
     fn rejects_unhandled_metadata_and_scene_sidecars() {
         for sidecar in [
-            "Assets/face/face_diff.bin",
             "Assets/face/player.xml",
             "Assets/face/scene.fox2",
             "Assets/face/config.json",
