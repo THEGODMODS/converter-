@@ -9,13 +9,13 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   const element=host.current;if(!element)return;
   const scene=new THREE.Scene();scene.background=new THREE.Color("#0b111a");
   const camera=new THREE.PerspectiveCamera(42,1,0.01,1000);camera.position.set(2.6,1.8,3.2);
-  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;element.appendChild(renderer.domElement);
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;element.appendChild(renderer.domElement);
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=.5;controls.maxDistance=20;
   scene.add(new THREE.HemisphereLight(0xcbdcff,0x27313b,2.1));const key=new THREE.DirectionalLight(0xffffff,3.2);key.position.set(3,5,4);scene.add(key);const rim=new THREE.DirectionalLight(0x9edbff,1.5);rim.position.set(-4,2,-3);scene.add(rim);
   const grid=new THREE.GridHelper(4,20,0x354657,0x1b2936);grid.position.y=-1.15;scene.add(grid);
   const group=new THREE.Group();scene.add(group);let min=new THREE.Vector3(Infinity,Infinity,Infinity),max=new THREE.Vector3(-Infinity,-Infinity,-Infinity);
   const ddsLoader=new DDSLoader(),builtMaterials=preview.materials.map(source=>{
-   const material=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.82,metalness:0,side:THREE.DoubleSide});material.name=source.name;
+   const isHair=/hair/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:0xc7a18e,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
     try{
      const binary=atob(encoded),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
@@ -34,7 +34,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
      texture.colorSpace=/base|diffuse|albedo|color/i.test(slot)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
      if(/normal/i.test(slot))material.normalMap=texture;
      else if(/base|diffuse|albedo|color/i.test(slot)&&!material.map)material.map=texture;
-     else if(/opacity|alpha/i.test(slot)){material.alphaMap=texture;material.transparent=true;}
+     else if(/roughness/i.test(slot)){material.roughnessMap=texture;material.roughness=1;}else if(/metallic|metalness/i.test(slot)){material.metalnessMap=texture;material.metalness=1;}else if(/opacity|alpha/i.test(slot)){material.alphaMap=texture;material.transparent=true;}
     }catch(error){console.warn("FACE FORGE could not decode preview texture",source.name,slot,error);}
    }
    if(material.map)material.color.set(0xffffff);return material;
@@ -45,8 +45,8 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   }
   const center=min.clone().add(max).multiplyScalar(.5),extent=max.clone().sub(min),largest=Math.max(extent.x,extent.y,extent.z,0.001),fitScale=2.1/largest;group.position.copy(center).multiplyScalar(-fitScale);group.scale.setScalar(fitScale);camera.position.set(2.7,1.65,3.2);controls.target.set(0,0,0);controls.update();
   const resize=()=>{const width=Math.max(1,element.clientWidth),height=Math.max(1,element.clientHeight);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();};const observer=new ResizeObserver(resize);observer.observe(element);resize();
-  let frame=0;const render=()=>{controls.update();renderer.render(scene,camera);frame=requestAnimationFrame(render);};render();
-  return()=>{cancelAnimationFrame(frame);observer.disconnect();controls.dispose();group.traverse(object=>{if(object instanceof THREE.Mesh){object.geometry.dispose();const materials=Array.isArray(object.material)?object.material:[object.material];materials.forEach(material=>{for(const value of Object.values(material))if(value instanceof THREE.Texture)value.dispose();material.dispose();});}});renderer.dispose();renderer.domElement.remove();};
+  let frame=0;const render=()=>{if(frame)return;frame=requestAnimationFrame(()=>{frame=0;controls.update();renderer.render(scene,camera);});};controls.addEventListener("change",render);render();
+  return()=>{if(frame)cancelAnimationFrame(frame);controls.removeEventListener("change",render);observer.disconnect();controls.dispose();group.traverse(object=>{if(object instanceof THREE.Mesh){object.geometry.dispose();const materials=Array.isArray(object.material)?object.material:[object.material];materials.forEach(material=>{for(const value of Object.values(material))if(value instanceof THREE.Texture)value.dispose();material.dispose();});}});renderer.dispose();renderer.domElement.remove();};
  },[preview]);
  return <div className="face-preview-canvas" ref={host} aria-label="Interactive 3D face geometry preview"/>;
 }
