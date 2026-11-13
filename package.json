@@ -14,9 +14,7 @@
     "predev": "npm run build:electron && npm run build:native",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:icon": "node scripts/build-icon.mjs",
-    "build:native": "cargo build --release --manifest-path native/Cargo.toml",
-    "package:keygen": "node scripts/generate-package-key.mjs",
-    "package:sign": "node scripts/sign-package-manifest.mjs"
+    "build:native": "cargo build --release --manifest-path native/Cargo.toml"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
