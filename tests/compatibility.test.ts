@@ -7,12 +7,12 @@ const base={detectedGame:"pes2021" as const,models:2,textures:4,files:[
  {path:"face_diff.bin",kind:"face-diff"}
 ]};
 describe("direction-aware conversion assessment",()=>{
- it("recognizes PES 2021 input but blocks output until target writer and rig retargeting exist",()=>{
+ it("recognizes PES 2021 input and acknowledges native single-model engine while blocking whole-package output",()=>{
   const result=assessFaceConversion(base,"pes2021");
   expect(result.target).toBe("pes2017");
   expect(result.checks.find(x=>x.label==="Source model files")?.status).toBe("pass");
   expect(result.gate).toBe("blocked");
-  expect(result.blockingReasons.join(" ")).toContain("target-game model writer");
+  expect(result.checks.find(x=>x.label==="Single-model semantic converter")?.status).toBe("pass");\n  expect(result.checks.find(x=>x.label==="Complete face package and dependency relinking")?.status).toBe("blocked");\n  expect(result.blockingReasons.join(" ")).toContain("complete face-package conversion");
  });
  it("blocks the reverse route when the selected source generation does not match",()=>{
   const result=assessFaceConversion(base,"pes2017");
