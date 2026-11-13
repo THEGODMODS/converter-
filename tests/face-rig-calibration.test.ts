@@ -59,4 +59,16 @@ describe("FACE diff to skeleton calibration audit",()=>{
   expect(audit.summary.ambiguous).toBe(1);
   expect(audit.duplicateSceneBoneNames).toContain("skf_eye_r");
  });
+ it("blocks cyclic and invalid parent graphs even when every landmark name matches",()=>{
+  const {scene,diff}=fixture();
+  scene.bones[1].parentIndex=2;
+  scene.bones[2].parentIndex=1;
+  scene.bones[3].parentIndex=999;
+  const audit=auditFaceRigCalibration(scene,diff);
+  expect(audit.hierarchyAudit.status).toBe("partial");
+  expect(audit.hierarchyAudit.cycles.length).toBeGreaterThan(0);
+  expect(audit.hierarchyAudit.invalidParentReferences).toContain("skf_brow_i_l (index 3, parent 999)");
+  expect(audit.blockers.some(x=>x.includes("Parent cycles detected"))).toBe(true);
+  expect(audit.blockers.some(x=>x.includes("Invalid parent references"))).toBe(true);
+ });
 });
