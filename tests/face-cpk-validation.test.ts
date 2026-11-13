@@ -9,9 +9,10 @@ describe("PES 2017 nested face CPK verification",()=>{
     {path:"oral_face_high_win32.model",data:Buffer.from("legacy-model")},
     {path:"face_high.mtl",data:Buffer.from("<materials/>")},
   ];
+  const faceDirectory="common/character0/model/character/face/real/71405/";
   const teamArchive=(files=faceFiles)=>buildCpk([{
     path:"common/character0/model/character/face/real/71405.cpk",
-    data:buildCpk(files),
+    data:buildCpk(files.map(file=>({...file,path:faceDirectory+file.path}))),
   }]);
   it("accepts a valid face XML whose wildcard model and material references resolve",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(),"71405");
@@ -21,8 +22,8 @@ describe("PES 2017 nested face CPK verification",()=>{
     expect(result.faceXmlPath).toMatch(/face\.xml$/i);
     expect(result.faceModelPath).toMatch(/oral_face_high_win32\.model$/i);
     expect(result.faceMaterialPath).toMatch(/face_high\.mtl$/i);
-    expect(result.referencedModels).toContain("oral_face_high_win32.model");
-    expect(result.referencedMaterials).toContain("face_high.mtl");
+    expect(result.referencedModels.some(path=>path.endsWith("/oral_face_high_win32.model"))).toBe(true);
+    expect(result.referencedMaterials.some(path=>path.endsWith("/face_high.mtl"))).toBe(true);
   });
   it("rejects an outer CPK that contains no nested face CPK",()=>{
     expect(()=>verifyPes2017FaceCpk(buildCpk([{path:"readme.txt",data:Buffer.from("not a face")}]),"71405")).toThrow(/nested player-face CPK/i);
