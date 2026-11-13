@@ -83,3 +83,18 @@
 
 .preview-materials{display:grid;gap:10px;margin-top:14px;padding:14px;border:1px solid var(--line,rgba(255,255,255,.1));border-radius:12px;background:rgba(255,255,255,.025)}.preview-material{display:grid;gap:5px;padding:10px 0;border-top:1px solid rgba(255,255,255,.07)}.preview-material>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.preview-material strong{font-size:12px;letter-spacing:.04em}.preview-material small{font-size:10px;color:var(--muted,#8793a4)}.preview-material>span{font-size:11px;color:var(--muted,#aab4c1);overflow-wrap:anywhere}.preview-material>span b{color:#d9e2ed;font-weight:600}
 .package-export-panel{display:grid;grid-template-columns:minmax(240px,1fr) minmax(260px,1.2fr) auto;gap:16px;align-items:center;margin:18px 0;padding:20px;border:1px solid var(--line,#2b3344);border-radius:14px;background:rgba(17,23,35,.72)}.package-export-panel h3{margin:5px 0;font-size:16px}.package-export-panel p{margin:0;color:var(--muted,#9aa6ba);font-size:12px;line-height:1.5}.package-export-panel input{width:100%;min-width:0;padding:12px 14px;border:1px solid var(--line,#38445a);border-radius:9px;background:#0b111c;color:#f3f6fb;font:inherit;font-size:12px}.package-export-panel input:focus{outline:2px solid rgba(91,151,255,.55);outline-offset:1px}@media(max-width:900px){.package-export-panel{grid-template-columns:1fr}.package-export-panel .convert-btn{width:100%}}
+
+
+.face-diff-audit{display:grid;gap:10px;margin:12px 0;padding:12px;border:1px solid rgba(122,157,190,.24);border-radius:10px;background:rgba(10,18,29,.5)}
+.face-diff-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.face-diff-heading>b{font-size:9px;letter-spacing:.09em;color:#d8e5f3}
+.face-diff-heading>span{font-size:8px;color:#9fb0c3;font-weight:800;letter-spacing:.06em}
+.face-diff-file{display:grid;gap:7px;padding-top:9px;border-top:1px solid rgba(255,255,255,.07)}
+.face-diff-file-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.face-diff-file-title>b{min-width:0;overflow-wrap:anywhere;font-size:9px;color:#cbd7e5}
+.face-diff-file-title>span{flex:none;font-size:7px;font-weight:900;letter-spacing:.06em}
+.face-diff-file-title>span.valid{color:#9bdcaa}
+.face-diff-file-title>span.invalid{color:#ff9d96}
+.face-diff-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;max-height:260px;overflow:auto;padding-right:5px}
+.face-diff-values small{min-width:0;padding:5px 6px;border-radius:5px;background:rgba(255,255,255,.035);color:#9eacbd;font-size:8px;line-height:1.45;overflow-wrap:anywhere}
+@media(max-width:760px){.face-diff-values{grid-template-columns:1fr}}
