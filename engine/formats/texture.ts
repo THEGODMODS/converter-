@@ -87,9 +87,10 @@ export function ddsToFtex(input:Buffer,colorSpace:TextureColorSpace="SRGB"): {da
  header.write("FTEX",0,"ascii");header.writeFloatLE(ftexVersion,4);header.writeUInt16LE(info.pixelFormat,8);header.writeUInt16LE(info.width,10);header.writeUInt16LE(info.height,12);header.writeUInt16LE(info.depth,14);header.writeUInt8(info.mipCount,16);header.writeUInt32LE(textureType,28);
  for(let i=0;i<frames.length;i++){
   while(position%8){payloads.push(Buffer.from([0]));position++;}
-  const frame=frames[i],chunks:Buffer[]=[];for(let start=0;start<frame.length;start+=16384){const raw=frame.subarray(start,Math.min(start+16384,frame.length)),packed=deflateSync(raw,{level:9}),usePacked=packed.length<raw.length;chunks.push({} as Buffer);const chosen=usePacked?packed:raw;(chunks as unknown as Buffer[])[chunks.length-1]=chosen;}
+  const frame=frames[i],chunks:{stored:Buffer;rawSize:number}[]=[];
+  for(let start=0;start<frame.length;start+=16384){const raw=frame.subarray(start,Math.min(start+16384,frame.length)),packed=deflateSync(raw,{level:9});chunks.push({stored:packed.length<raw.length?packed:raw,rawSize:raw.length});}
   const count=chunks.length,table=Buffer.alloc(count*8);let chunkData=Buffer.alloc(0),compressedTotal=0;
-  for(let j=0;j<count;j++){const raw=frame.subarray(j*16384,Math.min((j+1)*16384,frame.length)),chunk=chunks[j],packed=deflateSync(raw,{level:9}),usePacked=packed.length<raw.length,chosen=usePacked?packed:raw;table.writeUInt16LE(chosen.length,j*8);table.writeUInt16LE(raw.length,j*8+2);table.writeUInt32LE(count*8+chunkData.length,j*8+4);chunkData=Buffer.concat([chunkData,chosen]);compressedTotal+=chosen.length;}
+  for(let j=0;j<count;j++){const chunk=chunks[j];table.writeUInt16LE(chunk.stored.length,j*8);table.writeUInt16LE(chunk.rawSize,j*8+2);table.writeUInt32LE(count*8+chunkData.length,j*8+4);chunkData=Buffer.concat([chunkData,chunk.stored]);compressedTotal+=chunk.stored.length;}
   const descriptor=64+i*16;header.writeUInt32LE(position,descriptor);header.writeUInt32LE(frame.length,descriptor+4);header.writeUInt32LE(compressedTotal,descriptor+8);header.writeUInt8(i%info.mipCount,descriptor+12);header.writeUInt8(0,descriptor+13);header.writeUInt16LE(count,descriptor+14);
   const frameData=Buffer.concat([table,chunkData]);payloads.push(frameData);position+=frameData.length;
  }
