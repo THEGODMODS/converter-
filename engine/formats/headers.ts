@@ -52,11 +52,11 @@ export function inspectFtexHeader(data:Buffer):FormatInspection{
   if(!width||!height||!depth||!mipCount)return fail("FTEX","Width, height, depth and mip count must be non-zero.");
   if(variantCount!==0)return fail("FTEX","Multi-variant FTEX files are not supported by this reader yet.");
   const imageCount=(textureType&4)!==0?6:1;
-  const frameCount=imageCount*mipCount;
-  if(frameCount>512||64+frameCount*16>data.length)return fail("FTEX","Mipmap descriptor table is truncated or unreasonable.");
+  const frameCount=imageCount*mipCount,tableEnd=64+frameCount*16;
+  if(frameCount>512||tableEnd>data.length)return fail("FTEX","Mipmap descriptor table is truncated or unreasonable.");
   for(let i=0;i<frameCount;i++){
-    const p=64+i*16,offset=data.readUInt32LE(p),rawSize=data.readUInt32LE(p+4),compressedSize=data.readUInt32LE(p+8),mipIndex=data.readUInt8(p+12);
-    if(mipIndex>=mipCount||offset>=data.length||rawSize>512*1024*1024||compressedSize>512*1024*1024)return fail("FTEX",`Invalid mipmap descriptor at index ${i}.`);
+    const p=64+i*16,offset=data.readUInt32LE(p),rawSize=data.readUInt32LE(p+4),compressedSize=data.readUInt32LE(p+8),mipIndex=data.readUInt8(p+12),chunks=data.readUInt16LE(p+14);
+    if(mipIndex>=mipCount||offset<tableEnd||offset>=data.length||rawSize>512*1024*1024||compressedSize>512*1024*1024||chunks>0&&offset+chunks*8>data.length)return fail("FTEX",`Invalid mipmap descriptor at index ${i}.`);
   }
   return {valid:true,format:"PES 2018–2021 FTEX",version,width,height,mipCount,pixelFormat,details:[`FTEX ${version.toFixed(3)}`,`${width} × ${height} × ${depth}`,`${mipCount} mip levels`,`Pixel format ${pixelFormat}`]};
 }
