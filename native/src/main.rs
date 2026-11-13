@@ -72,20 +72,79 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
-/// Reject byte-preserving FACE-diff copies when the source generation's
-/// record layout does not match the target generation. A real semantic rig
-/// retargeter is required; copying v4 into Fox or v5/v6 into legacy XML is unsafe.
-fn validate_face_diff_generation(bytes: &[u8], target: u16) -> Result<(), String> {
-    if bytes.len() < 8 || &bytes[..4] != b"FACE" {
-        return Err("FACE diff has an invalid or truncated version header.".into());
+/// Validate a FACE payload without assuming that its auxiliary record layout is
+/// generation-exclusive. The upstream Team compiler preserves real v4/v5 payloads
+/// across pre-Fox and Fox package builds; unknown record families remain opaque here.
+fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() < 0x50 || &bytes[..4] != b"FACE" {
+        return Err("FACE diff has an invalid or truncated header.".into());
     }
     let version = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
-    let supported = if target == 2017 { version == 4 } else { version == 5 || version == 6 };
-    if !supported {
-        let expected = if target == 2017 { "v4" } else { "v5 or v6" };
-        return Err(format!(
-            "FACE diff v{version} cannot be copied to PES {target} (expected {expected}). Semantic facial-rig retargeting is required; conversion was stopped to prevent a broken face."
-        ));
+    if !(4..=6).contains(&version) {
+        return Err(format!("Unsupported FACE diff version {version}; supported versions are 4, 5 and 6."));
+    }
+    let count_a = u32::from_le_bytes(bytes[0x48..0x4c].try_into().unwrap()) as usize;
+    let count_b = u32::from_le_bytes(bytes[0x4c..0x50].try_into().unwrap()) as usize;
+    if count_a > 64 || count_b > 16 {
+        return Err("FACE diff declares an unreasonable number of auxiliary records.".into());
+    }
+    let offset_count = count_a.checked_add(count_b).ok_or("FACE diff record count overflow.")?;
+    let table_end = 0x50usize.checked_add(offset_count.checked_mul(4).ok_or("FACE diff pointer table overflow.")?)
+        .ok_or("FACE diff pointer table overflow.")?;
+    if table_end > 0xf0 {
+        return Err("FACE diff record-offset table exceeds its fixed header.".into());
+    }
+    let required = 0xf0usize.checked_add(count_a.checked_mul(0x10).ok_or("FACE diff record size overflow.")?)
+        .and_then(|v| v.checked_add(count_b.checked_mul(0x20)?))
+        .ok_or("FACE diff record size overflow.")?;
+    if bytes.len() < required {
+        return Err(format!("FACE diff is truncated: {} bytes, expected at least {required}.", bytes.len()));
+    }
+    for at in (0x08..0x48).step_by(4) {
+        let value = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+        if !value.is_finite() {
+            return Err("FACE diff header contains a non-finite calibration value.".into());
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut offsets = Vec::with_capacity(offset_count);
+    for index in 0..offset_count {
+        let at = 0x50 + index * 4;
+        let offset = u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+        if offset < 0xf0 || offset % 16 != 0 || offset.checked_add(4).is_none_or(|end| end > bytes.len()) || !seen.insert(offset) {
+            return Err(format!("FACE diff record pointer {index} is invalid, unaligned, out of range or duplicated."));
+        }
+        let value = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        if !value.is_finite() {
+            return Err(format!("FACE diff record {index} contains a non-finite value."));
+        }
+        offsets.push(offset);
+    }
+    // The real v4 sample establishes the 32 x 16-byte + 6 x 32-byte ranges.
+    // The real v5 sample has a different pointer arrangement despite the same
+    // header counts, so do not apply v4 range/overlap assumptions to v5/v6.
+    if version == 4 && count_a == 32 && count_b == 6 {
+        let mut ranges = Vec::with_capacity(offset_count);
+        for (index, offset) in offsets.iter().copied().enumerate() {
+            let size = if index < count_a { 0x10 } else { 0x20 };
+            let end = offset.checked_add(size).ok_or("FACE diff record range overflow.")?;
+            if end > required {
+                return Err(format!("FACE diff record {index} exceeds the count-derived record area."));
+            }
+            for at in (offset..end).step_by(4) {
+                let value = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+                if !value.is_finite() {
+                    return Err(format!("FACE diff record {index} contains a non-finite value."));
+                }
+            }
+            ranges.push((offset, end));
+        }
+        ranges.sort_unstable_by_key(|range| range.0);
+        for pair in ranges.windows(2) {
+            if pair[1].0 < pair[0].1 {
+                return Err("FACE diff records overlap.".into());
+            }
+        }
     }
     Ok(())
 }
@@ -110,65 +169,13 @@ fn legacy_face_diff_from_xml(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
 
 fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<Vec<u8>, String> {
     if let Some(face_diff) = face_diff {
-    if face_diff.len() < 0x50 || &face_diff[..4] != b"FACE" {
-        return Err("FACE diff sidecar has an invalid or truncated header.".into());
-    }
-    let version = u32::from_le_bytes(face_diff[4..8].try_into().unwrap());
-    let count_a = u32::from_le_bytes(face_diff[0x48..0x4c].try_into().unwrap()) as usize;
-    let count_b = u32::from_le_bytes(face_diff[0x4c..0x50].try_into().unwrap()) as usize;
-    let known = (version == 5 || version == 6) && count_a == 33 && count_b == 6
-        || version == 4 && count_a == 32 && count_b == 6;
-    if !known {
-        return Err(format!("FACE diff version/count combination is not supported for XML preservation: v{version}, {count_a}/{count_b}."));
-    }
-    let required = 0xf0usize.checked_add(count_a * 0x10).and_then(|v| v.checked_add(count_b * 0x20))
-        .ok_or("FACE diff record size overflow.")?;
-    if face_diff.len() < required {
-        return Err(format!("FACE diff is truncated: {} bytes, expected at least {required}.", face_diff.len()));
-    }
-    let offset_count = count_a + count_b;
-    let mut seen = std::collections::HashSet::new();
-    let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(offset_count);
-    for i in 0..offset_count {
-        let at = 0x50 + i * 4;
-        let offset = u32::from_le_bytes(face_diff[at..at + 4].try_into().unwrap()) as usize;
-        let record_size = if i < count_a { 0x10 } else { 0x20 };
-        let end = offset.checked_add(record_size).ok_or("FACE diff record range overflow.")?;
-        if offset < 0xf0 || offset % 16 != 0 || end > required || !seen.insert(offset) {
-            return Err(format!("FACE diff record pointer {i} is invalid, unaligned, out of range or duplicated."));
-        }
-        ranges.push((offset, end));
-    }
-    ranges.sort_unstable_by_key(|range| range.0);
-    for pair in ranges.windows(2) {
-        if pair[1].0 < pair[0].1 {
-            return Err("FACE diff records overlap.".into());
-        }
-    }
-    for at in (0x08..0x48).step_by(4) {
-        let value = f32::from_le_bytes(face_diff[at..at + 4].try_into().unwrap());
-        if !value.is_finite() {
-            return Err("FACE diff header contains a non-finite calibration value.".into());
-        }
-    }
-    for i in 0..offset_count {
-        let offset_at = 0x50 + i * 4;
-        let offset = u32::from_le_bytes(face_diff[offset_at..offset_at + 4].try_into().unwrap()) as usize;
-        let float_count = if i < count_a { 4 } else { 8 };
-        for j in 0..float_count {
-            let at = offset + j * 4;
-            let value = f32::from_le_bytes(face_diff[at..at + 4].try_into().unwrap());
-            if !value.is_finite() {
-                return Err(format!("FACE diff record {i} contains a non-finite value."));
-            }
-        }
-    }
+        validate_face_diff_payload(face_diff)?;
     }
     let has_face = model_stems.iter().any(|s| s.eq_ignore_ascii_case("face_high"));
     if !has_face {
         return Err("A legacy face XML requires a face_high model.".into());
     }
-    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n");
+    let mut xml = String::from("<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?>\\n<config>\\n");
     for stem in model_stems {
         let kind = if stem.eq_ignore_ascii_case("face_high") {
             "face_neck"
@@ -179,14 +186,14 @@ fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<V
         };
         let model_name = format!("oral_{stem}_*.model");
         let material = format!("{stem}.mtl");
-        xml.push_str(&format!("  <model level=\"0\" type=\"{kind}\" path=\"./{model_name}\" material=\"./{material}\"/>\n"));
+        xml.push_str(&format!("  <model level=\\"0\\" type=\\"{kind}\\" path=\\"./{model_name}\\" material=\\"./{material}\\"/>\\n"));
     }
     if let Some(face_diff) = face_diff {
         xml.push_str("  <dif>");
         xml.push_str(&base64_encode(face_diff));
-        xml.push_str("</dif>\n");
+        xml.push_str("</dif>\\n");
     }
-    xml.push_str("</config>\n");
+    xml.push_str("</config>\\n");
     Ok(xml.into_bytes())
 }
 fn run()->Result<(),String>{
@@ -346,7 +353,7 @@ fn run()->Result<(),String>{
  }
  if source_format=="fpk" {
   if let Some(face_diff)=package_face_diff.as_deref() {
-   validate_face_diff_generation(face_diff, target)?;
+   validate_face_diff_payload(face_diff)?;
   }
   let xml=legacy_face_xml(package_face_diff.as_deref(),&model_stems)?;
   outputs.push("face.xml".into());
