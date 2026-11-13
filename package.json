@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
-    "dist:win": "npm run build && npm run build:icon && electron-builder --win nsis",
+    "dist:win": "npm run build && npm run build:icon && electron-builder --win nsis --publish never",
     "predev": "npm run build:electron",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:icon": "node scripts/build-icon.mjs"
