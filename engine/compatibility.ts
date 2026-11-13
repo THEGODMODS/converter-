@@ -28,14 +28,15 @@ export function assessFaceConversion(project:ProjectInput,source:FaceSourceGener
   checks.push({label:"PES 2017 material definitions",status:mtl.length?"pass":"warning",detail:mtl.length?mtl.length+" MTL/material metadata file(s) found.":"No .mtl material definition was found."});
   if(!mtl.length)warnings.push("PES 2017 MODEL meshes reference external MTL material definitions; without them texture/shader bindings cannot be reconstructed reliably.");
  }else{
-  checks.push({label:"FMDL material and texture references",status:sourceModels.length?"warning":"blocked",detail:"FMDL material instances and texture references require deep block-level validation; header recognition alone is insufficient."});
-  warnings.push("FMDL material, shader and texture references have not yet been certified by full semantic decoding for every mesh.");
+  checks.push({label:"FMDL semantic material decoding",status:sourceModels.length?"pass":"blocked",detail:"The pinned native engine decodes FMDL mesh/material structures; folder-wide external texture resolution is a separate gate."});
+  warnings.push("Semantic model conversion is available, but complete face-folder texture relinking and package assembly are not yet implemented.");
  }
  checks.push({label:"Face-specific auxiliary data",status:faceDiff.length?"pass":"warning",detail:faceDiff.length?"face_diff.bin metadata found.":"No face_diff.bin metadata found."});
  if(!faceDiff.length)warnings.push("Eye placement/scale and other face-specific adjustments may need target-side defaults if face_diff.bin is absent.");
  checks.push({label:"Malformed or unsupported files",status:invalid.length?"warning":"pass",detail:invalid.length?invalid.length+" invalid or unsupported file(s) found.":"No invalid supported-format headers were reported."});
  if(invalid.length)warnings.push(invalid.length+" file(s) have invalid or unsupported headers and must not be copied into a converted output.");
- checks.push({label:"Target model writer and rig retargeter",status:"blocked",detail:"Target-game model serialization, target skeleton mapping, weight transfer and in-game validation are not yet complete."});
- blockingReasons.push("The target-game model writer and verified facial-rig/weight retargeter are not implemented; FACE FORGE must not emit a pretend-converted model.");
+ checks.push({label:"Single-model semantic converter",status:sourceModels.length?"pass":"blocked",detail:"Pinned native model_convert engine provides semantic FMDL ↔ MODEL/MTL conversion and version-specific skeleton retargeting, with structured loss findings."});
+ checks.push({label:"Complete face package and dependency relinking",status:"blocked",detail:"All face/hair/oral/auxiliary models, FTEX/DDS dependencies, face_diff data and game-specific package paths are not yet converted atomically."});
+ blockingReasons.push("Single-model semantic conversion is implemented, but complete face-package conversion, texture/material dependency relinking and target-game verification remain blocked.");
  return {source,target,gate:blockingReasons.length?"blocked":"inspectable",checks,blockingReasons,warnings};
 }
