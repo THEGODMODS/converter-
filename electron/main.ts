@@ -16,6 +16,7 @@ import { parseFmdlContainer } from "../engine/formats/fmdl-container";
 import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
 import { parseFpkArchive } from "../engine/formats/fpk";
 import { convertFaceTextureDependencies } from "./texture-bundle";
+import { buildFoxFacePackage } from "./package-builder";
 
 let mainWindow:BrowserWindow|null=null;
 function trusted(event:Electron.IpcMainInvokeEvent){
@@ -100,6 +101,14 @@ function registerIpc(){
    const detail=error instanceof Error?error.message:String(error);
    throw new Error("Native PES conversion failed: "+detail);
   }
+ });
+ ipcMain.handle("face:build-fox-package",async(event,folder:unknown,virtualRoot:unknown)=>{
+  trusted(event);
+  if(typeof folder!=="string"||!path.isAbsolute(folder)||typeof virtualRoot!=="string"||virtualRoot.length>512)throw new Error("Invalid package source or virtual root.");
+  const picked=await dialog.showSaveDialog(mainWindow!,{title:"Save paired PES 2021 face package",defaultPath:path.join(path.dirname(folder),path.basename(folder)+"-face.fpk"),filters:[{name:"Fox face package",extensions:["fpk"]}]});
+  if(picked.canceled||!picked.filePath)return null;
+  const base=picked.filePath.toLowerCase().endsWith(".fpk")?picked.filePath.slice(0,-4):picked.filePath;
+  return buildFoxFacePackage(folder,base,virtualRoot);
  });
  ipcMain.handle("face:preview-model",async(event,folder:unknown,relativePath:unknown)=>{
   trusted(event);
