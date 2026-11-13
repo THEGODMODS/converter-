@@ -34,9 +34,9 @@ export default function App(){
   <button className={"nav-item "+(mode==="batch"?"active":"")} onClick={()=>setMode("batch")}><Layers3 size={17}/> Batch converter {mode==="batch"&&<span className="nav-dot"/>}</button>
   <button className={"nav-item "+(mode==="project"?"active":"")} onClick={()=>setMode("project")}><Database size={17}/> Project database {mode==="project"&&<span className="nav-dot"/>}</button>
   <div className="side-label tools-label">TOOLKIT</div>
-  <button className="tool-link" onClick={runTextureLab} disabled={textureBusy}><FileImage size={16}/> Texture lab <small>{textureBusy?"WORKING":"DDS ↔ FTEX"}</small></button>
+  <button className="tool-link" onClick={runTextureLab} disabled={textureBusy||textureBatchBusy}><FileImage size={16}/> Texture lab <small>{textureBusy?"WORKING":"DDS ↔ FTEX"}</small></button>
   <select className="color-select" value={textureColorSpace} onChange={e=>setTextureColorSpace(e.target.value as TextureColorSpace)} aria-label="Texture color space"><option value="SRGB">Color / diffuse</option><option value="NORMAL">Normal map</option><option value="LINEAR">Linear data</option></select>
-  <button className="tool-link" onClick={runTextureBatch} disabled={textureBatchBusy}><FileImage size={16}/> Batch texture pack <small>{textureBatchBusy?"WORKING":"FOLDER CONVERSION"}</small></button>
+  <button className="tool-link" onClick={runTextureBatch} disabled={textureBatchBusy||textureBusy}><FileImage size={16}/> Batch texture pack <small>{textureBatchBusy?"WORKING":"FOLDER CONVERSION"}</small></button>
   <div className="tool-link"><Box size={16}/> 3D preview <small>GEOMETRY VIEWER</small></div><div className="tool-link"><Package size={16}/> CPK builder <small>VALIDATION GATED</small></div>
   <div className="sidebar-bottom"><div className="free-pill"><Sparkles size={14}/> FREE FOREVER</div><div className="version">KFC GODMODS · FACE FORGE 0.2.0</div></div>
  </aside><main className="main">
