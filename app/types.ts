@@ -17,5 +17,6 @@ export type FaceForgeApi = {
  convertNativeModel:(folder:string)=>Promise<{destination:string;report:{ok:boolean;target:number;outputs:string[];findings:{code:string;subject:{type:string;index?:number};detail:string}[]}}|null>;
  getPathForDrop:(file:File)=>string;
  convertTextureFile:(colorSpace:TextureColorSpace)=>Promise<{source:string;destination:string;format:string;width:number;height:number;bytes:number}|null>;
+ convertTextureFolder:(colorSpace:TextureColorSpace)=>Promise<{source:string;destination:string;converted:number;bytes:number;files:Array<{source:string;destination:string;format:string;width:number;height:number}>}|null>;
 };
 declare global {interface Window {faceForge:FaceForgeApi}}
