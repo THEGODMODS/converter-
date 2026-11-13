@@ -31,7 +31,7 @@ export async function publishStagedOutput(stagedDirectory:string,destinationDire
   }
   backupExists=false;
   try{await rm(backup,{recursive:true,force:true});}catch{}
-  return realDestination;
+  return destination;
  }finally{
   // If restoration failed, retain the backup directory for manual recovery.
   if(!backupExists)try{await rm(backupParent,{recursive:true,force:true});}catch{}
