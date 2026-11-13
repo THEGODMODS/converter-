@@ -30,12 +30,12 @@ describe("inspectFaceFolder",()=>{
     }finally{await rm(root,{recursive:true,force:true});}
   });
 
-  it("detects ESYS-compressed PES 2017 MODEL files",async()=>{
+  it("detects WESYS-compressed PES 2017 MODEL files",async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
     try{
       const model=Buffer.alloc(36);model.write("MODEL\\0\\0\\0",0,"binary");model.writeUInt32LE(24,8);model.writeUInt16LE(19,14);model.writeUInt32LE(12,24);model.writeUInt32LE(0,28);model.writeUInt32LE(4,32);
-      const header=Buffer.alloc(16);header.write("ESYS",4,"ascii");
-      await writeFile(path.join(root,"face.model"),Buffer.concat([header,deflateSync(model)]));
+      const packed=deflateSync(model),header=Buffer.alloc(16);header.set([0,1,1]);header.write("WESYS",3,"ascii");header.writeUInt32LE(packed.length,8);header.writeUInt32LE(model.length,12);
+      await writeFile(path.join(root,"face.model"),Buffer.concat([header,packed]));
       const result=await inspectFaceFolder(root);
       expect(result.detectedGame).toBe("pes2017");
       expect(result.models).toBe(1);
