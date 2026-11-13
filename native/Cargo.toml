@@ -12,3 +12,4 @@ pes_version = { git = "https://github.com/the4chancup/unlimited-tool-works", rev
 serde_json = "1"
 fpk = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
 ftex = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
+wezlib = { git = "https://github.com/the4chancup/unlimited-tool-works", rev = "ca4fe4a32500ffc2d932a1a669a42a6f932d571a" }
