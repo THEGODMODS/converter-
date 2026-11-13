@@ -12,7 +12,9 @@ describe("direction-aware conversion assessment",()=>{
   expect(result.target).toBe("pes2017");
   expect(result.checks.find(x=>x.label==="Source model files")?.status).toBe("pass");
   expect(result.gate).toBe("blocked");
-  expect(result.checks.find(x=>x.label==="Single-model semantic converter")?.status).toBe("pass");\n  expect(result.checks.find(x=>x.label==="Complete face package and dependency relinking")?.status).toBe("blocked");\n  expect(result.blockingReasons.join(" ")).toContain("complete face-package conversion");
+  expect(result.checks.find(x=>x.label==="Single-model semantic converter")?.status).toBe("pass");
+  expect(result.checks.find(x=>x.label==="Complete face package and dependency relinking")?.status).toBe("blocked");
+  expect(result.blockingReasons.join(" ")).toContain("complete face-package conversion");
  });
  it("blocks the reverse route when the selected source generation does not match",()=>{
   const result=assessFaceConversion(base,"pes2017");
