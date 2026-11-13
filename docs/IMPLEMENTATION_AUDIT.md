@@ -67,7 +67,7 @@ This audit describes the implementation in the repository, not the product ambit
 
 ## Work added during this audit
 
-- Native Fox-package conversion now validates the complete member set, converts FMDL/SKL models and resolves FTEX dependencies through the Electron texture stage (including embedded FPK members), and rejects XML, face-diff, FOX scene and unknown sidecars instead of silently dropping them. It also rejects unsafe paths, orphan skeletons and case-insensitive duplicate virtual paths. Regression coverage now exercises embedded FPK texture extraction and conversion. Package-wide material-reference equivalence still needs real face fixtures and target-game validation.
+- Native Fox-package conversion now validates the complete member set, converts FMDL/SKL models and resolves FTEX dependencies through the Electron texture stage (including embedded FPK members), and rejects XML, face-diff, FOX scene and unknown sidecars instead of silently dropping them. It normalizes the format's canonical `/Assets/...` entry prefix before writing, and rejects other absolute/traversal paths, orphan skeletons and case-insensitive duplicate virtual paths. Regression coverage now exercises embedded FPK texture extraction and conversion. Package-wide material-reference equivalence still needs real face fixtures and target-game validation.
 - Rig calibration audit now detects invalid parent references and cycles, and measures hierarchy coverage over mapped landmarks.
 - Synthetic regression tests cover the rig-audit cases. CI is pending for the current feature branch; no passing result is claimed here.
 
