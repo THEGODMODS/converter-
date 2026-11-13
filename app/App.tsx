@@ -18,7 +18,7 @@ export default function App(){
  const runTextureLab=async()=>{setTextureBusy(true);setTextureResult("");try{const result=await window.faceForge.convertTextureFile(textureColorSpace);if(result)setTextureResult("Converted "+result.format+" "+result.width+"×"+result.height+" → "+result.destination);}catch(e){setTextureResult(e instanceof Error?e.message:"Texture conversion failed.");}finally{setTextureBusy(false);}};
  const directionLabel=useMemo(()=>direction==="pes2021-to-pes2017"?"NEW-GEN → CLASSIC":"CLASSIC → NEW-GEN",[direction]),activeCount=mode==="single"?(project?1:0):mode==="batch"?batch.length:library.length;
  return <div className="shell"><aside className="sidebar">
-  <div className="brand"><div className="brand-mark"><img src="./assets/face-forge-mark.svg" alt=""/></div><div><strong>KFC GODMODS</strong><span>FACE FORGE</span></div></div>
+  <div className="brand"><div className="brand-mark"><img src="/face-forge.svg" alt=""/></div><div><strong>KFC GODMODS</strong><span>FACE FORGE</span></div></div>
   <div className="side-label">WORK MODES</div>
   <button className={"nav-item "+(mode==="single"?"active":"")} onClick={()=>setMode("single")}><ScanFace size={17}/> Single face {mode==="single"&&<span className="nav-dot"/>}</button>
   <button className={"nav-item "+(mode==="batch"?"active":"")} onClick={()=>setMode("batch")}><Layers3 size={17}/> Batch converter {mode==="batch"&&<span className="nav-dot"/>}</button>
