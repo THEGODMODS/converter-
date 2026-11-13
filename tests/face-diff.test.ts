@@ -45,7 +45,8 @@ describe("PES face_diff metadata and records",()=>{
  it("maps all 33 bone offsets by the verified v5/v6 order",()=>{
   const parsed=inspectFaceDiff(v5Fixture());
   expect(parsed.boneOffsets).toHaveLength(33);
-  expect(parsed.boneOffsets[0]).toMatchObject({boneName:"skf_brow_o_r",recordOffset:0xf0,w:0});\n  parsed.boneOffsets[0].position.forEach((value,index)=>expect(value).toBeCloseTo([0.1,0.2,0.3][index],6));
+  expect(parsed.boneOffsets[0]).toMatchObject({boneName:"skf_brow_o_r",recordOffset:0xf0,w:0});
+  parsed.boneOffsets[0].position.forEach((value,index)=>expect(value).toBeCloseTo([0.1,0.2,0.3][index],6));
   expect(parsed.boneOffsets[6].boneName).toBe("skf_eye_r");
   expect(parsed.boneOffsets[7].boneName).toBe("skf_eye_l");
   expect(parsed.rightEyePosition).toEqual(parsed.boneOffsets[6].position);
