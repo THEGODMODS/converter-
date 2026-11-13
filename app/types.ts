@@ -5,6 +5,7 @@ export type TextureColorSpace = "LINEAR"|"SRGB"|"NORMAL";
 export type FaceForgeApi = {
  chooseFolder:()=>Promise<string|null>;
  chooseFolders:()=>Promise<string[]>;
+ chooseFolders:()=>Promise<string[]>;
  inspectDatabase:(folder:string)=>Promise<FaceDatabase>;
  inspectFolder:(folder:string)=>Promise<FaceProject>;
  getPathForDrop:(file:File)=>string;
