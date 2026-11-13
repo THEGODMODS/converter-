@@ -9,7 +9,7 @@ export default function SingleFaceApp(){
  const [busy,setBusy]=useState(false),[previewBusy,setPreviewBusy]=useState(false),[converting,setConverting]=useState(false),[dragging,setDragging]=useState(false);
  const [error,setError]=useState(""),[result,setResult]=useState("");
  const loadFolder=async(folder:string)=>{
-  setBusy(true);setError("");setResult("");setPreview(null);setTargetId("");
+  setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setTargetId("");
   try{
    const scanned=await window.faceForge.inspectFolder(folder);setProject(scanned);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
