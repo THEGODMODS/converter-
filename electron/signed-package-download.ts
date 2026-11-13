@@ -1,7 +1,7 @@
 import path from "node:path";
 import {createHash} from "node:crypto";
 import {createWriteStream} from "node:fs";
-import {access,mkdir,mkdtemp,rename,rm} from "node:fs/promises";
+import {lstat,mkdir,mkdtemp,realpath,rename,rm} from "node:fs/promises";
 import {pipeline} from "node:stream/promises";
 import {Readable,Transform} from "node:stream";
 import {PACKAGE_LIMITS,assertTrustedPackageUrl,verifySignedPackageManifest,type PackageTrust} from "../engine/signed-package";
@@ -20,10 +20,15 @@ export async function installSignedPackage(manifestUrl:string,packagesRoot:strin
  let raw:unknown;try{raw=JSON.parse(manifestBytes.toString("utf8"));}catch{throw new Error("Package manifest is not valid JSON.");}
  const manifest=verifySignedPackageManifest(raw,trust);
  const root=path.resolve(packagesRoot);await mkdir(root,{recursive:true});
- const finalPath=path.join(root,manifest.packageId,manifest.version);
- try{await access(finalPath);throw new Error("This package version is already installed. Existing package files were not overwritten.");}catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;}
- const parent=path.dirname(finalPath);await mkdir(parent,{recursive:true});
- const stage=await mkdtemp(path.join(parent,".face-forge-stage-"));
+ const rootStat=await lstat(root);if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The package store must be a regular directory.");
+ const realRoot=await realpath(root),parent=path.join(realRoot,manifest.packageId);
+ await mkdir(parent,{recursive:true});
+ const parentStat=await lstat(parent);if(parentStat.isSymbolicLink()||!parentStat.isDirectory())throw new Error("The package ID directory is not a safe regular directory.");
+ const realParent=await realpath(parent),rootPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+ if(!realParent.startsWith(rootPrefix))throw new Error("The package ID directory resolves outside the package store.");
+ const finalPath=path.join(realParent,manifest.version);
+ try{await lstat(finalPath);throw new Error("This package version is already installed. Existing package files were not overwritten.");}catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;}
+ const stage=await mkdtemp(path.join(realParent,".face-forge-stage-"));
  let written=0;
  try{
   for(const file of manifest.files){
