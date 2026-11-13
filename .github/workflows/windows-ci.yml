@@ -84,4 +84,30 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # Installer creation and release-artifact upload are intentionally paused until Phase 1, 2 and 3 are complete and audited.
+
+  installer:
+    name: Build and verify Windows installer
+    needs: quality
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm install
+      - name: Build Windows NSIS installer
+        run: npm run dist:win
+      - name: Verify installer and write SHA-256
+        run: node scripts/verify-release-installer.mjs
+      - name: Upload verified installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FACE-FORGE-Windows-Installer
+          path: |
+            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe
+            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe.sha256
+          if-no-files-found: error
+          retention-days: 14
