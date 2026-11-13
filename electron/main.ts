@@ -232,7 +232,11 @@ function registerIpc(){
    warnings.push("PES 2017 preview is static. External MTL shader/texture bindings and facial animation are not yet rendered.");
   }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
   if(!meshes.length)throw new Error("No renderable mesh geometry was found in this model.");
+  const malformed=meshes.find(mesh=>mesh.positions.length<9||mesh.positions.length%3!==0||mesh.indices.length<3||mesh.indices.length%3!==0||mesh.indices.some(index=>!Number.isInteger(index)||index<0||index>=mesh.positions.length/3));
+  if(malformed)throw new Error("The selected model contains no valid triangle surface for preview ("+malformed.name+"). The file header and material bindings alone are not a 3D face preview.");
   const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
+  const triangleCount=meshes.reduce((sum,mesh)=>sum+mesh.indices.length/3,0);
+  if(!triangleCount)throw new Error("The selected model contains no renderable triangles.");
   return {source:relativePath,generation,meshes,materials,warnings};
  });
  ipcMain.handle("texture:convert-folder",async(event,colorSpace:unknown)=>{
