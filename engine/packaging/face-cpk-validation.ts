@@ -49,10 +49,10 @@ function verifyFaceXmlReferences(
 ) {
   const xml = xmlBytes.toString("utf8");
   if (
-    xml.includes("\\u0000") ||
-    !/^\\s*<\\?xml\\b[\\s\\S]*?\\?>/i.test(xml) ||
-    !/<config(?:\\s|>)/i.test(xml) ||
-    !/<\\/config\\s*>\\s*$/i.test(xml)
+    xml.includes("\u0000") ||
+    !/^\s*<\?xml\b[\s\S]*?\?>/i.test(xml) ||
+    !/<config(?:\s|>)/i.test(xml) ||
+    !/<\/config\s*>\s*$/.test(xml)
   ) {
     throw new Error("face.xml is not a complete UTF-8 config document.");
   }
@@ -65,11 +65,11 @@ function verifyFaceXmlReferences(
   const resolve = (raw: string, kind: string): string[] => {
     const relative = localReference(raw);
     if (relative === null) return [];
-    if (/[?#[\\]{}]/.test(relative)) {
+    if (/[?#[\]{}]/.test(relative)) {
       throw new Error("face.xml contains an unsupported " + kind + " reference: " + raw);
     }
     const target = (xmlDirectory ? xmlDirectory + "/" : "") + relative;
-    const escaped = target.replace(/[.+^$()|\\\\]/g, "\\\\$&").replaceAll("*", ".*");
+    const escaped = target.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*");
     const matcher = new RegExp("^" + escaped + "$", "i");
     const matches = archivePaths.filter((archivePath) => matcher.test(archivePath));
     if (!matches.length) {
@@ -78,14 +78,14 @@ function verifyFaceXmlReferences(
     return matches;
   };
 
-  const modelTags = [...xml.matchAll(/<model\\b([^>]*)\\/?\\s*>/gi)];
+  const modelTags = [...xml.matchAll(/<model\b([^>]*)\/?\s*>/gi)];
   if (!modelTags.length) throw new Error("face.xml contains no model entries.");
 
   const models: string[] = [];
   const materials: string[] = [];
   for (const tag of modelTags) {
     const attributes = new Map<string, string>();
-    for (const match of tag[1].matchAll(/([A-Za-z_:][\\w:.-]*)\\s*=\\s*(["'])(.*?)\\2/gs)) {
+    for (const match of tag[1].matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*(["'])(.*?)\2/gs)) {
       const key = match[1].toLowerCase();
       if (attributes.has(key)) throw new Error("face.xml model entry repeats attribute " + key + ".");
       attributes.set(key, decodeXmlAttribute(match[3]));
@@ -102,8 +102,8 @@ function verifyFaceXmlReferences(
   const unique = (values: string[]) => [...new Set(values)];
   const resolvedModels = unique(models);
   const resolvedMaterials = unique(materials);
-  const head = resolvedModels.find((name) => /(?:^|\\/)oral_face_high_win32\\.model$/i.test(name));
-  const headMaterial = resolvedMaterials.find((name) => /(?:^|\\/)face_high\\.mtl$/i.test(name));
+  const head = resolvedModels.find((name) => /(?:^|\/)oral_face_high_win32\.model$/i.test(name));
+  const headMaterial = resolvedMaterials.find((name) => /(?:^|\/)face_high\.mtl$/i.test(name));
   if (!head) {
     throw new Error("face.xml does not resolve its face_high head model to oral_face_high_win32.model.");
   }
