@@ -17,7 +17,7 @@ function vertexData(data:Buffer,sectionBase:number,vertexSetOffset:number):Map<n
  const set=arrayView(data,vertexSetOffset,"VertexSet");if(set.count===0)return new Map();if(set.count!==1)throw new Error("Multiple VertexSet streams are not yet supported for this MODEL geometry.");
  if(set.recordSize<4)throw new Error("VertexSet record is truncated.");
  const datumSetOffset=pointer(data,set.records,0,sectionBase,"VertexDatumSet");if(datumSetOffset===null)return new Map();
- const datumSet=arrayView(data,datumSetOffset,"VertexDatumSet");if(data.readUInt32LE(datumSetOffset+12)!==0)throw new Error("Cloth-enabled MODEL geometry is not yet supported.");const attributes=new Map<number,number[][]>();
+ const datumSet=arrayView(data,datumSetOffset,"VertexDatumSet");if(datumSet.recordOffset<20)throw new Error("VertexDatumSet is missing its documented 8-byte header extension.");if(data.readUInt32LE(datumSetOffset+12)!==0)throw new Error("Cloth-enabled MODEL geometry is not yet supported.");const attributes=new Map<number,number[][]>();
  for(let i=0;i<datumSet.count;i++){const p=datumSet.records+i*datumSet.recordSize;if(datumSet.recordSize<16)throw new Error("VertexDatumSet record is truncated.");const bufferOffset=pointer(data,p,0,sectionBase,"Vertex datum buffer");const type=data.readUInt32LE(p+4),format=data.readUInt32LE(p+8),count=data.readUInt32LE(p+12);if(count>MAX_RECORDS)throw new Error("Vertex count exceeds the safety limit.");if(bufferOffset===null||count===0)continue;if(attributes.has(type))throw new Error("Duplicate vertex semantic "+type+" in one geometry.");attributes.set(type,readDatum(data,bufferOffset,format,count,"Vertex semantic "+type));}
  return attributes;
 }
