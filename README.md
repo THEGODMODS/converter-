@@ -14,6 +14,12 @@ Free, bidirectional PES face conversion studio.
 - Report partial support honestly and fail closed on unsupported assets.
 - Respect upstream licences and credits; do not bundle proprietary game assets or paid converter code.
 
+## Current implementation status
+
+The initial desktop shell, local face-folder inventory, binary header inspection, FTEX ↔ DDS container conversion for a supported format subset, canonical face-scene validation contract, and initial CPK writer/validator are committed on the development branch.
+
+**The complete face conversion is not ready yet.** Both FMDL → MODEL and MODEL → FMDL geometry/material/skeleton adapters are still required. The UI intentionally keeps full face conversion disabled until those adapters, 3D inspection, target-format re-parsing and real PES 2017/PES 2021 tests are complete. The current CPK writer is an initial implementation and is not yet certified by independent CPK readers or either game.
+
 ## Architecture
 - `app/`: React desktop UI.
 - `electron/`: isolated desktop main process and typed IPC.
