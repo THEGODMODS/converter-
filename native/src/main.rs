@@ -319,7 +319,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
             }
             if !metadata.is_file() { return Err(format!("Unsupported filesystem entry: {}", path.display())); }
             let relative = path.strip_prefix(root).map_err(|_| "PES 2021 source path escaped its root.")?;
-            let relative_text = relative.to_string_lossy().replace('\\\\', "/");
+            let relative_text = relative.to_string_lossy().replace('\\', "/");
             let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("");
             let lower = name.to_ascii_lowercase();
             let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
@@ -365,7 +365,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
     }
     for skeleton in skeleton_paths {
         let model = skeleton.with_extension("fmdl");
-        let relative = model.strip_prefix(root).map_err(|_| "PES 2021 SKL path escaped its source root.")?.to_string_lossy().replace('\\\\', "/").to_ascii_lowercase();
+        let relative = model.strip_prefix(root).map_err(|_| "PES 2021 SKL path escaped its source root.")?.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
         if !model_paths.contains(&relative) {
             return Err(format!("Orphan PES 2021 skeleton {} has no matching FMDL.", skeleton.display()));
         }
