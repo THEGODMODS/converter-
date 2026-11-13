@@ -15,6 +15,7 @@ import { decodePes2017Model } from "../engine/formats/model-scene";
 import { parseFmdlContainer } from "../engine/formats/fmdl-container";
 import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
 import { parseFpkArchive } from "../engine/formats/fpk";
+import { convertFaceTextureDependencies } from "./texture-bundle";
 
 let mainWindow:BrowserWindow|null=null;
 function trusted(event:Electron.IpcMainInvokeEvent){
@@ -81,8 +82,24 @@ function registerIpc(){
   const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
   if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the native engine enabled.");
   args.push("--out",output);
-  try{const result=await execFileAsync(binary,args,{timeout:180000,maxBuffer:4*1024*1024,windowsHide:true});let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("Native converter returned an invalid result report.");}return {destination:output,report};}
-  catch(error){const detail=error instanceof Error?error.message:String(error);throw new Error("Native PES conversion failed: "+detail);}
+  const dependencySources=new Set<string>();
+  for(const modelPath of selectedPaths){
+   const relative=path.relative(root,modelPath).replaceAll("\\","/");
+   if(sourceFormat==="model")dependencySources.add(relative.slice(0,relative.lastIndexOf("."))+".mtl");
+   else if(sourceFormat==="fmdl")dependencySources.add(relative);
+   else for(const file of inventory.files)if(file.path.startsWith(relative+"!/")&&file.kind==="model-pes2021")dependencySources.add(file.path);
+  }
+  const conversionProject={...inventory,dependencies:inventory.dependencies.filter(item=>dependencySources.has(item.source))};
+  try{
+   const result=await execFileAsync(binary,args,{timeout:180000,maxBuffer:4*1024*1024,windowsHide:true});
+   let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("Native converter returned an invalid result report.");}
+   const textures=await convertFaceTextureDependencies(conversionProject,root,output,target);
+   return {destination:output,report,textures};
+  }catch(error){
+   for(const entry of await fs.promises.readdir(output)){try{await fs.promises.rm(path.join(output,entry),{recursive:true,force:true});}catch{}}
+   const detail=error instanceof Error?error.message:String(error);
+   throw new Error("Native PES conversion failed: "+detail);
+  }
  });
  ipcMain.handle("face:preview-model",async(event,folder:unknown,relativePath:unknown)=>{
   trusted(event);
