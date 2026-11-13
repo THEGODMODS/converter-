@@ -29,6 +29,12 @@ describe("staged conversion publishing",()=>{
   expect((await readFile(path.join(destination,"user.txt"))).toString()).toBe("keep");
   expect((await readFile(path.join(stage,"face.model"))).toString()).toBe("converted");
  });
+ it("restores the original destination if the staged directory cannot be published",async()=>{
+  const {destination,stage}=await fixture();
+  await rm(stage,{recursive:true,force:true});
+  await expect(publishStagedOutput(stage,destination)).rejects.toThrow();
+  expect(await readdir(destination)).toEqual([]);
+ });
  it("rejects a symbolic-link destination without touching its target",async()=>{
   const {root,destination,stage}=await fixture();
   const real=path.join(root,"real");await mkdir(real);await writeFile(path.join(real,"keep.txt"),"keep");
