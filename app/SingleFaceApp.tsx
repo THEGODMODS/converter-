@@ -40,7 +40,7 @@ export default function SingleFaceApp(){
   if(!validTarget.test(targetId)||!/[1-9]/.test(targetId)){setError("Enter the player ID belonging to this face.");return;}
   setConverting(true);setError("");setResult("");
   try{const converted=await window.faceForge.convertCompleteFaceFolder(project.root,2017,targetId);if(converted){setResult("Face converted successfully. Your PES 2017 files are saved in the folder you selected.");}}
-  catch(e){console.error("FACE FORGE conversion failed",e);setError("Conversion could not complete. Your source files were left untouched. Check the PES 2017 player ID and face package, then try again.");}
+  catch(e){console.error("FACE FORGE conversion failed",e);const detail=e instanceof Error?e.message:String(e);setError(detail.length>320?detail.slice(0,317)+"...":detail||"Conversion failed. Your source files were left untouched.");}
   finally{setConverting(false);}
  };
  return <div className="shell">
