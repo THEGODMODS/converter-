@@ -352,7 +352,7 @@ fn main(){if let Err(error)=run(){eprintln!("FACE_FORGE_CONVERSION_ERROR: {error
 
 #[cfg(test)]
 mod face_diff_xml_tests {
-    use super::{base64_encode, legacy_face_xml};
+    use super::{base64_encode, legacy_face_diff_from_xml, legacy_face_xml};
 
     fn fixture() -> Vec<u8> {
         let mut data = vec![0u8; 960];
@@ -370,6 +370,21 @@ mod face_diff_xml_tests {
     #[test]
     fn base64_encoding_matches_known_vector() {
         assert_eq!(base64_encode(b"FACE"), "RkFDRQ==");
+    }
+
+    #[test]
+    fn reads_legacy_xml_dif_payload_for_reverse_conversion() {
+        let encoded = base64_encode(&fixture());
+        let xml = format!("<?xml version=\\"1.0\\"?><config><dif>\\n{encoded}\\n</dif></config>");
+        assert_eq!(legacy_face_diff_from_xml(xml.as_bytes()).unwrap(), Some(fixture()));
+        assert_eq!(legacy_face_diff_from_xml(b"<config/>").unwrap(), None);
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_invalid_legacy_xml_dif_payloads() {
+        assert!(legacy_face_diff_from_xml(b"<config><dif>AAAA</dif><dif>AAAA</dif></config>").is_err());
+        assert!(legacy_face_diff_from_xml(b"<config><dif>not-base64!</dif></config>").is_err());
+        assert!(legacy_face_diff_from_xml(b"<config><dif><nested/></dif></config>").is_err());
     }
 
     #[test]
