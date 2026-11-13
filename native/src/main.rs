@@ -228,8 +228,9 @@ fn run()->Result<(),String>{
     let checked_model=PreFoxModel::read(&model_bytes).map_err(|e|format!("PES 2017 MODEL read-back failed for {stem}: {e}"))?;
     PreFoxSemanticModel::from_file(&checked_model).map_err(|e|format!("PES 2017 MODEL semantic read-back failed for {stem}: {e}"))?;
     MaterialSet::read(&mtl_bytes).map_err(|e|format!("PES 2017 MTL read-back failed for {stem}: {e}"))?;
-    pending_outputs.push((format!("{stem}.model"),model_bytes));pending_outputs.push((format!("{stem}.mtl"),mtl_bytes));
-    outputs.push(format!("{stem}.model"));outputs.push(format!("{stem}.mtl"));
+    let model_name=if source_format=="fpk"{format!("oral_{stem}_win32.model")}else{format!("{stem}.model")};
+    pending_outputs.push((model_name.clone(),model_bytes));pending_outputs.push((format!("{stem}.mtl"),mtl_bytes));
+    outputs.push(model_name);outputs.push(format!("{stem}.mtl"));
    },
    NativeModelBundle::Fox{model,skl}=>{
     let file=model.to_file().map_err(|e|format!("Encode PES 2021 FMDL {stem}: {e}"))?;let model_bytes=file.write();
