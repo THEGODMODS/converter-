@@ -21,7 +21,7 @@ function writeUtf(tableName:string,columns:UtfColumn[],rows:Array<Record<string,
 function normalizeArchivePath(input:string):string{
  if(!input||input.includes("\0")||path.posix.isAbsolute(input)||path.win32.isAbsolute(input))throw new Error("CPK paths must be relative and cannot contain null bytes.");
  const normalized=input.replaceAll("\\","/").split("/").filter(Boolean).join("/");
- if(!normalized||normalized.split("/").some(part=>part==="."||part===".."||/[<>:"|?*\\x00-\\x1f]/.test(part)||/[. ]$/.test(part)||/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\.|$)/i.test(part)))throw new Error("CPK path contains an unsafe or Windows-reserved path segment.");
+ if(!normalized||normalized.split("/").some(part=>part==="."||part===".."||/[<>:"|?*\x00-\x1f]/.test(part)||/[. ]$/.test(part)||/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(part)))throw new Error("CPK path contains an unsafe or Windows-reserved path segment.");
  return normalized;
 }
 export function buildCpk(files:CpkInputFile[]):Buffer{
