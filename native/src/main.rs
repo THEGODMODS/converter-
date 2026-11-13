@@ -524,7 +524,8 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let report = serde_json::json!({
         "ok": true,
         "engine": "Unlimited Tool Works Team Compiler",
-        "target": target,\n        "targetPlayerId": target_player_id,
+        "target": target,
+        "targetPlayerId": target_player_id,
         "sourceFolder": input.file_name().and_then(|x| x.to_str()).unwrap_or("face-folder"),
         "sourceFiles": file_count,
         "sourceBytes": total_bytes,
