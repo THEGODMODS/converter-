@@ -19,15 +19,18 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - run: npm install
+      - run: npm ci
       - run: npm audit --audit-level=high
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - run: npm run dist:win
+      - run: node scripts/verify-release-installer.mjs
       - uses: actions/upload-artifact@v7
         with:
           name: face-forge-windows-${{ github.sha }}
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/*.sha256
           if-no-files-found: error
           retention-days: 14
