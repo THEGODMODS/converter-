@@ -58,7 +58,7 @@ function readUtfTable(file:Buffer,offset:number,expectedName:string):ParsedUtf{
  const readString=(relative:number)=>{const start=stringsOffset+relative;if(start<stringsOffset||start>=plain.length)throw new Error("UTF string pointer is outside its string table.");let end=start;while(end<plain.length&&plain[end]!==0)end++;if(end===plain.length)throw new Error("Unterminated UTF string.");return plain.toString("utf8",start,end);};
  const columns:Array<{name:string;type:number;storage:number;constant?:string|number|bigint|null}>=[];
  let descriptor=32;
- for(let i=0;i<columnsCount;i++){if(descriptor+5>plain.length)throw new Error("Truncated UTF column descriptor.");const flags=plain.readUInt8(descriptor),type=flags>>4,storage=flags&15,name=readString(plain.readUInt32BE(descriptor+1));descriptor+=5;let constant:string|number|bigint|null|undefined;
+ for(let i=0;i<columnsCount;i++){if(descriptor+5>plain.length)throw new Error("Truncated UTF column descriptor.");const flags=plain.readUInt8(descriptor),type=flags&15,storage=flags>>4,name=readString(plain.readUInt32BE(descriptor+1));descriptor+=5;let constant:string|number|bigint|null|undefined;
   if(storage===3){if(type===10){constant=readString(plain.readUInt32BE(descriptor));descriptor+=4;}else if(type===4){constant=plain.readUInt32BE(descriptor);descriptor+=4;}else if(type===6){constant=plain.readBigUInt64BE(descriptor);descriptor+=8;}else throw new Error("Unsupported constant UTF column type.");}
   else if(storage!==5&&storage!==1)throw new Error("Unsupported UTF storage type.");
   columns.push({name,type,storage,constant});
