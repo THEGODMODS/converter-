@@ -26,7 +26,7 @@ export function inspectFmdlHeader(data:Buffer):FormatInspection{
   const knownEntrySizes:Record<number,number>={0:48,1:8,2:32,3:48,4:16,5:68,6:4,7:4,8:4,9:8,10:8,11:4,12:8,13:32,14:16,16:16,17:8,18:8,20:128};
   const seen0=new Set<number>(),seen1=new Set<number>();let cursor=descriptorsOffset;
   for(let i=0;i<section0Count;i++,cursor+=8){const id=data.readUInt16LE(cursor),count=data.readUInt16LE(cursor+2),offset=data.readUInt32LE(cursor+4);if(seen0.has(id))return fail("FMDL","Duplicate segment-0 block ID "+id+".");seen0.add(id);const entrySize=knownEntrySizes[id];if(entrySize!==undefined&&offset+count*entrySize>section0Length)return fail("FMDL","Segment-0 block "+id+" exceeds its declared section.");}
-  for(let i=0;i<section1Count;i++,cursor+=12){const id=data.readUInt32LE(cursor),offset=data.readUInt32LE(cursor+4),length=data.readUInt32LE(cursor+8);if(seen1.has(id))return fail("FMDL","Duplicate segment-1 block ID "+id+".");seen1.add(id);if(offset+length>section1Length)return fail("FMDL","Segment-1 block "+id+" exceeds its declared section.");}
+  for(let i=0;i<section1Count;i++,cursor+=12){const id=data.readUInt32LE(cursor),offset=data.readUInt32LE(cursor+4),length=data.readUInt32LE(cursor+8);if(seen1.has(id))return fail("FMDL","Duplicate segment-1 block ID "+id+".");seen1.add(id);if(offset>section1Length||(id!==3&&offset+length>section1Length))return fail("FMDL","Segment-1 block "+id+" exceeds its declared section.");}
   return {valid:true,format:"PES 2018–2021 FMDL",version,details:[`FMDL version 0x${version.toString(16)}`,`${section0Count} segment-0 blocks, ${section1Count} segment-1 blocks`]};
 }
 
