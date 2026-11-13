@@ -24,8 +24,12 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
       const width=view.getUint32(16,true),height=view.getUint32(12,true),offset=148,length=width*height*4;if(!width||!height||offset+length>bytes.length)throw new Error("Invalid RGBA8 DDS payload.");
       texture=new THREE.DataTexture(new Uint8Array(bytes.buffer,offset,length),width,height,THREE.RGBAFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.flipY=false;
      }else{
-      const parsed=ddsLoader.parse(bytes.buffer,true);if(!parsed.format||!parsed.mipmaps.length)throw new Error("Unsupported DDS preview compression format.");
-      const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
+      const parsed=ddsLoader.parse(bytes.buffer,true);if(!parsed.format||!parsed.mipmaps.length)throw new Error("Unsupported DDS preview format.");
+      if(parsed.format===THREE.RGBAFormat){
+       const mip=parsed.mipmaps[0];texture=new THREE.DataTexture(mip.data as Uint8Array,parsed.width,parsed.height,THREE.RGBAFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.flipY=false;
+      }else{
+       const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
+      }
      }
      texture.colorSpace=/base|diffuse|albedo|color/i.test(slot)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
      if(/normal/i.test(slot))material.normalMap=texture;
