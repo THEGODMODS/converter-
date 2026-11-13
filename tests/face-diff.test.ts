@@ -20,31 +20,15 @@ function v5Fixture(){
  return data;
 }
 
-// Real version-4 face_diff.bin from the4chancup/unlimited-tool-works.
-// Version 4 has a legacy 32/6 count combination; do not assign v5/v6 bone names to it.
-const REAL_V4=Buffer.from(`
-RkFDRQQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAR
-p8pBGBHUQebeycAb2KfAAAAAAAAAAABIYAq8IAAAAAYAAADwAAAAAAEAABAB
-AAAgAQAAMAEAAEABAABQAQAAYAEAAHABAACAAQAAkAEAAKABAACwAQAAwAEA
-ANABAADgAQAA8AEAAAACAAAQAgAAIAIAADACAABAAgAAUAIAAGACAABwAgAA
-gAIAAJACAACgAgAAsAIAAMACAADQAgAA4AIAAPACAAAQAwAAMAMAAFADAABw
-AwAAkAMAAAAAAAAAAAAAR7MCOyQCN7udWXs6AAAAADOKjDu7pi87stSTugAA
-AACacIM7PS4uO30ffzoAAAAArWveOmNAJbvLcKe6AAAAAN/lnTtxaLu66vgd
-OwAAAACVAsw7Ooe8uvPOCbsAAAAAylmZxDuzGjrHaqE6AAAAAMlZmcTVrB86
-+iHVugAAAADCUpQ7xx8fOr5qoToAAAAARhCeO0o7HjrxIdW6AAAAAMJSlDvl
-Hx86vmqhOgAAAAADEZ47UCAfOvEh1boAAAAAZKaZO3r2QDoVJ+G1AAAAAMIl
-MTxS0jo5rbcPugAAAABurRA8eS2aOmz85TgAAAAAcysPO7+QEjs3ii+6AAAA
-AFvmETzU1MA7JDsUOwAAAABtS+o7SirYO2XjUbsAAAAAIfM7OxYdKzuT24s5
-AAAAAFgvwDuZOo86whGtuwAAAAB39Ls730pyOjPJpDsAAAAAn5cFPDgUBzxv
-t0g7AAAAAFg9+zsbzN07SeWQOwAAAABhFL07SjnpO8vMp7sAAAAAe1noO5Mh
-Bjxoani7AAAAADZTrzvIhTq6JhVGOAAAAADj3+c7AxMBPCZp2bkAAAAAF1Pd
-Oxl49zvId8S5AAAAAPzh0juFZAo8zolnMAAAAAB6Yso7DUm+O1owcrsAAAAA
-wSPzOwaWxTu7zHg7AAAAANwonTsw8eE7Sf0/OQAAAAAAAAAAAAAAAAAAAAAA
-AIA/AACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAA
-AAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIA/AAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAIA/AACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/
-AACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIA/AAAAAAAAAAA=
-`.replace(/\s/g,""),"base64");
+// Synthetic v4-shaped fixture based on the independently observed 32/6 header variant.
+// Its record pointers remain opaque because v4 semantics are not established here.
+function v4LegacyFixture(){
+ const data=Buffer.alloc(944);data.write("FACE",0,"ascii");data.writeUInt32LE(4,4);
+ data.writeUInt32LE(32,0x48);data.writeUInt32LE(6,0x4c);
+ const offsets=[...Array.from({length:33},(_,i)=>0xf0+i*0x10),...Array.from({length:5},(_,i)=>0x310+i*0x20)];
+ offsets.forEach((offset,i)=>data.writeUInt32LE(offset,0x50+i*4));
+ return data;
+}
 
 describe("PES face_diff metadata and records",()=>{
  it("decodes v5 eye scale, degree rotations, eyelid angles and jaw offset",()=>{
@@ -75,7 +59,7 @@ describe("PES face_diff metadata and records",()=>{
   expect(parsed.earTransforms[5].boneName).toBe("dsk_earlobe_r");
  });
  it("accepts a real legacy v4 fixture but does not invent v5/v6 landmark names",()=>{
-  const parsed=inspectFaceDiff(REAL_V4);
+  const parsed=inspectFaceDiff(v4LegacyFixture());
   expect(parsed.fileBytes).toBe(944);
   expect(parsed.version).toBe(4);
   expect(parsed.declaredBlock1Records).toBe(32);
