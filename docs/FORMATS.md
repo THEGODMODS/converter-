@@ -5,7 +5,7 @@ Community format references describe PES 2014–2017 face assets as MODEL + DDS 
 
 ## Commonly observed face assets
 - Newer generation: `face_high.fmdl`, `hair_high.fmdl`, `oral.fmdl`, `.ftex` textures and FPK containers.
-- Older generation: `.model` mesh assets, material metadata and DDS textures.
+- Older generation: `.model` mesh assets, material metadata and DDS textures. Some MODEL files use a 16-byte ESYS-prefixed zlib wrapper before the uncompressed MODEL stream; detection must validate the decompressed header and bound output size.
 - Texture naming conventions vary; examples include face diffuse/alpha, normal, specular/roughness, hair and oral maps.
 
 ## Conversion is not extension renaming
