@@ -10,6 +10,7 @@ describe("Fox FPK v2 parser",()=>{
  it("normalizes Windows separators in virtual asset paths",()=>{const archive=parseFpkArchive(fixture("fpk",[{name:"\\Assets\\pes\\model\\face.fmdl",data:Buffer.from("mesh")}]));expect(archive.entries[0].name).toBe("Assets/pes/model/face.fmdl");});
  it("rejects corrupted filename checksums",()=>{const data=fixture();data[48+32]^=0xff;expect(()=>parseFpkArchive(data)).toThrow(/checksum mismatch/);});
  it("rejects traversal paths",()=>{const data=fixture("fpk",[{name:"../escape.fmdl",data:Buffer.from("x")}]);expect(()=>parseFpkArchive(data)).toThrow(/unsafe path/);});
+ it("rejects non-zero package reference tables until their layout is verified",()=>{const data=fixture();data.writeUInt32LE(1,40);expect(()=>parseFpkArchive(data)).toThrow(/reference tables are not supported/i);});
  it("rejects truncated or incorrect declared sizes",()=>{const data=fixture();data.writeUInt32LE(data.length-1,10);expect(()=>parseFpkArchive(data)).toThrow(/size does not match/);});
  it("round-trips deterministic FPK and FPKD archives",()=>{for(const kind of ["fpk","fpkd"] as const){const entries=[{name:"Assets/pes/model/face/z.fmdl",data:Buffer.from("z")},{name:"Assets/pes/model/face/a.skl",data:Buffer.from("skeleton")}];const bytes=writeFpkArchive(kind,entries);const parsed=parseFpkArchive(bytes);expect(parsed.entries.map(x=>x.name)).toEqual(["Assets/pes/model/face/a.skl","Assets/pes/model/face/z.fmdl"]);expect(writeFpkArchive(kind,parsed.entries)).toEqual(bytes);}});
 });
