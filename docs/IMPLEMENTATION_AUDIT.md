@@ -9,7 +9,7 @@ This audit describes the implementation in the repository, not the product ambit
 ## FACE diff handling update
 
 - Fox package conversion now accepts the explicitly recognized `face_diff.bin` sidecar; unrelated `.bin`, XML, scene and unknown members remain blocked.
-- For PES 2017 output, the native bridge validates supported FACE v4 (32/6 records) and v5/v6 (33/6 records) structure, checks record pointers/ranges/overlap and finite calibration values, then preserves the original binary bytes as Base64 inside the legacy `face.xml` `<dif>` element.
+- For PES 2017 output from an FPK, emit a `face.xml` even when the optional FACE diff is absent. The XML uses the documented model-role table: `face_high` maps to `face_neck`; `hair_high` and `oral` map to `parts`. Emitted pre-Fox model filenames use `oral_<stem>_win32.model`, and XML paths use the wildcard platform spelling. When a FACE diff is present, validate supported v4/v5/v6 record tables and preserve the original payload byte-for-byte as Base64 in `<dif>`. This is preservation, not a semantic v5/v6-to-v4 rig transform.
 - The generated legacy XML explicitly registers supported `face_high`, `hair_high` and `oral` model stems with their converted MTL companions. Unsupported model stems fail closed.
 - This is byte-preserving format wrapping, not a claimed v5-to-v4 rig transform. It still requires PES 2017 in-game validation for the user's package; no game-level success is claimed.
 
