@@ -32,7 +32,7 @@
 - [ ] Round-trip and reference-scene regression tests.
 
 ## Phase 4 — preview, packaging and installation
-- [ ] Embedded 3D viewer with texture/material inspection and source/target comparison.
+- [x] Embedded interactive static geometry viewer with orbit/zoom controls for decoded MODEL and FMDL meshes.\n- [ ] Textured material preview, face-part visibility controls, camera presets and facial-rig animation playback.
 - [x] Single Face, Batch and Project work-mode UI with local folder intake and review queues.
 - [x] Original KFC GODMODS brand artwork and Windows icon-generation pipeline.
 - [x] Initial deterministic CPK writer and structural TOC/payload validator (not yet independently certified).
