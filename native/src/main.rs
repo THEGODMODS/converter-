@@ -123,28 +123,38 @@ fn validate_face_diff_payload(bytes: &[u8]) -> Result<(), String> {
         }
         offsets.push(offset);
     }
-    // Validate the declared physical record extents for every FACE version.
-    // Semantic names/transforms remain opaque until generation-specific mappings
-    // are verified against independent real fixtures.
-    let mut ranges = Vec::with_capacity(offset_count);
-    for (index, offset) in offsets.iter().copied().enumerate() {
-        let size = if index < count_a { 0x10 } else { 0x20 };
-        let end = offset.checked_add(size).ok_or("FACE diff record range overflow.")?;
-        if end > required {
-            return Err(format!("FACE diff record {index} exceeds the count-derived record area."));
-        }
-        for at in (offset..end).step_by(4) {
-            let value = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
-            if !value.is_finite() {
-                return Err(format!("FACE diff record {index} contains a non-finite value."));
+    // Real fixtures establish three layouts: v4 (32 + 6), v5 (32 + 6,
+    // where the first second-block entry is 16 bytes), and v5 (33 + 6).
+    // Do not impose guessed record extents on uncharacterized versions.
+    let v4_layout = version == 4 && count_a == 32 && count_b == 6;
+    let v5_full_layout = version == 5 && count_a == 33 && count_b == 6;
+    let v5_split_layout = version == 5
+        && count_a == 32
+        && count_b == 6
+        && offsets.get(count_a + 1).zip(offsets.get(count_a))
+            .is_some_and(|(next, first)| next.saturating_sub(*first) == 0x10);
+    if v4_layout || v5_full_layout || v5_split_layout {
+        let mut ranges = Vec::with_capacity(offset_count);
+        for (index, offset) in offsets.iter().copied().enumerate() {
+            let split_extra_bone = v5_split_layout && index == count_a;
+            let size = if index < count_a || split_extra_bone { 0x10 } else { 0x20 };
+            let end = offset.checked_add(size).ok_or("FACE diff record range overflow.")?;
+            if end > bytes.len() {
+                return Err(format!("FACE diff record {index} exceeds the file boundary."));
             }
+            for at in (offset..end).step_by(4) {
+                let value = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+                if !value.is_finite() {
+                    return Err(format!("FACE diff record {index} contains a non-finite value."));
+                }
+            }
+            ranges.push((offset, end));
         }
-        ranges.push((offset, end));
-    }
-    ranges.sort_unstable_by_key(|range| range.0);
-    for pair in ranges.windows(2) {
-        if pair[1].0 < pair[0].1 {
-            return Err("FACE diff records overlap.".into());
+        ranges.sort_unstable_by_key(|range| range.0);
+        for pair in ranges.windows(2) {
+            if pair[1].0 < pair[0].1 {
+                return Err("FACE diff records overlap.".into());
+            }
         }
     }
     Ok(())
