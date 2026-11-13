@@ -13,7 +13,7 @@ export default function SingleFaceApp(){
   try{
    const scanned=await window.faceForge.inspectFolder(folder);setProject(scanned);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
-   const models=scanned.files.filter(file=>file.kind==="model-pes2021"),head=models.find(file=>/face_high\\.fmdl$/i.test(file.path));
+   const models=scanned.files.filter(file=>file.kind==="model-pes2021"),head=models.find(file=>/face_high\.fmdl$/i.test(file.path));
    if(!head)throw new Error("The source folder does not contain a valid face_high.fmdl head model.");
    setPreviewBusy(true);
    const scenes=await Promise.allSettled(models.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
