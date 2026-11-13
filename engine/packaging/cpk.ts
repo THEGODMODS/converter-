@@ -21,7 +21,7 @@ function writeUtf(tableName:string,columns:UtfColumn[],rows:Array<Record<string,
 function normalizeArchivePath(input:string):string{
  if(!input||input.includes("\0")||path.posix.isAbsolute(input)||path.win32.isAbsolute(input))throw new Error("CPK paths must be relative and cannot contain null bytes.");
  const normalized=input.replaceAll("\\","/").split("/").filter(Boolean).join("/");
- if(!normalized||normalized.split("/").some(part=>part==="."||part===".."))throw new Error("CPK path contains an unsafe traversal segment.");
+ if(!normalized||normalized.split("/").some(part=>part==="."||part===".."||/[<>:"|?*\\x00-\\x1f]/.test(part)||/[. ]$/.test(part)||/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\.|$)/i.test(part)))throw new Error("CPK path contains an unsafe or Windows-reserved path segment.");
  return normalized;
 }
 export function buildCpk(files:CpkInputFile[]):Buffer{
@@ -44,4 +44,45 @@ export function buildCpk(files:CpkInputFile[]):Buffer{
  const cpk=writeUtf("CPK ",[{name:"ContentOffset",type:"u64"},{name:"TocOffset",type:"u64"},{name:"TocSize",type:"u64"},{name:"Files",type:"u32"},{name:"TotalSize",type:"u64"},{name:"Version",type:"u32"},{name:"Revision",type:"u32"},{name:"Align",type:"u32"},{name:"Crc",type:"u32"}],[{ContentOffset:BigInt(ALIGNMENT),TocOffset:BigInt(tocOffset),TocSize:BigInt(toc.length),Files:normalized.length,TotalSize:totalSize,Version:7,Revision:0,Align:ALIGNMENT,Crc:0}]);
  if(cpk.length>ALIGNMENT)throw new Error("Generated CPK header table exceeds its reserved header area.");
  const output=Buffer.concat(parts);cpk.copy(output,0);return output;
+}
+
+type ParsedUtf={columns:Array<{name:string;type:number;storage:number;constant?:string|number|bigint|null}>;rows:Array<Record<string,string|number|bigint|null>>};
+function readUtfTable(file:Buffer,offset:number,expectedName:string):ParsedUtf{
+ if(offset<0||offset+16>file.length)throw new Error("CPK UTF table header is outside the archive.");
+ const magic=file.toString("ascii",offset,offset+4),length=Number(file.readBigUInt64LE(offset+8));
+ if(magic!==expectedName||!Number.isSafeInteger(length)||length<32||offset+16+length>file.length)throw new Error("Invalid "+expectedName+" table container.");
+ const encrypted=file.subarray(offset+16,offset+16+length),plain=encrypted.subarray(0,4).toString("ascii")==="@UTF"?Buffer.from(encrypted):crypt(encrypted);
+ if(plain.toString("ascii",0,4)!=="@UTF"||plain.readUInt32BE(4)+8!==length)throw new Error("Invalid UTF table body.");
+ const rowsOffset=plain.readUInt32BE(8)+8,stringsOffset=plain.readUInt32BE(12)+8,dataOffset=plain.readUInt32BE(16)+8,columnsCount=plain.readUInt16BE(24),rowLength=plain.readUInt16BE(26),rowCount=plain.readUInt32BE(28);
+ if(columnsCount>256||rowCount>MAX_FILES||rowsOffset<32||stringsOffset>plain.length||dataOffset>plain.length||rowsOffset+rowCount*rowLength>plain.length)throw new Error("UTF table offsets or counts are invalid.");
+ const readString=(relative:number)=>{const start=stringsOffset+relative;if(start<stringsOffset||start>=plain.length)throw new Error("UTF string pointer is outside its string table.");let end=start;while(end<plain.length&&plain[end]!==0)end++;if(end===plain.length)throw new Error("Unterminated UTF string.");return plain.toString("utf8",start,end);};
+ const columns:Array<{name:string;type:number;storage:number;constant?:string|number|bigint|null}>=[];
+ let descriptor=32;
+ for(let i=0;i<columnsCount;i++){if(descriptor+5>plain.length)throw new Error("Truncated UTF column descriptor.");const flags=plain.readUInt8(descriptor),type=flags&15,storage=flags>>4,name=readString(plain.readUInt32BE(descriptor+1));descriptor+=5;let constant:string|number|bigint|null|undefined;
+  if(storage===3){if(type===10){constant=readString(plain.readUInt32BE(descriptor));descriptor+=4;}else if(type===4){constant=plain.readUInt32BE(descriptor);descriptor+=4;}else if(type===6){constant=plain.readBigUInt64BE(descriptor);descriptor+=8;}else throw new Error("Unsupported constant UTF column type.");}
+  else if(storage!==5&&storage!==1)throw new Error("Unsupported UTF storage type.");
+  columns.push({name,type,storage,constant});
+ }
+ const rows:Array<Record<string,string|number|bigint|null>>=[];
+ for(let r=0;r<rowCount;r++){let p=rowsOffset+r*rowLength;const row:Record<string,string|number|bigint|null>={};for(const col of columns){let value:string|number|bigint|null=null;if(col.storage===3)value=col.constant??null;else if(col.storage===5){if(col.type===10){value=readString(plain.readUInt32BE(p));p+=4;}else if(col.type===4){value=plain.readUInt32BE(p);p+=4;}else if(col.type===6){value=plain.readBigUInt64BE(p);p+=8;}else throw new Error("Unsupported variable UTF column type.");}row[col.name]=value;}if(p>rowsOffset+(r+1)*rowLength)throw new Error("UTF row exceeds its declared length.");rows.push(row);}
+ return {columns,rows};
+}
+export type CpkInspection={valid:boolean;fileCount:number;files:Array<{path:string;size:number;offset:number}>;errors:string[]};
+export function inspectCpk(file:Buffer):CpkInspection{
+ const errors:string[]=[],files:Array<{path:string;size:number;offset:number}>=[];
+ try{
+  const header=readUtfTable(file,0,"CPK "),headerRow=header.rows[0];if(!headerRow)throw new Error("CPK header has no metadata row.");
+  const tocOffset=Number(headerRow.TocOffset),contentOffset=Number(headerRow.ContentOffset??BigInt(ALIGNMENT));
+  if(!Number.isSafeInteger(tocOffset)||tocOffset<ALIGNMENT||contentOffset!==ALIGNMENT)throw new Error("CPK content or TOC offsets are invalid.");
+  const toc=readUtfTable(file,tocOffset,"TOC ");
+  const required=["DirName","FileName","FileSize","ExtractSize","FileOffset"];for(const key of required)if(!toc.columns.some(c=>c.name===key))throw new Error("CPK TOC is missing "+key+".");
+  const ranges:Array<[number,number,string]>=[];
+  for(const row of toc.rows){const dir=String(row.DirName??""),name=String(row.FileName??""),rel=normalizeArchivePath(dir?dir+"/"+name:name),size=Number(row.FileSize),extract=Number(row.ExtractSize),offset=contentOffset+Number(row.FileOffset);
+   if(!Number.isSafeInteger(size)||size<0||extract!==size||!Number.isSafeInteger(offset)||offset<contentOffset||offset+size>tocOffset)throw new Error("CPK entry has invalid size or points outside the data region: "+rel);
+   files.push({path:rel,size,offset});ranges.push([offset,offset+size,rel]);
+  }
+  ranges.sort((a,b)=>a[0]-b[0]);for(let i=1;i<ranges.length;i++)if(ranges[i][0]<ranges[i-1][1])throw new Error("CPK entries overlap: "+ranges[i-1][2]+" and "+ranges[i][2]);
+  const declared=Number(headerRow.Files);if(declared!==files.length)throw new Error("CPK file count does not match its TOC.");
+ }catch(error){errors.push(error instanceof Error?error.message:"Unknown CPK validation error.");}
+ return {valid:errors.length===0,fileCount:files.length,files,errors};
 }
