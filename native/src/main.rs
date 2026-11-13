@@ -1,7 +1,7 @@
 use std::{env, fs, path::{Path,PathBuf}, process};
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
 use pes_model::{format::{PreFoxModel,mtl::MaterialSet}, model::Model as PreFoxSemanticModel};
-use model_convert::{convert, NativeModelBundle};
+use model_convert::{convert, NativeModelBundle, Subject};
 use fpk::FpkFile;
 use ftex::{ColorSpace,dds_to_ftex,ftex_to_dds,info as ftex_info};
 
@@ -35,8 +35,12 @@ fn run()->Result<(),String>{
   NativeModelBundle::PreFox{model,mtl}=>{let file=model.to_file().map_err(|e|format!("Encode PES 2017 MODEL: {e}"))?;let model_bytes=file.write().map_err(|e|format!("Serialize PES 2017 MODEL: {e}"))?;let mtl_bytes=mtl.write();let checked_model=PreFoxModel::read(&model_bytes).map_err(|e|format!("PES 2017 MODEL read-back failed: {e}"))?;PreFoxSemanticModel::from_file(&checked_model).map_err(|e|format!("PES 2017 MODEL semantic read-back failed: {e}"))?;MaterialSet::read(&mtl_bytes).map_err(|e|format!("PES 2017 MTL read-back failed: {e}"))?;write(&out.join("face.model"),&model_bytes)?;write(&out.join("face.mtl"),&mtl_bytes)?;outputs.push("face.model".to_string());outputs.push("face.mtl".to_string());},
   NativeModelBundle::Fox{model,skl}=>{let file=model.to_file().map_err(|e|format!("Encode PES 2021 FMDL: {e}"))?;let model_bytes=file.write();let checked_file=FmdlFile::read(&model_bytes).map_err(|e|format!("PES 2021 FMDL read-back failed: {e}"))?;FoxModel::from_file(&checked_file).map_err(|e|format!("PES 2021 FMDL semantic read-back failed: {e}"))?;let skl_bytes=skl.as_ref().map(SklFile::write);if let Some(bytes)=&skl_bytes{SklFile::read(bytes).map_err(|e|format!("PES 2021 SKL read-back failed: {e}"))?;}write(&out.join("face.fmdl"),&model_bytes)?;outputs.push("face.fmdl".to_string());if let Some(bytes)=skl_bytes{write(&out.join("face.skl"),&bytes)?;outputs.push("face.skl".to_string());}}
  }
- let report=converted.findings.iter().map(|f|format!("{f:?}")).collect::<Vec<_>>().join("; ");
- println!("{{\"ok\":true,\"target\":{},\"outputs\":{},\"findings\":{}}}",target,serde_json::to_string(&outputs).unwrap_or("[]".into()),serde_json::to_string(&report).unwrap_or("\"\"".into()));
+ let findings:Vec<serde_json::Value>=converted.findings.iter().map(|finding|{
+  let subject=match finding.subject {Subject::Model=>serde_json::json!({"type":"model"}),Subject::Mesh(index)=>serde_json::json!({"type":"mesh","index":index}),Subject::Material(index)=>serde_json::json!({"type":"material","index":index}),Subject::Bone(index)=>serde_json::json!({"type":"bone","index":index})};
+  serde_json::json!({"code":finding.code,"subject":subject,"detail":finding.detail})
+ }).collect();
+ let report=serde_json::json!({"ok":true,"target":target,"outputs":outputs,"findings":findings});
+ println!("{}",report);
  Ok(())
 }
 fn main(){if let Err(error)=run(){eprintln!("FACE_FORGE_CONVERSION_ERROR: {error}");process::exit(2);}}
