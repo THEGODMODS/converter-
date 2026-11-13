@@ -19,8 +19,15 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
     try{
      const binary=atob(encoded),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-     const parsed=ddsLoader.parse(bytes.buffer,true),texture=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format);
-     texture.generateMipmaps=false;texture.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.colorSpace=/base|diffuse|albedo|color/i.test(slot)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
+     const view=new DataView(bytes.buffer),fourCC=String.fromCharCode(bytes[84]??0,bytes[85]??0,bytes[86]??0,bytes[87]??0);let texture:THREE.Texture;
+     if(fourCC==="DX10"&&(view.getUint32(128,true)===28||view.getUint32(128,true)===29)){
+      const width=view.getUint32(16,true),height=view.getUint32(12,true),offset=148,length=width*height*4;if(!width||!height||offset+length>bytes.length)throw new Error("Invalid RGBA8 DDS payload.");
+      texture=new THREE.DataTexture(new Uint8Array(bytes.buffer,offset,length),width,height,THREE.RGBAFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.flipY=false;
+     }else{
+      const parsed=ddsLoader.parse(bytes.buffer,true);if(!parsed.format||!parsed.mipmaps.length)throw new Error("Unsupported DDS preview compression format.");
+      const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
+     }
+     texture.colorSpace=/base|diffuse|albedo|color/i.test(slot)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
      if(/normal/i.test(slot))material.normalMap=texture;
      else if(/base|diffuse|albedo|color/i.test(slot)&&!material.map)material.map=texture;
      else if(/opacity|alpha/i.test(slot)){material.alphaMap=texture;material.transparent=true;}
