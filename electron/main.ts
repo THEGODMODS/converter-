@@ -3,6 +3,9 @@ import path from "node:path";
 import fs from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const execFileAsync=promisify(execFile);
 import { inspectFaceFolder } from "../engine/inventory";
 import { inspectFaceDatabase } from "../engine/database";
 import { buildFaceProjectManifest } from "../engine/manifest";
@@ -25,6 +28,36 @@ function registerIpc(){
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
  ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");return inspectFaceFolder(folder);});
  ipcMain.handle("face:export-manifest",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");const project=await inspectFaceFolder(folder);const manifest=buildFaceProjectManifest(project);if(!manifest.integrity.complete)throw new Error("Manifest integrity check failed; export was stopped.");const suggested=path.join(path.dirname(folder),path.basename(folder)+"-FACE-FORGE-manifest.json");const picked=await dialog.showSaveDialog(mainWindow!,{title:"Export face project manifest",defaultPath:suggested,filters:[{name:"FACE FORGE manifest",extensions:["json"]}]});if(picked.canceled||!picked.filePath)return null;if(path.extname(picked.filePath).toLowerCase()!==".json")throw new Error("Choose a .json manifest destination.");const payload=JSON.stringify(manifest,null,2)+"\n";await writeFile(picked.filePath,payload,{flag:"wx"});return {destination:picked.filePath,files:manifest.summary.fileCount,bytes:Buffer.byteLength(payload)};});
+ ipcMain.handle("face:convert-native-model",async(event,folder:unknown)=>{
+  trusted(event);
+  if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid source project folder.");
+  const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
+  if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source project is not a safe directory.");
+  const realRoot=await fs.promises.realpath(root),picked=await dialog.showOpenDialog(mainWindow!,{title:"Select the face model to convert",defaultPath:root,properties:["openFile"],filters:[{name:"PES face models",extensions:["fmdl","model"]}]});
+  if(picked.canceled||!picked.filePaths[0])return null;
+  const modelPath=path.resolve(picked.filePaths[0]),realModel=await fs.promises.realpath(modelPath),prefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
+  if(!realModel.startsWith(prefix))throw new Error("The selected model must be inside the inspected source folder.");
+  const stat=await fs.promises.lstat(modelPath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("The selected model is not a safe supported file.");
+  const extension=path.extname(modelPath).toLowerCase(),sourceFormat=extension===".fmdl"?"fmdl":extension===".model"?"model":null;
+  if(!sourceFormat)throw new Error("Select a .fmdl or .model file.");
+  const target=sourceFormat==="fmdl"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target,"--model",modelPath];
+  const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
+  if(sourceFormat==="model"){
+   const mtlPath=sibling(".mtl");if(!fs.existsSync(mtlPath))throw new Error("The PES 2017 .model needs its matching .mtl material file beside it.");
+   const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile())throw new Error("The companion MTL is not a safe regular file.");
+   args.push("--material",mtlPath);
+  }else{
+   const sklPath=sibling(".skl");if(fs.existsSync(sklPath)){const sklStat=await fs.promises.lstat(sklPath);if(sklStat.isSymbolicLink()||!sklStat.isFile())throw new Error("The companion SKL is not a safe regular file.");args.push("--skeleton",sklPath);}
+  }
+  const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for converted model files",properties:["openDirectory"]});
+  if(destination.canceled||!destination.filePaths[0])return null;
+  const output=destination.filePaths[0];if(path.resolve(output)===path.dirname(modelPath))throw new Error("Choose a separate output folder; source files must remain untouched.");
+  const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
+  if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the native engine enabled.");
+  args.push("--out",output);
+  try{const result=await execFileAsync(binary,args,{timeout:180000,maxBuffer:4*1024*1024,windowsHide:true});let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("Native converter returned an invalid result report.");}return {destination:output,report};}
+  catch(error){const detail=error instanceof Error?error.message:String(error);throw new Error("Native PES conversion failed: "+detail);}
+ });
  ipcMain.handle("face:preview-model",async(event,folder:unknown,relativePath:unknown)=>{
   trusted(event);
   if(typeof folder!=="string"||!path.isAbsolute(folder)||typeof relativePath!=="string"||relativePath.length>2048)throw new Error("Invalid preview source.");
