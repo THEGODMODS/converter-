@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: face-forge-${{ github.ref }}
+  group: face-forge-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 jobs:
   quality:
