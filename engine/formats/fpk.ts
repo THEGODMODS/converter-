@@ -11,7 +11,10 @@ function readName(data:Buffer,offset:number,length:number,label:string):{name:st
  const name=bytes.toString("utf8");
  if(name.includes("\uFFFD"))fail(label+" has invalid UTF-8.");
  if(data[offset+length]!==0)fail(label+" name is not NUL-terminated.");
- const normalized=name.replaceAll("\\","/");
+ const storedPath=name.replaceAll("\\\\","/");
+ // Fox package entries commonly use /Assets/... as a virtual root path.
+ // Remove that marker before inventory use; never treat it as a disk-root path.
+ const normalized=storedPath.startsWith("/Assets/")?storedPath.slice(1):storedPath;
  if(normalized.startsWith("/")||/^[a-z]:/i.test(normalized)||normalized.split("/").some(part=>!part||part==="."||part===".."))fail(label+" contains an unsafe path.");
  return {name:normalized,bytes};
 }
