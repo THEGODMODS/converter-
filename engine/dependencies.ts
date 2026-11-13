@@ -1,4 +1,5 @@
 export type DependencyFile={path:string;kind:string;assetReferences?:string[];packageReferences?:string[]};
+import path from "node:path";
 export type FaceDependency={source:string;reference:string;status:"resolved"|"missing"|"ambiguous";candidates:string[]};
 function normalizeAsset(value:string):string{
  return value.split(String.fromCharCode(92)).join("/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
@@ -7,10 +8,11 @@ function normalizeAsset(value:string):string{
 export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]{
  const dependencies:FaceDependency[]=[];
  const textures=files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
- for(const model of files.filter(file=>file.kind==="model-pes2021"&&file.assetReferences?.length)){
+ for(const model of files.filter(file=>(file.kind==="model-pes2021"||file.kind==="material-pes2017")&&file.assetReferences?.length)){
   for(const reference of model.assetReferences??[]){
    const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
-   const exact=textures.filter(file=>normalizeAsset(file.path.split("!/").pop()??file.path)===normalized);
+   const relative=model.kind==="material-pes2017"?normalizeAsset(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference)):normalized;
+   const exact=textures.filter(file=>{const candidate=normalizeAsset(file.path.split("!/").pop()??file.path);return candidate===relative||candidate===normalized;});
    const candidates=exact.length?exact:textures.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
    dependencies.push({source:model.path,reference,status:candidates.length===1?"resolved":candidates.length===0?"missing":"ambiguous",candidates:candidates.map(file=>file.path)});
   }
