@@ -89,7 +89,7 @@ function registerIpc(){
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The selected face folder is no longer a safe directory.");
   const realRoot=await fs.promises.realpath(root);
-  let data:Buffer,extension:string;
+  let data:Buffer,extension:string,companionMtl:Buffer|undefined;
   const archiveMarker=relativePath.indexOf("!/");
   if(archiveMarker>=0){
    const archiveRelative=relativePath.slice(0,archiveMarker),memberName=relativePath.slice(archiveMarker+2).replaceAll("\\\\","/");
@@ -111,6 +111,7 @@ function registerIpc(){
    if(!realSource.startsWith(realPrefix))throw new Error("Preview source resolves outside the selected face folder.");
    const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview source is not a safe supported file.");
    data=await readFile(source);extension=path.extname(source).toLowerCase();
+   if(extension===".model"){const mtlPath=path.join(path.dirname(source),path.basename(source,path.extname(source))+".mtl");if(fs.existsSync(mtlPath)){const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile()||mtlStat.size>32*1024*1024)throw new Error("Companion PES 2017 MTL is not a safe regular file.");companionMtl=await readFile(mtlPath);}}
   }
   let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],warnings:string[]=[];
   if(extension===".fmdl"){
@@ -119,7 +120,7 @@ function registerIpc(){
    if(scene.bones.length)warnings.push(scene.bones.length+" source bones detected; preview is static and does not play facial animation.");
    if(scene.metadata.additionalLodLevels)warnings.push("Additional LOD levels are not shown in this preview.");
   }else if(extension===".model"){
-   const scene=decodePes2017Model(parseModelContainer(data));generation="pes2017";
+   const scene=decodePes2017Model(parseModelContainer(data),companionMtl);generation="pes2017";
    meshes=scene.meshes.map(mesh=>({name:mesh.name,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
    if(typeof scene.metadata.modelWarnings==="string"&&scene.metadata.modelWarnings)warnings.push(scene.metadata.modelWarnings);
    warnings.push("PES 2017 preview is static. External MTL shader/texture bindings and facial animation are not yet rendered.");
