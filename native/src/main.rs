@@ -68,7 +68,7 @@ fn run()->Result<(),String>{
  let target_version=if target==2017{pes_version::PesVersion::Pes17}else{pes_version::PesVersion::Pes21};
  fs::create_dir_all(&out).map_err(|e|format!("Create output folder: {e}"))?;
  if fs::read_dir(&out).map_err(|e|format!("Read output folder: {e}"))?.next().is_some(){return Err("Output directory must be empty; no files were written.".into());}
- let model_count=bundles.len();let mut outputs=Vec::new();let mut findings:Vec<serde_json::Value>=Vec::new();
+ let model_count=bundles.len();let mut outputs=Vec::new();let mut pending_outputs:Vec<(String,Vec<u8>)>=Vec::new();let mut findings:Vec<serde_json::Value>=Vec::new();
  for (stem,bundle) in bundles{
   let converted=convert(bundle,target_version).map_err(|e|format!("Cross-generation conversion rejected for {stem}: {e}"))?;
   for finding in &converted.findings{
@@ -83,7 +83,7 @@ fn run()->Result<(),String>{
     let checked_model=PreFoxModel::read(&model_bytes).map_err(|e|format!("PES 2017 MODEL read-back failed for {stem}: {e}"))?;
     PreFoxSemanticModel::from_file(&checked_model).map_err(|e|format!("PES 2017 MODEL semantic read-back failed for {stem}: {e}"))?;
     MaterialSet::read(&mtl_bytes).map_err(|e|format!("PES 2017 MTL read-back failed for {stem}: {e}"))?;
-    write(&out.join(format!("{stem}.model")),&model_bytes)?;write(&out.join(format!("{stem}.mtl")),&mtl_bytes)?;
+    pending_outputs.push((format!("{stem}.model"),model_bytes));pending_outputs.push((format!("{stem}.mtl"),mtl_bytes));
     outputs.push(format!("{stem}.model"));outputs.push(format!("{stem}.mtl"));
    },
    NativeModelBundle::Fox{model,skl}=>{
@@ -92,11 +92,16 @@ fn run()->Result<(),String>{
     FoxModel::from_file(&checked_file).map_err(|e|format!("PES 2021 FMDL semantic read-back failed for {stem}: {e}"))?;
     let skl_bytes=skl.as_ref().map(SklFile::write);
     if let Some(bytes)=&skl_bytes{SklFile::read(bytes).map_err(|e|format!("PES 2021 SKL read-back failed for {stem}: {e}"))?;}
-    write(&out.join(format!("{stem}.fmdl")),&model_bytes)?;outputs.push(format!("{stem}.fmdl"));
-    if let Some(bytes)=skl_bytes{write(&out.join(format!("{stem}.skl")),&bytes)?;outputs.push(format!("{stem}.skl"));}
+    pending_outputs.push((format!("{stem}.fmdl"),model_bytes));outputs.push(format!("{stem}.fmdl"));
+    if let Some(bytes)=skl_bytes{pending_outputs.push((format!("{stem}.skl"),bytes));outputs.push(format!("{stem}.skl"));}
    }
   }
  }
- let report=serde_json::json!({"ok":true,"target":target,"model_count":model_count,"outputs":outputs,"findings":findings}); Ok(())
+ let stage=out.join(".faceforge-staging");fs::create_dir(&stage).map_err(|e|format!("Create staging directory: {e}"))?;
+ for (name,data) in pending_outputs{if let Err(error)=write(&stage.join(&name),&data){let _=fs::remove_dir_all(&stage);return Err(error);}}
+ let mut committed:Vec<PathBuf>=Vec::new();
+ for name in &outputs{let from=stage.join(name);let to=out.join(name);if let Err(error)=fs::rename(&from,&to){for path in committed{let _=fs::remove_file(path);}let _=fs::remove_dir_all(&stage);return Err(format!("Commit converted output {}: {error}",name));}committed.push(to);}
+ let _=fs::remove_dir_all(&stage);
+ let report=serde_json::json!({"ok":true,"target":target,"model_count":model_count,"outputs":outputs,"findings":findings});println!("{}",report);Ok(())
 }
 fn main(){if let Err(error)=run(){eprintln!("FACE_FORGE_CONVERSION_ERROR: {error}");process::exit(2);}}
