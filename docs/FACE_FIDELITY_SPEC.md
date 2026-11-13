@@ -2,7 +2,7 @@
 
 Product owner: KFC GODMODS  
 Product: THEGODMODS FACE FORGE  
-Target: Windows desktop · PES 2017 ↔ PES 2021  
+Target: Windows desktop · first release PES 2021 → PES 2017; reverse direction deferred  
 Promise: Free to use. No paid-converter dependency. No false "game-ready" status.
 
 ## User workflows
