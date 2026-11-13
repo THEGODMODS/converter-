@@ -590,7 +590,12 @@ fn split_pes2017_target_player_id(target_player_id: &str) -> Result<(&str, &str)
     if !(701..=920).contains(&team_number) {
         return Err(format!("Target PES 2017 ID {target_player_id} is invalid: its first three digits must be a PES 2017 team ID from 701 through 920. The source PES 2021 face ID is not a PES 2017 target ID."));
     }
-    Ok((team_id, &target_player_id[3..5]))
+    let player_slot = &target_player_id[3..5];
+    let slot_number = player_slot.parse::<u8>().map_err(|_| "Target PES 2017 roster slot is invalid.")?;
+    if !(1..=23).contains(&slot_number) {
+        return Err(format!("Target PES 2017 ID {target_player_id} is invalid: its roster slot must be from 01 through 23."));
+    }
+    Ok((team_id, player_slot))
 }
 
 fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
@@ -1067,7 +1072,7 @@ mod pes2017_target_id_tests {
 
     #[test]
     fn rejects_source_face_ids_and_out_of_range_team_prefixes() {
-        for id in ["15958", "70005", "92105", "99999", "1234", "abcde"] {
+        for id in ["15958", "70005", "92105", "99999", "71400", "71424", "71499", "1234", "abcde"] {
             assert!(split_pes2017_target_player_id(id).is_err(), "{id}");
         }
     }
