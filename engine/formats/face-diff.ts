@@ -69,11 +69,13 @@ function checkedOffsetTable(data:Buffer,count:number):number[]{
  if(!Number.isSafeInteger(tableEnd)||tableEnd>FACE_DIFF_RECORDS_START||tableEnd>data.length)
   throw new Error("FACE diff record-offset table exceeds its fixed header.");
  const offsets:number[]=[];
+ const seen=new Set<number>();
  for(let i=0;i<count;i++){
   const offset=data.readUInt32LE(FACE_DIFF_HEADER_BYTES+i*4);
   if(offset<FACE_DIFF_RECORDS_START||offset>=data.length||(offset&0x0f)!==0)
    throw new Error("FACE diff record "+i+" has an invalid or unaligned absolute offset.");
-  if(offsets.includes(offset))throw new Error("FACE diff record-offset table contains a duplicate pointer.");
+  if(seen.has(offset))throw new Error("FACE diff record-offset table contains a duplicate pointer.");
+  seen.add(offset);
   offsets.push(offset);
  }
  return offsets;
