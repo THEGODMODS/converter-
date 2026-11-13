@@ -3,6 +3,7 @@ export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"
 export type TextureColorSpace = "LINEAR"|"SRGB"|"NORMAL";
 export type FaceForgeApi = {
  chooseFolder:()=>Promise<string|null>;
+ chooseFolders:()=>Promise<string[]>;
  inspectFolder:(folder:string)=>Promise<FaceProject>;
  getPathForDrop:(file:File)=>string;
  convertTextureFile:(colorSpace:TextureColorSpace)=>Promise<{source:string;destination:string;format:string;width:number;height:number;bytes:number}|null>;
