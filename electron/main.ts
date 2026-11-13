@@ -7,7 +7,7 @@ import { inspectFaceFolder } from "../engine/inventory";
 import { inspectFaceDatabase } from "../engine/database";
 import { ddsToFtex, ftexToDds, type TextureColorSpace } from "../engine/formats/texture";
 import { parseModelContainer } from "../engine/formats/model-container";
-import { decodePes2017Geometry } from "../engine/formats/model-geometry";
+import { decodePes2017Model } from "../engine/formats/model-scene";
 import { parseFmdlContainer } from "../engine/formats/fmdl-container";
 import { decodePes2021Fmdl } from "../engine/formats/fmdl-geometry";
 
@@ -36,10 +36,10 @@ function registerIpc(){
    if(scene.bones.length)warnings.push(scene.bones.length+" source bones detected; preview is static and does not play facial animation.");
    if(scene.metadata.additionalLodLevels)warnings.push("Additional LOD levels are not shown in this preview.");
   }else if(extension===".model"){
-   const container=parseModelContainer(data),geometry=decodePes2017Geometry(container.sections[1]?.data??Buffer.alloc(0));generation="pes2017";
-   meshes=geometry.map(mesh=>({name:mesh.name,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
-   warnings.push(...geometry.flatMap(mesh=>mesh.warnings));
-   warnings.push("PES 2017 material, bone-group and facial-rig links are not yet reconstructed; this is a geometry-only preview.");
+   const scene=decodePes2017Model(parseModelContainer(data));generation="pes2017";
+   meshes=scene.meshes.map(mesh=>({name:mesh.name,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
+   if(typeof scene.metadata.modelWarnings==="string"&&scene.metadata.modelWarnings)warnings.push(scene.metadata.modelWarnings);
+   warnings.push("PES 2017 preview is static. External MTL shader/texture bindings and facial animation are not yet rendered.");
   }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
   if(!meshes.length)throw new Error("No renderable mesh geometry was found in this model.");
   const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
