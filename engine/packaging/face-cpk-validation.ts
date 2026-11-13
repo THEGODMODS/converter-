@@ -18,12 +18,20 @@ function decodeXmlAttribute(value: string): string {
 
 function localReference(value: string): string | null {
   const normalized = value.trim().replaceAll("\\", "/");
-  if (!normalized.startsWith("./")) return null; // Common/ and other game-shared paths are resolved outside the player CPK.
-  const relative = normalized.slice(2);
-  if (!relative || relative.startsWith("/") || relative.split("/").some(part => !part || part === "." || part === "..")) {
-    throw new Error("face.xml contains an unsafe local package reference: " + value);
+  if (!normalized || normalized.startsWith("/") || /^[a-z]:/i.test(normalized)
+    || normalized.split("/").some(part => part === ".." || part === "." && normalized !== "./" && !normalized.startsWith("./"))) {
+    throw new Error("face.xml contains an unsafe package reference: " + value);
   }
-  return relative.toLowerCase();
+  if (normalized.startsWith("./")) {
+    const relative = normalized.slice(2);
+    if (!relative || relative.split("/").some(part => !part || part === "." || part === "..")) {
+      throw new Error("face.xml contains an unsafe local package reference: " + value);
+    }
+    return relative.toLowerCase();
+  }
+  // Team Compiler writes Common-output references without ./; those live in the outer
+  // team package and are intentionally not duplicated into the player's nested CPK.
+  return null;
 }
 
 /** Parse the model entries conservatively and prove every player-local path resolves inside this CPK. */
