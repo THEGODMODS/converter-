@@ -14,7 +14,6 @@ export type FaceForgeApi = {
  inspectDatabase:(folder:string)=>Promise<FaceDatabase>;
  inspectFolder:(folder:string)=>Promise<FaceProject>;
  exportManifest:(folder:string)=>Promise<{destination:string;files:number;bytes:number}|null>;
- installPackage:(manifestUrl:string)=>Promise<{packageId:string;version:string;displayName:string;files:number;directory:string}>;
  previewModel:(folder:string,relativePath:string)=>Promise<FacePreviewData>;
  convertNativeModel:(folder:string)=>Promise<{destination:string;report:{ok:boolean;target:number;outputs:string[];findings:{code:string;subject:{type:string;index?:number};detail:string}[]};textures:{converted:number;bytes:number;files:Array<{source:string;reference:string;destination:string;format:string;width:number;height:number}>}}|null>;
  convertCompleteFaceFolder:(folder:string,target:2017|2021,playerId:string)=>Promise<{destination:string;outputFormat:"cpk"|"fpk";report:Record<string,unknown>}|null>;
