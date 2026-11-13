@@ -94,7 +94,7 @@ fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<V
     }
     let has_face = model_stems.iter().any(|s| s.eq_ignore_ascii_case("face_high"));
     if !has_face {
-        return Err("A FACE diff cannot be attached to a legacy XML without a face_high model.".into());
+        return Err("A legacy face XML requires a face_high model.".into());
     }
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n");
     for stem in model_stems {
