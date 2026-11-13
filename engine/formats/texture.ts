@@ -4,7 +4,7 @@ export type TextureColorSpace = "LINEAR" | "SRGB" | "NORMAL";
 export type TextureInfo = { width:number;height:number;depth:number;mipCount:number;pixelFormat:number;formatName:string;cubeMap:boolean;colorSpace:TextureColorSpace };
 export class TextureFormatError extends Error { constructor(message:string){super(message);this.name="TextureFormatError";} }
 const formats:Record<number,{name:string;block:number;bytes:number;dxgi?:number;fourCC?:string}> = {
- 0:{name:"RGBA8",block:1,bytes:4},1:{name:"R8",block:1,bytes:1,dxgi:61},
+ 0:{name:"RGBA8",block:1,bytes:4,dxgi:28},1:{name:"R8",block:1,bytes:1,dxgi:61},
  2:{name:"BC1",block:4,bytes:8,fourCC:"DXT1"},3:{name:"BC2",block:4,bytes:16,fourCC:"DXT3"},
  4:{name:"BC3",block:4,bytes:16,fourCC:"DXT5"},8:{name:"BC4",block:4,bytes:8,dxgi:80},
  9:{name:"BC5",block:4,bytes:16,dxgi:83},10:{name:"BC6H",block:4,bytes:16,dxgi:95},
@@ -13,7 +13,7 @@ const formats:Record<number,{name:string;block:number;bytes:number;dxgi?:number;
  15:{name:"R11G11B10F",block:1,bytes:4,dxgi:26}
 };
 const dxgiToFtex=new Map<number,number>(Object.entries(formats).filter(([,v])=>v.dxgi!==undefined).map(([k,v])=>[v.dxgi!,Number(k)] as [number,number]));
-for(const [dxgi,id] of [[72,2],[75,3],[78,4],[99,11]] as const)dxgiToFtex.set(dxgi,id);
+for(const [dxgi,id] of [[29,0],[72,2],[75,3],[78,4],[99,11]] as const)dxgiToFtex.set(dxgi,id);
 function mipSize(format:number,width:number,height:number,depth:number,mip:number):number{
  const f=formats[format];if(!f)throw new TextureFormatError("Unsupported FTEX pixel format "+format+".");
  const w=Math.max(width>>mip,1),h=Math.max(height>>mip,1),d=Math.max(depth>>mip,1);
@@ -21,10 +21,11 @@ function mipSize(format:number,width:number,height:number,depth:number,mip:numbe
 }
 function readFrame(data:Buffer,offset:number,chunks:number,rawSize:number,compressedSize:number):Buffer{
  const range=(start:number,length:number)=>{if(start<0||length<0||start+length>data.length)throw new TextureFormatError("FTEX frame points outside the file.");return data.subarray(start,start+length);};
- if(chunks===0){const bytes=range(offset,compressedSize||rawSize);try{return compressedSize?inflateSync(bytes):Buffer.from(bytes);}catch{throw new TextureFormatError("FTEX frame decompression failed.");}}
+ if(chunks===0){const bytes=range(offset,compressedSize||rawSize);let decoded:Buffer;try{decoded=compressedSize?inflateSync(bytes):Buffer.from(bytes);}catch{throw new TextureFormatError("FTEX frame decompression failed.");}if(decoded.length!==rawSize)throw new TextureFormatError("FTEX frame size does not match its descriptor.");return decoded;}
  if(chunks>65535)throw new TextureFormatError("FTEX chunk count is unreasonable.");
- const table=range(offset,chunks*8),parts:Buffer[]=[];
- for(let i=0;i<chunks;i++){const p=i*8,cs=table.readUInt16LE(p),us=table.readUInt16LE(p+2),relative=table.readUInt32LE(p+4)&0x7fffffff;if(relative<chunks*8)throw new TextureFormatError("FTEX chunk payload overlaps its descriptor table.");const bytes=range(offset+relative,cs);let decoded:Buffer;try{decoded=cs===us?Buffer.from(bytes):inflateSync(bytes);}catch{throw new TextureFormatError("FTEX chunk decompression failed.");}if(decoded.length!==us)throw new TextureFormatError("FTEX chunk size does not match its descriptor.");parts.push(decoded);}
+ const table=range(offset,chunks*8),parts:Buffer[]=[];let storedTotal=0,rawTotal=0;
+ for(let i=0;i<chunks;i++){const p=i*8,cs=table.readUInt16LE(p),us=table.readUInt16LE(p+2),relative=table.readUInt32LE(p+4)&0x7fffffff;if(relative<chunks*8)throw new TextureFormatError("FTEX chunk payload overlaps its descriptor table.");const bytes=range(offset+relative,cs);let decoded:Buffer;try{decoded=cs===us?Buffer.from(bytes):inflateSync(bytes);}catch{throw new TextureFormatError("FTEX chunk decompression failed.");}if(decoded.length!==us)throw new TextureFormatError("FTEX chunk size does not match its descriptor.");storedTotal+=cs;rawTotal+=us;parts.push(decoded);}
+ if(storedTotal!==compressedSize||rawTotal!==rawSize)throw new TextureFormatError("FTEX aggregate chunk sizes do not match the frame descriptor.");
  return Buffer.concat(parts);
 }
 export function inspectFtex(data:Buffer):TextureInfo{
@@ -40,20 +41,20 @@ export function inspectFtex(data:Buffer):TextureInfo{
  return {width,height,depth,mipCount,pixelFormat,formatName:formats[pixelFormat].name,cubeMap,colorSpace};
 }
 function ddsHeader(info:TextureInfo):Buffer{
- const f=formats[info.pixelFormat],dx10=f.dxgi!==undefined,fourCC=f.fourCC??(dx10?"DX10":"\0\0\0\0");
+ const f=formats[info.pixelFormat],srgbDxgi:Record<number,number>={0:29,2:72,3:75,4:78,11:99},dxgi=info.colorSpace==="SRGB"?(srgbDxgi[info.pixelFormat]??f.dxgi):f.dxgi,dx10=dxgi!==undefined,fourCC=f.fourCC??(dx10?"DX10":"\0\0\0\0");
  const header=Buffer.alloc(dx10?148:128);header.write("DDS ",0,"ascii");header.writeUInt32LE(124,4);
- const compressed=info.pixelFormat!==0;
+ const compressed=f.block>1;
  let flags=0x1|0x2|0x4|0x1000; if(info.mipCount>1)flags|=0x20000;
  flags|=compressed?0x80000:0x8;
  if(info.depth>1)flags|=0x800000;
  header.writeUInt32LE(flags,8);header.writeUInt32LE(info.height,12);header.writeUInt32LE(info.width,16);
- header.writeUInt32LE(compressed?mipSize(info.pixelFormat,info.width,info.height,info.depth,0):info.width*4,20);
+ header.writeUInt32LE(compressed?mipSize(info.pixelFormat,info.width,info.height,info.depth,0):info.width*f.bytes,20);
  header.writeUInt32LE(info.depth,24);header.writeUInt32LE(info.mipCount,28);
  header.writeUInt32LE(32,76);header.writeUInt32LE(dx10||f.fourCC?0x4:0x41,80);header.write(fourCC,84,"ascii");
  if(info.pixelFormat===0){header.writeUInt32LE(32,88);header.writeUInt32LE(0x00ff0000,92);header.writeUInt32LE(0x0000ff00,96);header.writeUInt32LE(0x000000ff,100);header.writeUInt32LE(0xff000000,104);}
  let caps=0x1000,caps2=0;if(info.mipCount>1)caps|=0x8|0x400000;if(info.cubeMap){caps|=0x8;caps2=0xfe00;}if(info.depth>1){caps|=0x8;caps2=0x200000;}
  header.writeUInt32LE(caps,108);header.writeUInt32LE(caps2,112);
- if(dx10){header.writeUInt32LE(f.dxgi!,128);header.writeUInt32LE(info.depth>1?4:3,132);header.writeUInt32LE(info.cubeMap?4:0,136);header.writeUInt32LE(1,140);header.writeUInt32LE(0,144);}
+ if(dx10){header.writeUInt32LE(dxgi!,128);header.writeUInt32LE(info.depth>1?4:3,132);header.writeUInt32LE(info.cubeMap?4:0,136);header.writeUInt32LE(1,140);header.writeUInt32LE(0,144);}
  return header;
 }
 export function ftexToDds(input:Buffer):{data:Buffer;info:TextureInfo}{
@@ -61,8 +62,7 @@ export function ftexToDds(input:Buffer):{data:Buffer;info:TextureInfo}{
  for(let image=0;image<imageCount;image++)for(let mip=0;mip<info.mipCount;mip++){
   const index=image*info.mipCount+mip,p=64+index*16,offset=input.readUInt32LE(p),raw=input.readUInt32LE(p+4),compressed=input.readUInt32LE(p+8),chunks=input.readUInt16LE(p+14);
   let frame=readFrame(input,offset,chunks,raw,compressed);const expected=mipSize(info.pixelFormat,info.width,info.height,info.depth,mip);
-  if(frame.length<expected)throw new TextureFormatError("FTEX mip "+mip+" is shorter than its declared dimensions.");
-  if(frame.length>expected)frame=frame.subarray(0,expected);frames.push(frame);
+  if(frame.length!==expected)throw new TextureFormatError("FTEX mip "+mip+" byte count does not match its declared dimensions.");frames.push(frame);
  }
  return {data:Buffer.concat([ddsHeader(info),...frames]),info};
 }
