@@ -20,6 +20,12 @@ describe("direction-aware conversion assessment",()=>{
   expect(result.checks.find(x=>x.label==="Source generation")?.status).toBe("blocked");
   expect(result.gate).toBe("blocked");
  });
+ it("passes the PES 2017 material-definition check when a parsed MTL is present",()=>{
+  const project={...base,detectedGame:"pes2017" as const,files:[{path:"face.model",kind:"model-pes2017"},{path:"face.mtl",kind:"material-pes2017"},{path:"face.dds",kind:"texture-pes2017"}]};
+  const result=assessFaceConversion(project,"pes2017");
+  expect(result.checks.find(x=>x.label==="PES 2017 material definitions")?.status).toBe("pass");
+  expect(result.warnings.some(x=>x.includes("without them texture/shader bindings"))).toBe(false);
+ });
  it("warns when PES 2017 material definitions are missing",()=>{
   const project={...base,detectedGame:"pes2017" as const,files:[{path:"face.model",kind:"model-pes2017"},{path:"face.dds",kind:"texture-pes2017"}]};
   const result=assessFaceConversion(project,"pes2017");
