@@ -36,7 +36,6 @@ export default function SingleFaceApp(){
   <main className="main">
    <header className="topbar"><div><div className="eyebrow">KFC GODMODS · FACE FORGE</div><h1>PES 2021 → PES 2017</h1><p>Convert one complete face and inspect its actual 3D geometry.</p></div><div className="top-status"><span className="status-led"/> LOCAL WORKSPACE</div></header>
    
-   <section className="direction-card"><div className="direction-head"><div><span className="eyebrow">CONVERSION ROUTE</span><h2>Face conversion</h2></div><div className="route-tag">PES 2021 → PES 2017</div></div><div className="routes"><div className="route selected"><div className="game-icon newer">21</div><div className="route-copy"><strong>PES 2021</strong><span>FMDL · FTEX</span></div><ArrowRight className="route-arrow" size={20}/><div className="game-icon older">17</div><div className="route-copy"><strong>PES 2017</strong><span>MODEL · DDS</span></div></div></div></section>
    <section className="workspace-grid">
     <div className="import-panel"><div className="section-head"><div><span className="eyebrow">STEP 01 / SOURCE</span><h2>Choose your PES 2021 face folder</h2></div><span className="step-number">01</span></div>
      <div className={"dropzone "+(dragging?"dragging":"")} onDragOver={event=>{event.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}><div className="upload-icon"><UploadCloud size={25}/></div><h3>Drop your face folder here</h3><p>Extracted PES 2021 face folder, including FPK/FPKD assets</p><div className="or-line"><span/> OR <span/></div><button className="primary-btn" onClick={browse} disabled={busy}><FolderOpen size={16}/>{busy?"Inspecting face…":"Browse face folder"}</button><div className="drop-hint"><ShieldCheck size={13}/> Original files are never modified</div></div>
@@ -49,7 +48,6 @@ export default function SingleFaceApp(){
      {result&&<div className="texture-toast">{result}</div>}
     </div>
    </section>
-   {preview&&<section className="preview-panel"><div className="section-head"><div><span className="eyebrow">FACE MODEL DETAILS</span><h2>{preview.source}</h2></div></div>{preview.materials.map((material,index)=><div className="preview-material" key={material.name+index}><div><strong>{material.name}</strong><small>{material.shader??"Shader unavailable"}</small></div>{Object.entries(material.textures).map(([slot,texture])=><span key={slot}><b>{slot}</b> · {texture}</span>)}</div>)}</section>}
    <footer><span>KFC GODMODS · FACE FORGE</span><span>PES 2021 → PES 2017</span></footer>
   </main>
  </div>;
