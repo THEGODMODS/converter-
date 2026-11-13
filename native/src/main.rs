@@ -482,6 +482,7 @@ struct Pes2021FaceInventory {
     models: Vec<String>,
     texture_count: usize,
     face_diff: Option<String>,
+    face_diff_payload: Option<Vec<u8>>,
     preserved_sidecars: Vec<String>,
 }
 
@@ -525,14 +526,22 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 }
                 "dds" => inventory.texture_count += 1,
                 "fclo" => inventory.preserved_sidecars.push(relative_text),
-                _ => {
-                    if lower == "face_diff.bin" {
-                        if inventory.face_diff.is_some() { return Err("The source face contains multiple face_diff.bin files.".into()); }
-                        let bytes = fs::read(&path).map_err(|e| format!("Read FACE diff {}: {e}", relative_text))?;
-                        validate_face_diff_payload(&bytes).map_err(|e| format!("Invalid PES 2021 FACE diff {relative_text}: {e}"))?;
-                        inventory.face_diff = Some(relative_text);
-                    }
+                "xml" if lower == "face_diff.xml" => {
+                    if inventory.face_diff.is_some() { return Err("The source face contains more than one FACE diff file (face_diff.bin/face_diff.xml).".into()); }
+                    let bytes = fs::read(&path).map_err(|e| format!("Read FACE diff XML {}: {e}", relative_text))?;
+                    let payload = legacy_face_diff_from_xml(&bytes)?.ok_or_else(|| format!("FACE diff XML {relative_text} does not contain a <dif> payload."))?;
+                    validate_face_diff_payload(&payload).map_err(|e| format!("Invalid PES 2021 FACE diff {relative_text}: {e}"))?;
+                    inventory.face_diff = Some(relative_text);
+                    inventory.face_diff_payload = Some(payload);
                 }
+                "bin" if lower == "face_diff.bin" => {
+                    if inventory.face_diff.is_some() { return Err("The source face contains more than one FACE diff file (face_diff.bin/face_diff.xml).".into()); }
+                    let bytes = fs::read(&path).map_err(|e| format!("Read FACE diff {}: {e}", relative_text))?;
+                    validate_face_diff_payload(&bytes).map_err(|e| format!("Invalid PES 2021 FACE diff {relative_text}: {e}"))?;
+                    inventory.face_diff = Some(relative_text);
+                    inventory.face_diff_payload = Some(bytes);
+                }
+                _ => {}
             }
         }
         Ok(())
