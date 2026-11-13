@@ -1,4 +1,7 @@
-use std::{env, fs, path::{Path,PathBuf}, process};
+use std::{env, fs, path::{Path,PathBuf}, process, sync::{Arc,Mutex}, time::{SystemTime,UNIX_EPOCH}};
+use crossbeam_channel::unbounded;
+use studio_core::{AppPaths,PipelineEvent,Settings,ShellRequest,StudioTool,ToolContext};
+use team_compiler::Tool as TeamCompilerTool;
 mod package_policy;
 use package_policy::{ftex_target_path, normalize_fox_virtual_path, validate_face_package_members};
 use fmdl::{format::{FmdlFile,SklFile}, Model as FoxModel};
@@ -196,6 +199,234 @@ fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<V
     xml.push_str("</config>\n");
     Ok(xml.into_bytes())
 }
+
+struct TempWorkspace(PathBuf);
+impl Drop for TempWorkspace {
+    fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
+}
+
+fn create_temp_workspace() -> Result<TempWorkspace, String> {
+    let parent = env::temp_dir();
+    for attempt in 0..16u8 {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let path = parent.join(format!("face-forge-team-{}-{nonce}-{attempt}", process::id()));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(TempWorkspace(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("Create temporary Team compiler workspace: {error}")),
+        }
+    }
+    Err("Could not allocate a unique temporary Team compiler workspace.".into())
+}
+
+fn copy_face_source_tree(
+    source: &Path,
+    destination: &Path,
+    archive_paths: &mut Vec<PathBuf>,
+    seen: &mut std::collections::HashSet<String>,
+    file_count: &mut usize,
+    total_bytes: &mut u64,
+) -> Result<(), String> {
+    for entry in fs::read_dir(source).map_err(|e| format!("Read face source folder {}: {e}", source.display()))? {
+        let entry = entry.map_err(|e| format!("Read face source entry: {e}"))?;
+        let from = entry.path();
+        let metadata = fs::symlink_metadata(&from).map_err(|e| format!("Inspect face source entry {}: {e}", from.display()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!("Symbolic links are not accepted in face conversion input: {}", from.display()));
+        }
+        if metadata.is_dir() {
+            let relative = from.strip_prefix(source).map_err(|_| "Face source path escaped its root.")?;
+            let to = destination.join(relative);
+            fs::create_dir_all(&to).map_err(|e| format!("Create face staging folder {}: {e}", to.display()))?;
+            copy_face_source_tree(&from, &to, archive_paths, seen, file_count, total_bytes)?;
+            continue;
+        }
+        if !metadata.is_file() {
+            return Err(format!("Unsupported filesystem entry in face source: {}", from.display()));
+        }
+        let extension = from.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+        if extension == "fpk" || extension == "fpkd" {
+            archive_paths.push(from);
+            continue;
+        }
+        *file_count += 1;
+        *total_bytes = total_bytes.saturating_add(metadata.len());
+        if *file_count > 10_000 || *total_bytes > 2 * 1024 * 1024 * 1024 {
+            return Err("Face source exceeds the safety limit of 10,000 files or 2 GiB.".into());
+        }
+        let relative = from.strip_prefix(source).map_err(|_| "Face source path escaped its root.")?;
+        let relative_text = relative.to_string_lossy().replace('\\', "/");
+        let normalized = normalize_fox_virtual_path(&relative_text)?;
+        if !seen.insert(normalized.to_ascii_lowercase()) {
+            return Err(format!("Duplicate case-insensitive face source path: {normalized}"));
+        }
+        let to = destination.join(PathBuf::from(normalized));
+        if let Some(parent) = to.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("Create face asset folder {}: {e}", parent.display()))?;
+        }
+        fs::copy(&from, &to).map_err(|e| format!("Stage face asset {}: {e}", from.display()))?;
+    }
+    Ok(())
+}
+
+fn extract_face_archives(
+    archive_paths: &[PathBuf],
+    destination: &Path,
+    seen: &mut std::collections::HashSet<String>,
+    file_count: &mut usize,
+    total_bytes: &mut u64,
+) -> Result<(), String> {
+    let fpk: Vec<_> = archive_paths.iter().filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("fpk"))).collect();
+    let fpkd: Vec<_> = archive_paths.iter().filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("fpkd"))).collect();
+    if fpk.len() > 1 || fpkd.len() > 1 {
+        return Err("A face folder must contain at most one face.fpk and one paired face.fpkd archive.".into());
+    }
+    if fpk.is_empty() && !fpkd.is_empty() {
+        return Err("A face.fpkd was found without its face.fpk companion.".into());
+    }
+    for path in fpk.iter().chain(fpkd.iter()) {
+        let metadata = fs::symlink_metadata(path).map_err(|e| format!("Inspect Fox archive {}: {e}", path.display()))?;
+        if !metadata.is_file() || metadata.len() > 1024 * 1024 * 1024 {
+            return Err(format!("Fox archive is not a regular file or exceeds 1 GiB: {}", path.display()));
+        }
+        let bytes = fs::read(path).map_err(|e| format!("Read Fox archive {}: {e}", path.display()))?;
+        let archive = FpkFile::read(&bytes).map_err(|e| format!("Decode Fox archive {}: {e}", path.display()))?;
+        for (name, data) in archive.entries() {
+            let normalized = normalize_fox_virtual_path(name)?;
+            if !seen.insert(normalized.to_ascii_lowercase()) {
+                return Err(format!("Duplicate case-insensitive path across loose files and Fox archives: {normalized}"));
+            }
+            *file_count += 1;
+            *total_bytes = total_bytes.saturating_add(data.len() as u64);
+            if *file_count > 10_000 || *total_bytes > 2 * 1024 * 1024 * 1024 {
+                return Err("Expanded face source exceeds the safety limit of 10,000 files or 2 GiB.".into());
+            }
+            let target = destination.join(PathBuf::from(normalized));
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("Create extracted asset folder {}: {e}", parent.display()))?;
+            }
+            fs::write(&target, data).map_err(|e| format!("Extract Fox package member {}: {e}", target.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Result<serde_json::Value, String> {
+    if target != 2017 && target != 2021 {
+        return Err("Target must be 2017 or 2021.".into());
+    }
+    let input_metadata = fs::symlink_metadata(input).map_err(|e| format!("Inspect face input: {e}"))?;
+    if input_metadata.file_type().is_symlink() || !input_metadata.is_dir() {
+        return Err("Complete face conversion requires a real source folder.".into());
+    }
+    let input = fs::canonicalize(input).map_err(|e| format!("Resolve face input folder: {e}"))?;
+    let output_metadata = fs::symlink_metadata(output).map_err(|e| format!("Inspect output staging folder: {e}"))?;
+    if output_metadata.file_type().is_symlink() || !output_metadata.is_dir() {
+        return Err("The conversion output must be a real staging directory.".into());
+    }
+    if fs::read_dir(output).map_err(|e| format!("Read output staging folder: {e}"))?.next().is_some() {
+        return Err("The conversion output staging folder must be empty.".into());
+    }
+
+    let workspace = create_temp_workspace()?;
+    let export = workspace.0.join("exports").join("ff - FACE FORGE");
+    let player = export.join("Players").join("05 - FACE FORGE");
+    let data = workspace.0.join("data");
+    let pes = workspace.0.join("PES");
+    fs::create_dir_all(&player).map_err(|e| format!("Create staged player folder: {e}"))?;
+    fs::create_dir_all(&data).map_err(|e| format!("Create Team compiler data folder: {e}"))?;
+    fs::create_dir_all(&pes).map_err(|e| format!("Create isolated PES settings folder: {e}"))?;
+
+    let mut archive_paths = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut file_count = 0usize;
+    let mut total_bytes = 0u64;
+    copy_face_source_tree(&input, &player, &mut archive_paths, &mut seen, &mut file_count, &mut total_bytes)?;
+    extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
+    let has_model = {
+        fn any_model(root: &Path) -> Result<bool, String> {
+            for entry in fs::read_dir(root).map_err(|e| format!("Inspect staged face assets: {e}"))? {
+                let entry = entry.map_err(|e| format!("Read staged face asset: {e}"))?;
+                let path = entry.path();
+                if path.is_dir() { if any_model(&path)? { return Ok(true); } }
+                else if path.extension().is_some_and(|x| x.eq_ignore_ascii_case("fmdl") || x.eq_ignore_ascii_case("model")) { return Ok(true); }
+            }
+            Ok(false)
+        }
+        any_model(&player)?
+    };
+    if !has_model {
+        return Err("The selected face folder contains no .fmdl or .model assets, including its FPK/FPKD archives.".into());
+    }
+
+    fs::write(data.join("teams_list.txt"), "ID\\tName\\n714\\t/ff/\\n")
+        .map_err(|e| format!("Write isolated Team compiler team list: {e}"))?;
+    let settings_text = format!(
+        "[common]\\npes_version = {target}\\npes_folder_path = {:?}\\n\\n[team-compiler]\\ncpk_name = \\"4cc_99_test\\"\\noutput_folder_path = {:?}\\nteams_list_path = \\"teams_list.txt\\"\\nstrict_file_type_check = true\\npass_through = false\\n",
+        pes.to_string_lossy().to_string(),
+        output.to_string_lossy().to_string()
+    );
+    let mut settings = Settings::parse(&settings_text).map_err(|e| format!("Build isolated Team compiler settings: {e}"))?;
+    let tool = TeamCompilerTool::with_running_probe(|| Vec::new());
+    settings.merge_defaults(tool.id(), &tool.default_settings());
+    let (events_tx, events_rx) = unbounded();
+    let (requests_tx, _requests_rx) = unbounded::<ShellRequest>();
+    let context = ToolContext::new(
+        Arc::new(Mutex::new(settings)),
+        AppPaths { exe_dir: workspace.0.clone(), data_dir: Some(data) },
+        events_tx,
+        requests_tx
+    );
+    let export_arg = export.to_string_lossy().to_string();
+    let matches = tool.cli_command().try_get_matches_from([
+        "team-compiler", "compile", "--no-deploy", "--export", export_arg.as_str()
+    ]).map_err(|e| format!("Build upstream Team compiler command: {e}"))?;
+    let exit_code = tool.cli_run(&matches, &context).map_err(|e| format!("Upstream Team compiler refused the conversion: {e}"))?;
+    drop(context);
+
+    let mut complete: Option<(bool, usize)> = None;
+    let mut event_summaries = Vec::new();
+    for envelope in events_rx.try_iter() {
+        match envelope.event {
+            PipelineEvent::Complete { success, files_written, .. } => complete = Some((success, files_written)),
+            PipelineEvent::Message(message) => event_summaries.push(format!("{:?}", message)),
+            other => event_summaries.push(format!("{other:?}")),
+        }
+    }
+    if exit_code != 0 || !complete.is_some_and(|(success, _)| success) {
+        let details = event_summaries.iter().take(24).cloned().collect::<Vec<_>>().join(" | ");
+        return Err(format!("Upstream Team compiler did not complete cleanly (exit {exit_code}). {details}"));
+    }
+    let mut output_files = Vec::new();
+    for entry in fs::read_dir(output).map_err(|e| format!("Read converted output: {e}"))? {
+        let entry = entry.map_err(|e| format!("Read converted output entry: {e}"))?;
+        if entry.file_type().map_err(|e| format!("Inspect converted output: {e}"))?.is_file() {
+            output_files.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+    let cpk_files: Vec<_> = output_files.iter().filter(|name| name.to_ascii_lowercase().ends_with(".cpk")).cloned().collect();
+    if cpk_files.is_empty() {
+        return Err("Upstream Team compiler reported success but produced no CPK archive.".into());
+    }
+    let report = serde_json::json!({
+        "ok": true,
+        "engine": "Unlimited Tool Works Team Compiler",
+        "target": target,
+        "sourceFolder": input.file_name().and_then(|x| x.to_str()).unwrap_or("face-folder"),
+        "sourceFiles": file_count,
+        "sourceBytes": total_bytes,
+        "outputFiles": output_files,
+        "cpkFiles": cpk_files,
+        "events": event_summaries.iter().take(500).collect::<Vec<_>>(),
+        "eventCount": event_summaries.len(),
+        "complete": complete.map(|(success, files_written)| serde_json::json!({"success":success,"filesWritten":files_written}))
+    });
+    let report_path = output.join("face-forge-report.json");
+    fs::write(&report_path, serde_json::to_vec_pretty(&report).map_err(|e| format!("Serialize conversion report: {e}"))?)
+        .map_err(|e| format!("Write conversion report: {e}"))?;
+    Ok(report)
+}
+
 fn run()->Result<(),String>{
  let args:Vec<String>=env::args().collect();
  if args.get(1).map(String::as_str)==Some("convert-texture"){
