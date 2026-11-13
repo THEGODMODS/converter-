@@ -92,9 +92,12 @@ Integration decision: reuse the pinned native IR conversion engine and independe
 - `FacePreview.tsx` creates a neutral untextured material for every mesh. It cannot judge skin/hair/material fidelity.
 - The current package builder creates paired FPK/FPKD from already-converted files. It does not perform the conversion or validate the face's complete semantic dependency closure.
 - The CPK builder is not an installation wizard and has no verified DpFileList transaction/rollback.
+- The complete-folder Electron conversion path now independently reopens each Team Compiler CPK before publishing it, validates its TOC and entry ranges, requires at least one face model entry, and records SHA-256 hashes for every extracted entry range in the conversion report. This is archive-structure/read-back verification only; it does not prove model semantics, dependency closure or game acceptance.
 - The native bridge's model read-back is valuable structural validation, but it is not a substitute for an independent game parser or in-game test.
 
 ## Work added during this audit
+
+- Added independent CPK read-back to the complete-folder conversion gate. Invalid/truncated archives, unsafe archive names, empty TOCs and archives without a recognizable face model are rejected before output publishing; conversion reports include per-entry SHA-256 values. Added damaged-TOC and truncated-archive regression tests. These changes are awaiting CI and do not certify target-game compatibility.
 
 - Native Fox-package conversion now validates the complete member set, converts FMDL/SKL models and resolves FTEX dependencies through the Electron texture stage (including embedded FPK members), and rejects XML, face-diff, FOX scene and unknown sidecars instead of silently dropping them. It normalizes the format's canonical `/Assets/...` entry prefix before writing, and rejects other absolute/traversal paths, orphan skeletons and case-insensitive duplicate virtual paths. Regression coverage now exercises embedded FPK texture extraction and conversion. Package-wide material-reference equivalence still needs real face fixtures and target-game validation.
 - Rig calibration audit now detects invalid parent references and cycles, and measures hierarchy coverage over mapped landmarks.
