@@ -219,7 +219,7 @@ function registerIpc(){
    data=await readFile(source);extension=path.extname(source).toLowerCase();
    if(extension===".model"){const mtlPath=path.join(path.dirname(source),path.basename(source,path.extname(source))+".mtl");if(fs.existsSync(mtlPath)){const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile()||mtlStat.size>32*1024*1024)throw new Error("Companion PES 2017 MTL is not a safe regular file.");companionMtl=await readFile(mtlPath);}}
   }
-  let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],materials:Array<{name:string;shader:string|null;textures:Record<string,string>}>=[],warnings:string[]=[];
+  let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],materials:Array<{name:string;shader:string|null;textures:Record<string,string>;textureData?:Record<string,string>}>=[],warnings:string[]=[];
   if(extension===".fmdl"){
    const scene=decodePes2021Fmdl(parseFmdlContainer(data));generation="pes2021";materials=scene.materials.map(material=>({name:material.name,shader:material.shader,textures:material.textures}));
    meshes=scene.meshes.map(mesh=>({name:mesh.name,materialIndex:mesh.materialIndex,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
