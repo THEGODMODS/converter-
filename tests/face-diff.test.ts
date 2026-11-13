@@ -61,16 +61,34 @@ describe("PES face_diff metadata and records",()=>{
   const outOfRange=v5Fixture();outOfRange.writeUInt32LE(0x3b0,0x50);
   expect(()=>inspectFaceDiff(outOfRange)).toThrow(/out of range/i);
  });
- it("recognizes the observed 33-bone v5 record-count profile",()=>{
+ it("decodes all 33 facial offsets and six ear transforms in the verified PES 2021 v5 layout",()=>{
   const data=Buffer.alloc(0x3c0);data.write("FACE",0,"ascii");data.writeUInt32LE(5,4);
   data.writeFloatLE(1,0x08);data.writeFloatLE(1,0x0c);data.writeFloatLE(1,0x10);
   data.writeUInt32LE(33,0x48);data.writeUInt32LE(6,0x4c);
-  for(let i=0;i<33;i++)data.writeUInt32LE(0xf0+i*0x10,0x50+i*4);
-  for(let i=0;i<6;i++)data.writeUInt32LE(0x300+i*0x20,0x50+(33+i)*4);
+  for(let i=0;i<33;i++){
+   const offset=0xf0+i*0x10;data.writeUInt32LE(offset,0x50+i*4);
+   data.writeFloatLE(i*0.001,offset);data.writeFloatLE(i*0.002,offset+4);data.writeFloatLE(i*0.003,offset+8);
+  }
+  for(let i=0;i<6;i++){
+   const offset=0x300+i*0x20;data.writeUInt32LE(offset,0x50+(33+i)*4);
+   data.writeFloatLE(i*0.01,offset);data.writeFloatLE(i*0.02,offset+4);data.writeFloatLE(i*0.03,offset+8);
+   data.writeFloatLE(1,offset+12);data.writeFloatLE(1,offset+16);data.writeFloatLE(1,offset+20);
+  }
+  // The runtime's model-space jaw offset is R_head * skf_jaw, where
+  // R_head maps [x,y,z] to [-z,x,-y].
+  const jaw=0xf0+28*0x10;
+  data.writeFloatLE(0.028,jaw);data.writeFloatLE(0.056,jaw+4);data.writeFloatLE(0.084,jaw+8);
+  data.writeFloatLE(-0.084,0x3c);data.writeFloatLE(0.028,0x40);data.writeFloatLE(-0.056,0x44);
   const parsed=inspectFaceDiff(data);
   expect(parsed.declaredBlock1Records).toBe(33);
-  expect(parsed.boneOffsets).toHaveLength(2);
-  expect(parsed.opaqueRecordOffsets).toHaveLength(37);
+  expect(parsed.boneOffsets).toHaveLength(33);
+  expect(parsed.boneOffsets[15].boneName).toBe("skf_cheek_r");
+  expect(parsed.boneOffsets[28]).toMatchObject({boneName:"skf_jaw",position:[0.028,0.056,0.084],w:0});
+  expect(parsed.earTransforms).toHaveLength(6);
+  expect(parsed.earTransforms[0]).toMatchObject({boneName:"dsk_ear_t_l",translation:[0,0,0],scale:[1,1,1],reserved:[0,0]});
+  expect(parsed.earTransforms[5].boneName).toBe("dsk_earlobe_r");
+  expect(parsed.opaqueRecordOffsets).toHaveLength(0);
+  expect(parsed.warnings.some(w=>w.includes("Jaw scalar does not match"))).toBe(false);
  });
  it("rejects overlapping v4 record ranges without interpreting their semantics",()=>{
   const bad=v4Fixture();
