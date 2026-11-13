@@ -26,13 +26,17 @@
 - [x] Parse and serialize PES 2021 FMDL block containers while preserving unknown blocks.
 - [ ] Decode PES 2017 MODEL mesh, material and skeleton structures.
 - [ ] Decode PES 2021 FMDL mesh, material and skeleton structures.
-- [x] Initial PES 2017 MODEL section-1 vertex/face decoder with strict bounds and semantic validation.\n- [x] Initial PES 2021 FMDL vertex/index, material instance, texture reference and bone-group decoder.\n- [ ] Complete PES 2017 section 0/4/5 bone-group, mesh/material linkage and companion MTL/XML mapping.\n- [ ] Expand FMDL LOD, mesh split, face-specific auxiliary and edge-case support.
+- [x] Initial PES 2017 MODEL section-1 vertex/face decoder with strict bounds and semantic validation.
+- [x] Initial PES 2021 FMDL vertex/index, material instance, texture reference and bone-group decoder.
+- [ ] Complete PES 2017 section 0/4/5 bone-group, mesh/material linkage and companion MTL/XML mapping.
+- [ ] Expand FMDL LOD, mesh split, face-specific auxiliary and edge-case support.
 - [ ] Skeleton, bone weights, facial morph/blendshape and auxiliary face data compatibility.
 - [ ] Separate tested adapters for each direction.
 - [ ] Round-trip and reference-scene regression tests.
 
 ## Phase 4 — preview, packaging and installation
-- [x] Embedded interactive static geometry viewer with orbit/zoom controls for decoded MODEL and FMDL meshes.\n- [ ] Textured material preview, face-part visibility controls, camera presets and facial-rig animation playback.
+- [x] Embedded interactive static geometry viewer with orbit/zoom controls for decoded MODEL and FMDL meshes.
+- [ ] Textured material preview, face-part visibility controls, camera presets and facial-rig animation playback.
 - [x] Single Face, Batch and Project work-mode UI with local folder intake and review queues.
 - [x] Original KFC GODMODS brand artwork and Windows icon-generation pipeline.
 - [x] Initial deterministic CPK writer and structural TOC/payload validator (not yet independently certified).
@@ -53,7 +57,8 @@
 - [ ] Animation regression fixtures and actual in-game close-up/replay testing.
 
 ## Phase 6 — release quality
-- [x] Single-face, batch intake and local project-database workspaces.\n- [ ] Batch conversion execution, resume/cancel, logs and conversion history.
+- [x] Single-face, batch intake and local project-database workspaces.
+- [ ] Batch conversion execution, resume/cancel, logs and conversion history.
 - [ ] Windows installer, portable build, checksums and signed release metadata.
 - [ ] Test against legally obtained sample assets and real target installations.
 - [ ] Publish supported-format matrix and known limitations.
