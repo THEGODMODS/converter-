@@ -63,6 +63,12 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
-    "artifactName": "THEGODMODS-FACE-FORGE-${version}-Setup.${ext}"
+    "artifactName": "THEGODMODS-FACE-FORGE-${version}-Setup.${ext}",
+    "extraResources": [
+      {
+        "from": "assets/face-forge.ico",
+        "to": "face-forge.ico"
+      }
+    ]
   }
 }
