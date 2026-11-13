@@ -17,9 +17,9 @@ fn replace_texture_extension(value:&mut String,from:&str,to:&str)->Result<(),Str
  *value=format!("{stem}.{to}");Ok(())
 }
 
-/// Wraps a validated Fox FACE calibration payload in the legacy PES XML <dif>
-/// element. The payload is preserved byte-for-byte; no unverified rig-space
-/// transform or v5-to-v4 record remapping is attempted.
+/// Wraps a validated FACE calibration payload in the legacy PES XML <dif>
+/// element. Real upstream v4/v5 samples are preserved byte-for-byte across
+/// package formats; no unverified rig-space transform is applied.
 fn base64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
