@@ -161,6 +161,8 @@ function registerIpc(){
   }
   await scan(sourceRoot);
   if(!files.length)throw new Error("No .dds or .ftex textures were found in the selected folder.");
+  const outputNames=new Set<string>();
+  for(const file of files){const ext=path.extname(file.relative).toLowerCase(),name=path.posix.join(path.posix.dirname(file.relative),path.posix.basename(file.relative,path.posix.extname(file.relative))+(ext===".dds"?".ftex":".dds")).toLowerCase();if(outputNames.has(name))throw new Error("Texture batch has output-name collisions on Windows: "+name+". Separate or rename the source files before converting.");outputNames.add(name);}
   const destination=await dialog.showOpenDialog(mainWindow!,{title:"Choose an empty output folder for converted textures",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
   const outputRoot=path.resolve(destination.filePaths[0]),outStat=await fs.promises.lstat(outputRoot);
@@ -174,7 +176,7 @@ function registerIpc(){
   try{for(const file of files){
    const ext=path.extname(file.relative).toLowerCase(),target=path.join(realOutput,path.dirname(file.relative),path.basename(file.relative,path.extname(file.relative))+(ext===".dds"?".ftex":".dds"));
    const parent=path.dirname(target);await fs.promises.mkdir(parent,{recursive:true});
-   await writeFile(target,file.data,{flag:"wx"});written.push(target);
+   written.push(target);await writeFile(target,file.data,{flag:"wx"});
   }}catch(error){for(const target of written){try{await fs.promises.unlink(target);}catch{}}throw new Error("Batch texture conversion was rolled back because an output file could not be written: "+(error instanceof Error?error.message:String(error)));}
   return {source:realSource,destination:realOutput,converted:written.length,bytes:outputBytes,files:files.map((file,index)=>({source:file.relative,destination:path.relative(realOutput,written[index]),format:file.format,width:file.width,height:file.height}))};
  });
