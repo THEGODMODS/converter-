@@ -106,9 +106,9 @@ function registerIpc(){
   const conversionProject={...inventory,dependencies:inventory.dependencies.filter(item=>dependencySources.has(item.source))};
   const stageParent=await fs.promises.mkdtemp(path.join(path.dirname(realOutput),".face-forge-stage-"));
   const stageOutput=path.join(stageParent,"output");
-  await fs.promises.mkdir(stageOutput);
   args.push("--out",stageOutput);
   try{
+   await fs.promises.mkdir(stageOutput);
    const result=await execFileAsync(binary,args,{timeout:180000,maxBuffer:4*1024*1024,windowsHide:true});
    let report:unknown;try{report=JSON.parse(result.stdout.trim());}catch{throw new Error("Native converter returned an invalid result report.");}
    const textures=await convertFaceTextureDependencies(conversionProject,root,stageOutput,target);
