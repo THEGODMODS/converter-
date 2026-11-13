@@ -9,18 +9,19 @@ export type Pes2017FaceCpkVerification = {
   faceMaterialPath: string;
 };
 
-/**
- * Verify the Team Compiler's PES 2017 output shape:
- * outer team CPK -> nested player-face CPK -> face.xml/model/material assets.
- */
-export function verifyPes2017FaceCpk(bytes: Buffer): Pes2017FaceCpkVerification {
+/** Verify the Team Compiler's outer team CPK and requested nested player-face CPK. */
+export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): Pes2017FaceCpkVerification {
+  if (!/^[0-9]{5}$/.test(expectedPlayerId)) {
+    throw new Error("Expected PES 2017 player ID must contain exactly five digits.");
+  }
   const outerInspection = inspectCpk(bytes);
   if (!outerInspection.valid || outerInspection.fileCount === 0) {
     throw new Error("Independent outer CPK read-back failed: " + outerInspection.errors.join("; "));
   }
-  const candidates = outerInspection.files.filter(entry => entry.path.toLowerCase().endsWith(".cpk"));
+  const expectedFaceCpk = expectedPlayerId + ".cpk";
+  const candidates = outerInspection.files.filter(entry => entry.path.toLowerCase().split("/").at(-1) === expectedFaceCpk.toLowerCase());
   if (candidates.length === 0) {
-    throw new Error("PES 2017 team CPK contains no nested player-face CPK.");
+    throw new Error("PES 2017 team CPK has no nested player-face CPK for target player ID " + expectedPlayerId + ".");
   }
   const failures: string[] = [];
   for (const candidate of candidates) {
@@ -30,8 +31,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer): Pes2017FaceCpkVerification 
       failures.push(candidate.path + ": " + faceInspection.errors.join("; "));
       continue;
     }
-    const findBasename = (name: string) =>
-      faceInspection.files.find(entry => entry.path.toLowerCase().split("/").at(-1) === name);
+    const findBasename = (name: string) => faceInspection.files.find(entry => entry.path.toLowerCase().split("/").at(-1) === name);
     const faceXml = findBasename("face.xml");
     const faceModel = findBasename("oral_face_high_win32.model");
     const faceMaterial = findBasename("face_high.mtl");
@@ -43,14 +43,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer): Pes2017FaceCpkVerification 
       ].filter(Boolean).join(", "));
       continue;
     }
-    return {
-      outerInspection,
-      faceCpkPath: candidate.path,
-      faceInspection,
-      faceXmlPath: faceXml.path,
-      faceModelPath: faceModel.path,
-      faceMaterialPath: faceMaterial.path,
-    };
+    return {outerInspection,faceCpkPath:candidate.path,faceInspection,faceXmlPath:faceXml.path,faceModelPath:faceModel.path,faceMaterialPath:faceMaterial.path};
   }
   throw new Error("No nested CPK passed PES 2017 face validation. " + failures.join(" | "));
 }

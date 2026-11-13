@@ -30,6 +30,41 @@ jobs:
           git clone --filter=blob:none --no-checkout https://github.com/the4chancup/unlimited-tool-works.git $upstream
           git -C $upstream checkout ca4fe4a32500ffc2d932a1a669a42a6f932d571a
           cargo test --manifest-path (Join-Path $upstream 'Cargo.toml') -p model_convert -p fpk -p ftex -p team_compiler -p studio_core
+      - name: End-to-end PES 2021 face package conversion
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $upstream = Join-Path $env:RUNNER_TEMP 'unlimited-tool-works'
+          $fixture = Join-Path $upstream 'crates/tools/team_compiler/tests/fixtures/tracer/red/Asset/model/character/face/real/79205/#Win'
+          $input = Join-Path $env:RUNNER_TEMP 'face-forge-e2e-input'
+          $output = Join-Path $env:RUNNER_TEMP 'face-forge-e2e-output'
+          if (!(Test-Path (Join-Path $fixture 'face.fpk')) -or !(Test-Path (Join-Path $fixture 'face.fpkd'))) { throw 'Pinned PES 2021 face fixture is incomplete.' }
+          if (Test-Path $input) { Remove-Item $input -Recurse -Force }
+          if (Test-Path $output) { Remove-Item $output -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $input,$output | Out-Null
+          Copy-Item (Join-Path $fixture 'face.fpk') $input
+          Copy-Item (Join-Path $fixture 'face.fpkd') $input
+          cargo run --quiet --manifest-path native/Cargo.toml -- convert-face-folder --input $input --target 2017 --player-id 79205 --out $output
+          if ($LASTEXITCODE -ne 0) { throw 'FACE FORGE failed to convert the pinned PES 2021 face package.' }
+          $reportPath = Join-Path $output 'face-forge-report.json'
+          if (!(Test-Path $reportPath)) { throw 'FACE FORGE did not write its conversion report.' }
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          $hasHead = @($report.sourceModels | Where-Object { $_ -match '(^|/)face_high\.fmdl
+      - run: npm test
+      - run: npm run build
+      - run: npm run dist:win
+      - run: node scripts/verify-release-installer.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: face-forge-windows-${{ github.sha }}
+          path: |
+            release/*.exe
+            release/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+ }).Count -gt 0
+          if ($report.ok -ne $true -or $report.targetPlayerId -ne '79205' -or $report.complete.success -ne $true -or $report.cpkFiles.Count -lt 1 -or !$hasHead) { throw 'FACE FORGE report failed the real-package acceptance checks.' }
+          "FACE_FORGE_E2E_OUTPUT=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

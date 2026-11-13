@@ -417,10 +417,15 @@ fn extract_face_archives(
     Ok(())
 }
 
-fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Result<serde_json::Value, String> {
+fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
     if target != 2017 {
         return Err("The first FACE FORGE release supports PES 2021 → PES 2017 only. PES 2017 → PES 2021 is deferred.".into());
     }
+    if target_player_id.len() != 5 || !target_player_id.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Target PES 2017 player ID must contain exactly five digits.".into());
+    }
+    let team_id = &target_player_id[..3];
+    let player_slot = &target_player_id[3..5];
     let input_metadata = fs::symlink_metadata(input).map_err(|e| format!("Inspect face input: {e}"))?;
     if input_metadata.file_type().is_symlink() || !input_metadata.is_dir() {
         return Err("Complete face conversion requires a real source folder.".into());
@@ -436,7 +441,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
 
     let workspace = create_temp_workspace()?;
     let export = workspace.0.join("exports").join("ff - FACE FORGE");
-    let player = export.join("Players").join("05 - FACE FORGE");
+    let player = export.join("Players").join(format!("{player_slot} - FACE FORGE"));
     let data = workspace.0.join("data");
     let pes = workspace.0.join("PES");
     fs::create_dir_all(&player).map_err(|e| format!("Create staged player folder: {e}"))?;
@@ -466,11 +471,11 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
         return Err("The selected face folder contains no .fmdl or .model assets, including its FPK/FPKD archives.".into());
     }
 
-    fs::write(data.join("teams_list.txt"), "ID\tName\n714\t/ff/\n")
+    fs::write(data.join("teams_list.txt"), format!("ID\tName\n{team_id}\t/ff/\n"))
         .map_err(|e| format!("Write isolated Team compiler team list: {e}"))?;
     let pes_version = if target == 2017 { 17 } else { 21 };
     let settings_text = format!(
-        "[common]\npes_version = {pes_version}\npes_folder_path = {:?}\n\n[team-compiler]\ncpk_name = \"4cc_99_test\"\noutput_folder_path = {:?}\nteams_list_path = \"teams_list.txt\"\nstrict_file_type_check = true\npass_through = false\n",
+        "[common]\npes_version = {pes_version}\npes_folder_path = {:?}\n\n[team-compiler]\ncpk_name = \"face-forge-{target_player_id}\"\noutput_folder_path = {:?}\nteams_list_path = \"teams_list.txt\"\nstrict_file_type_check = true\npass_through = false\n",
         pes.to_string_lossy().to_string(),
         output.to_string_lossy().to_string()
     );
@@ -519,7 +524,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path) -> Res
     let report = serde_json::json!({
         "ok": true,
         "engine": "Unlimited Tool Works Team Compiler",
-        "target": target,
+        "target": target,\n        "targetPlayerId": target_player_id,
         "sourceFolder": input.file_name().and_then(|x| x.to_str()).unwrap_or("face-folder"),
         "sourceFiles": file_count,
         "sourceBytes": total_bytes,
@@ -545,7 +550,8 @@ fn run()->Result<(),String>{
   let input=PathBuf::from(required(&args,"--input")?);
   let target:u16=required(&args,"--target")?.parse().map_err(|_|"Target must be 2017 or 2021".to_string())?;
   let output=PathBuf::from(required(&args,"--out")?);
-  let report=convert_complete_face_folder(&input,target,&output)?;
+  let player_id=required(&args,"--player-id")?;
+  let report=convert_complete_face_folder(&input,target,&output,&player_id)?;
   println!("{}",report);
   return Ok(());
  }

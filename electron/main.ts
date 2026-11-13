@@ -123,9 +123,9 @@ function registerIpc(){
    throw new Error("Native PES conversion failed; the selected output folder was not intentionally cleared: "+detail);
   }
  });
- ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown)=>{
+ ipcMain.handle("face:convert-complete-folder",async(event,folder:unknown,target:unknown,playerId:unknown)=>{
   trusted(event);
-  if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017)throw new Error("The first release accepts PES 2021 source faces and produces PES 2017 output only.");
+  if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017||typeof playerId!=="string"||!/^[0-9]{5}$/.test(playerId))throw new Error("The first release requires PES 2021 source assets, PES 2017 output and a five-digit target player ID.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
@@ -145,7 +145,7 @@ function registerIpc(){
   const stageOutput=path.join(stageParent,"output");
   try{
    await fs.promises.mkdir(stageOutput);
-   const result=await execFileAsync(binary,["convert-face-folder","--input",realRoot,"--target",String(target),"--out",stageOutput],{timeout:600000,maxBuffer:16*1024*1024,windowsHide:true});
+   const result=await execFileAsync(binary,["convert-face-folder","--input",realRoot,"--target",String(target),"--player-id",playerId,"--out",stageOutput],{timeout:600000,maxBuffer:16*1024*1024,windowsHide:true});
    let parsedReport:unknown;try{parsedReport=JSON.parse(result.stdout.trim());}catch{throw new Error("The upstream face compiler returned an invalid conversion report.");}
    if(!parsedReport||typeof parsedReport!=="object"||(parsedReport as {ok?:unknown}).ok!==true||!Array.isArray((parsedReport as {cpkFiles?:unknown}).cpkFiles)||(parsedReport as {cpkFiles:string[]}).cpkFiles.length===0)throw new Error("The upstream compiler did not produce a conversion report with CPK outputs.");
    const cpkNames=(parsedReport as {cpkFiles:string[]}).cpkFiles;
@@ -154,7 +154,7 @@ function registerIpc(){
     if(typeof archiveName!=="string"||!archiveName||path.basename(archiveName)!==archiveName||!archiveName.toLowerCase().endsWith(".cpk"))throw new Error("The native report contains an unsafe CPK output name.");
     const archivePath=path.join(stageOutput,archiveName),archiveStat=await fs.promises.lstat(archivePath);
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
-    const archiveBytes=await readFile(archivePath),verification=verifyPes2017FaceCpk(archiveBytes),inspection=verification.outerInspection;
+    const archiveBytes=await readFile(archivePath),verification=verifyPes2017FaceCpk(archiveBytes,playerId),inspection=verification.outerInspection;
     const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
     const nestedEntry=inspection.files.find(entry=>entry.path===verification.faceCpkPath)!;
     const nestedBytes=archiveBytes.subarray(nestedEntry.offset,nestedEntry.offset+nestedEntry.size);
