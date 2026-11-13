@@ -69,6 +69,8 @@
         "from": "assets/face-forge.ico",
         "to": "face-forge.ico"
       }
-    ]
-  }
+    ],
+    "copyright": "Copyright © 2026 KFC GODMODS"
+  },
+  "author": "KFC GODMODS"
 }
