@@ -35,6 +35,9 @@ function registerIpc(){
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source project is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
   const packages=inventory.files.filter(file=>file.kind==="container-fpk"&&!file.path.includes("!/"));
+  const packageFiles=inventory.files.filter(file=>(file.kind==="container-fpk"||file.kind==="container-fpkd")&&!file.path.includes("!/"));
+  const referencedPackages=packageFiles.filter(file=>(file.packageReferences?.length??0)>0);
+  if(referencedPackages.length)throw new Error("This face package declares inter-package references. The current native conversion bridge cannot yet preserve or remap referenced package paths; conversion was stopped rather than silently dropping them.");
   const looseModels=inventory.files.filter(file=>["model-pes2017","model-pes2017-compressed","model-pes2021"].includes(file.kind)&&!file.path.includes("!/"));
   let selectedPaths:string[]=[];
   if(packages.length===1){
