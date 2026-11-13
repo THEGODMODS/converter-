@@ -97,6 +97,19 @@ export function inspectFaceDiff(data:Buffer):FaceDiffInfo{
  if(!Number.isSafeInteger(offsetCount)||offsetCount>10000)
   throw new Error("FACE diff declares an unreasonable number of records.");
  const offsets=checkedOffsetTable(data,offsetCount,expected);
+ // Validate physical record extents for every generation, including legacy v4.
+ // Unknown layouts stay semantically opaque, but malformed pointers must never
+ // be accepted merely because their record meanings are not yet decoded.
+ const structuralRanges=offsets.map((start,index)=>{
+  const size=index<declaredBlock1Records?0x10:0x20;
+  const end=start+size;
+  if(end>expected)throw new Error("FACE diff record "+index+" exceeds the count-derived record area.");
+  return {start,end,index};
+ }).sort((a,b)=>a.start-b.start);
+ for(let i=1;i<structuralRanges.length;i++){
+  if(structuralRanges[i].start<structuralRanges[i-1].end)
+   throw new Error("FACE diff records overlap: "+structuralRanges[i-1].index+" and "+structuralRanges[i].index+".");
+ }
  const eyeScale=readFiniteVec3(data,0x08,"eye scale");
  const rightEyeRotation=readFiniteVec3(data,0x14,"right-eye rotation");
  const leftEyeRotation=readFiniteVec3(data,0x20,"left-eye rotation");
