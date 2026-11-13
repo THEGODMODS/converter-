@@ -155,7 +155,12 @@ fn run()->Result<(),String>{
  let stage=out.join(".faceforge-staging");fs::create_dir(&stage).map_err(|e|format!("Create staging directory: {e}"))?;
  for (name,data) in pending_outputs{if let Err(error)=write(&stage.join(&name),&data){let _=fs::remove_dir_all(&stage);return Err(error);}}
  let mut committed:Vec<PathBuf>=Vec::new();
- for name in &outputs{let from=stage.join(name);let to=out.join(name);if let Err(error)=fs::rename(&from,&to){for path in committed{let _=fs::remove_file(path);}let _=fs::remove_dir_all(&stage);return Err(format!("Commit converted output {}: {error}",name));}committed.push(to);}
+ for name in &outputs{
+  let from=stage.join(name);let to=out.join(name);
+  if let Some(parent)=to.parent(){if let Err(error)=fs::create_dir_all(parent){for path in committed{let _=fs::remove_file(path);}let _=fs::remove_dir_all(&stage);return Err(format!("Create target output directory for {}: {error}",name));}}
+  if let Err(error)=fs::rename(&from,&to){for path in committed{let _=fs::remove_file(path);}let _=fs::remove_dir_all(&stage);return Err(format!("Commit converted output {}: {error}",name));}
+  committed.push(to);
+ }
  let _=fs::remove_dir_all(&stage);
  let report=serde_json::json!({"ok":true,"target":target,"model_count":model_count,"outputs":outputs,"findings":findings});println!("{}",report);Ok(())
 }
