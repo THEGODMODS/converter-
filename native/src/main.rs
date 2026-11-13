@@ -36,7 +36,8 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
-fn legacy_face_xml(face_diff: &[u8], model_stems: &[String]) -> Result<Vec<u8>, String> {
+fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<Vec<u8>, String> {
+    if let Some(face_diff) = face_diff {
     if face_diff.len() < 0x50 || &face_diff[..4] != b"FACE" {
         return Err("FACE diff sidecar has an invalid or truncated header.".into());
     }
@@ -90,26 +91,30 @@ fn legacy_face_xml(face_diff: &[u8], model_stems: &[String]) -> Result<Vec<u8>, 
             }
         }
     }
+    }
     let has_face = model_stems.iter().any(|s| s.eq_ignore_ascii_case("face_high"));
     if !has_face {
         return Err("A FACE diff cannot be attached to a legacy XML without a face_high model.".into());
     }
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n");
     for stem in model_stems {
-        let (kind, material) = if stem.eq_ignore_ascii_case("face_high") {
-            ("face_neck", format!("{stem}.mtl"))
-        } else if stem.eq_ignore_ascii_case("hair_high") {
-            ("hair", format!("{stem}.mtl"))
-        } else if stem.eq_ignore_ascii_case("oral") || stem.eq_ignore_ascii_case("oral_high") {
-            ("eye", format!("{stem}.mtl"))
+        let kind = if stem.eq_ignore_ascii_case("face_high") {
+            "face_neck"
+        } else if stem.eq_ignore_ascii_case("hair_high") || stem.eq_ignore_ascii_case("oral") || stem.eq_ignore_ascii_case("oral_high") {
+            "parts"
         } else {
             return Err(format!("Cannot safely assign legacy PES XML model type for '{stem}'."));
         };
-        xml.push_str(&format!("  <model level=\"0\" type=\"{kind}\" path=\"./{stem}.model\" material=\"./{material}\"/>\n"));
+        let model_name = format!("oral_{stem}_*.model");
+        let material = format!("{stem}.mtl");
+        xml.push_str(&format!("  <model level=\"0\" type=\"{kind}\" path=\"./{model_name}\" material=\"./{material}\"/>\n"));
     }
-    xml.push_str("  <dif>");
-    xml.push_str(&base64_encode(face_diff));
-    xml.push_str("</dif>\n</config>\n");
+    if let Some(face_diff) = face_diff {
+        xml.push_str("  <dif>");
+        xml.push_str(&base64_encode(face_diff));
+        xml.push_str("</dif>\n");
+    }
+    xml.push_str("</config>\n");
     Ok(xml.into_bytes())
 }
 fn run()->Result<(),String>{
@@ -257,8 +262,8 @@ fn run()->Result<(),String>{
   }
  
  }
- if let Some(face_diff)=package_face_diff.as_deref() {
-  let xml=legacy_face_xml(face_diff,&model_stems)?;
+ if source_format=="fpk" {
+  let xml=legacy_face_xml(package_face_diff.as_deref(),&model_stems)?;
   outputs.push("face.xml".into());
   pending_outputs.push(("face.xml".into(),xml));
  }
@@ -300,20 +305,24 @@ mod face_diff_xml_tests {
 
     #[test]
     fn wraps_v5_face_diff_and_registers_supported_face_models() {
-        let xml = legacy_face_xml(&fixture(), &["face_high".into(), "hair_high".into()]).unwrap();
+        let xml = legacy_face_xml(Some(&fixture()), &["face_high".into(), "hair_high".into(), "oral".into()]).unwrap();
         let text = String::from_utf8(xml).unwrap();
         assert!(text.contains("type=\"face_neck\""));
-        assert!(text.contains("type=\"hair\""));
+        assert!(text.contains("type=\"parts\""));
+        assert!(text.contains("oral_hair_high_*.model"));
+        assert!(text.contains("oral_oral_*.model"));
         assert!(text.contains("<dif>"));
         assert!(text.contains("RkFDRQ"));
+        let without_diff = String::from_utf8(legacy_face_xml(None, &["face_high".into()]).unwrap()).unwrap();
+        assert!(!without_diff.contains("<dif>"));
     }
 
     #[test]
     fn rejects_unknown_models_and_truncated_or_unknown_face_diff() {
-        assert!(legacy_face_xml(&fixture(), &["head".into()]).is_err());
-        assert!(legacy_face_xml(&fixture()[..100], &["face_high".into()]).is_err());
+        assert!(legacy_face_xml(Some(&fixture()), &["head".into()]).is_err());
+        assert!(legacy_face_xml(Some(&fixture()[..100]), &["face_high".into()]).is_err());
         let mut bad = fixture();
         bad[4..8].copy_from_slice(&9u32.to_le_bytes());
-        assert!(legacy_face_xml(&bad, &["face_high".into()]).is_err());
+        assert!(legacy_face_xml(Some(&bad), &["face_high".into()]).is_err());
     }
 }
