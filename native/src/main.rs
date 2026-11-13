@@ -175,7 +175,7 @@ fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<V
     if !has_face {
         return Err("A legacy face XML requires a face_high model.".into());
     }
-    let mut xml = String::from("<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?>\\n<config>\\n");
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n");
     for stem in model_stems {
         let kind = if stem.eq_ignore_ascii_case("face_high") {
             "face_neck"
@@ -186,14 +186,14 @@ fn legacy_face_xml(face_diff: Option<&[u8]>, model_stems: &[String]) -> Result<V
         };
         let model_name = format!("oral_{stem}_*.model");
         let material = format!("{stem}.mtl");
-        xml.push_str(&format!("  <model level=\\"0\\" type=\\"{kind}\\" path=\\"./{model_name}\\" material=\\"./{material}\\"/>\\n"));
+        xml.push_str(&format!("  <model level=\"0\" type=\"{kind}\" path=\"./{model_name}\" material=\"./{material}\"/>\n"));
     }
     if let Some(face_diff) = face_diff {
         xml.push_str("  <dif>");
         xml.push_str(&base64_encode(face_diff));
-        xml.push_str("</dif>\\n");
+        xml.push_str("</dif>\n");
     }
-    xml.push_str("</config>\\n");
+    xml.push_str("</config>\n");
     Ok(xml.into_bytes())
 }
 fn run()->Result<(),String>{
@@ -417,7 +417,7 @@ mod face_diff_xml_tests {
     fn reads_legacy_xml_dif_payload_for_reverse_conversion() {
         let source = v4_fixture();
         let encoded = base64_encode(&source);
-        let xml = format!("<?xml version=\\"1.0\\"?><config><dif>\\n{encoded}\\n</dif></config>");
+        let xml = format!("<?xml version=\"1.0\"?><config><dif>\n{encoded}\n</dif></config>");
         assert_eq!(legacy_face_diff_from_xml(xml.as_bytes()).unwrap(), Some(source));
         assert_eq!(legacy_face_diff_from_xml(b"<config/>").unwrap(), None);
     }
@@ -434,8 +434,8 @@ mod face_diff_xml_tests {
         let source = v5_fixture();
         let xml = legacy_face_xml(Some(&source), &["face_high".into(), "hair_high".into(), "oral".into()]).unwrap();
         let text = String::from_utf8(xml).unwrap();
-        assert!(text.contains("type=\\"face_neck\\""));
-        assert!(text.contains("type=\\"parts\\""));
+        assert!(text.contains("type=\"face_neck\""));
+        assert!(text.contains("type=\"parts\""));
         assert!(text.contains("oral_hair_high_*.model"));
         assert!(text.contains("oral_oral_*.model"));
         assert!(text.contains("<dif>"));
