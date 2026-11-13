@@ -6,7 +6,7 @@ import {verifyPes2017FaceCpk} from "../engine/packaging/face-cpk-validation";
 const outputDirectory=process.env.FACE_FORGE_E2E_OUTPUT;
 const e2e=outputDirectory?describe:describe.skip;
 
-e2e("real PES 2021 to PES 2017 package conversion fixture",()=>{
+e2e("synthetic structural PES 2021 to PES 2017 package conversion fixture",()=>{
   it("produces a nested face CPK for the requested PES player ID",()=>{
     const files=readdirSync(outputDirectory!).filter(name=>name.toLowerCase().endsWith(".cpk"));
     expect(files.length).toBeGreaterThan(0);
