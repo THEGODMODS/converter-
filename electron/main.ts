@@ -124,8 +124,11 @@ function registerIpc(){
     outputMoved=false;
     throw error;
    }
-   await fs.promises.rm(backupOutput,{recursive:true,force:true});
-   await fs.promises.rm(stageParent,{recursive:true,force:true});
+   // Publication succeeded. From here on, cleanup is best-effort and must
+   // never roll back or delete the user's newly published conversion.
+   outputMoved=false;
+   try{await fs.promises.rm(backupOutput,{recursive:true,force:true});}catch{}
+   try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
    return {destination:realOutput,report,textures};
   }catch(error){
    if(outputMoved){
