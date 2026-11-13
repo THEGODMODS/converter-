@@ -1,0 +1,68 @@
+name: Windows build and verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: face-forge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-package:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install JavaScript dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path native/Cargo.toml
+
+      - name: Run application tests
+        run: npm test
+
+      - name: Type-check renderer and Electron
+        run: npm run typecheck
+
+      - name: Build and package Windows installer
+        run: npm run dist:win
+
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -Path release -Filter '*.exe' -File)
+          if ($installers.Count -eq 0) {
+            throw 'No Windows installer was produced.'
+          }
+          foreach ($installer in $installers) {
+            if ($installer.Length -lt 10MB) {
+              throw "Installer is unexpectedly small: $($installer.Name)"
+            }
+            Write-Host "$($installer.Name) $($installer.Length) bytes"
+          }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: KFC-GODMODS-FACE-FORGE-Windows
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 14
