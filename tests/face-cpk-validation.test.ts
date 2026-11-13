@@ -2,26 +2,35 @@ import {describe,expect,it} from "vitest";
 import {buildCpk} from "../engine/packaging/cpk";
 import {verifyPes2017FaceCpk} from "../engine/packaging/face-cpk-validation";
 
-describe("PES 2017 face CPK verification",()=>{
-  const core=[
-    {path:"common/character0/model/character/face/real/123/face.xml",data:Buffer.from("<config/>")},
-    {path:"common/character0/model/character/face/real/123/oral_face_high_win32.model",data:Buffer.from("legacy-model")},
-    {path:"common/character0/model/character/face/real/123/face_high.mtl",data:Buffer.from("<materials/>")},
+describe("PES 2017 nested face CPK verification",()=>{
+  const faceFiles=[
+    {path:"face.xml",data:Buffer.from("<config/>")},
+    {path:"oral_face_high_win32.model",data:Buffer.from("legacy-model")},
+    {path:"face_high.mtl",data:Buffer.from("<materials/>")},
   ];
-  it("accepts a readable archive containing the required legacy face assets",()=>{
-    const result=verifyPes2017FaceCpk(buildCpk(core));
-    expect(result.inspection.valid).toBe(true);
+  const teamArchive=(files=faceFiles)=>buildCpk([{
+    path:"common/character0/model/character/face/real/71405.cpk",
+    data:buildCpk(files),
+  }]);
+  it("accepts the Team Compiler outer CPK containing a valid nested player-face CPK",()=>{
+    const result=verifyPes2017FaceCpk(teamArchive());
+    expect(result.outerInspection.valid).toBe(true);
+    expect(result.faceInspection.valid).toBe(true);
+    expect(result.faceCpkPath).toMatch(/71405\.cpk$/i);
     expect(result.faceXmlPath).toMatch(/face\.xml$/i);
     expect(result.faceModelPath).toMatch(/oral_face_high_win32\.model$/i);
     expect(result.faceMaterialPath).toMatch(/face_high\.mtl$/i);
   });
-  it("rejects a CPK that lacks the generated face.xml",()=>{
-    expect(()=>verifyPes2017FaceCpk(buildCpk(core.slice(1)))).toThrow(/face\.xml/i);
+  it("rejects an outer CPK that contains no nested face CPK",()=>{
+    expect(()=>verifyPes2017FaceCpk(buildCpk([{path:"readme.txt",data:Buffer.from("not a face")}]))).toThrow(/nested player-face CPK/i);
   });
-  it("rejects a CPK that lacks the converted face_high model",()=>{
-    expect(()=>verifyPes2017FaceCpk(buildCpk([core[0],core[2]]))).toThrow(/face_high model/i);
+  it("rejects a nested face CPK that lacks face.xml",()=>{
+    expect(()=>verifyPes2017FaceCpk(teamArchive(faceFiles.slice(1)))).toThrow(/face\.xml/i);
   });
-  it("rejects a CPK that lacks the face_high material set",()=>{
-    expect(()=>verifyPes2017FaceCpk(buildCpk(core.slice(0,2)))).toThrow(/face_high material/i);
+  it("rejects a nested face CPK that lacks the converted head model",()=>{
+    expect(()=>verifyPes2017FaceCpk(teamArchive([faceFiles[0],faceFiles[2]]))).toThrow(/oral_face_high_win32\.model/i);
+  });
+  it("rejects a nested face CPK that lacks the head material set",()=>{
+    expect(()=>verifyPes2017FaceCpk(teamArchive(faceFiles.slice(0,2)))).toThrow(/face_high\.mtl/i);
   });
 });
