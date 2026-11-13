@@ -62,7 +62,7 @@ function matrixHealth(bone:FaceBone,boneIndex:number):MatrixHealth{
  return {boneName:bone.name,boneIndex,sourceMatrix:inspect(bone.sourceMatrix),normalizedDeterminant,inverseBindMatrix:inspect(bone.inverseBindMatrix)};
 }
 
-function auditHierarchy(scene:FaceScene,mappedCount:number):FaceRigCalibrationAudit["hierarchyAudit"]{
+function auditHierarchy(scene:FaceScene,mappedIndices:number[]):FaceRigCalibrationAudit["hierarchyAudit"]{
  const invalidParentReferences:string[]=[];
  scene.bones.forEach((bone,index)=>{
   const parent=bone.parentIndex;
@@ -78,10 +78,10 @@ function auditHierarchy(scene:FaceScene,mappedCount:number):FaceRigCalibrationAu
   state[index]=2;
  };
  for(let i=0;i<scene.bones.length;i++)visit(i,[]);
- const withParentIndex=scene.bones.filter((bone,index)=>bone.parentIndex!==null&&bone.parentIndex>=0&&bone.parentIndex<scene.bones.length&&bone.parentIndex!==index).length;
+ const withParentIndex=mappedIndices.filter(index=>{const parent=scene.bones[index]?.parentIndex;return parent!==null&&parent!==undefined&&Number.isInteger(parent)&&parent>=0&&parent<scene.bones.length&&parent!==index;}).length;
  const graphInvalid=invalidParentReferences.length>0||cycles.length>0;
- const status=mappedCount===0||withParentIndex===0?"unavailable":withParentIndex<mappedCount||graphInvalid?"partial":"available";
- return {matchedBones:mappedCount,withParentIndex,status,invalidParentReferences,cycles};
+ const status=mappedIndices.length===0||withParentIndex===0?"unavailable":withParentIndex<mappedIndices.length||graphInvalid?"partial":"available";
+ return {matchedBones:mappedIndices.length,withParentIndex,status,invalidParentReferences,cycles};
 }
 
 /**
@@ -112,7 +112,7 @@ export function auditFaceRigCalibration(scene:FaceScene,diff:FaceDiffInfo):FaceR
  const sourceMatricesMissing=allMatrices.filter(x=>x.sourceMatrix==="missing").length;
  const inverseBindMatricesMissing=allMatrices.filter(x=>x.inverseBindMatrix==="missing").length;
  const degenerateMatrices=allMatrices.filter(x=>x.sourceMatrix==="degenerate"||x.inverseBindMatrix==="degenerate"||x.sourceMatrix==="invalid"||x.inverseBindMatrix==="invalid").map(x=>x.boneName);
- const hierarchyAudit=auditHierarchy(scene,mapped.length);
+ const hierarchyAudit=auditHierarchy(scene,mapped.map(x=>x.index));
  const blockers:string[]=[];
  if(headFrameStatus!=="matched")blockers.push(headFrameStatus==="missing"?"Required sk_head coordinate-frame bone was not found.":"Skeleton contains multiple sk_head bones; coordinate frame is ambiguous.");
  if(missing)blockers.push(missing+" FACE diff landmark(s) have no exact-name skeleton match.");
