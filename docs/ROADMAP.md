@@ -67,3 +67,15 @@
 - [ ] Publish supported-format matrix and known limitations.
 
 A phase is not complete merely because its UI exists. Each conversion capability requires fixtures, automated checks and target-game verification.
+
+
+## Native engine integration (2026-11-13)
+
+- [x] Pin and document dual-licensed upstream PES model conversion crates.
+- [x] Add native CLI wrapper for single FMDL ↔ MODEL + MTL/SKL conversion.
+- [x] Bundle native Windows executable in installer build and add native test gate.
+- [ ] Integrate FPK/FPKD extraction and repacking around face package conversion.
+- [ ] Resolve and convert all FTEX/DDS dependencies, material/shader semantics and face-diff data.
+- [ ] Convert all face, hair, oral and auxiliary models as one atomic face package.
+- [ ] Add FACE FORGE-owned real face package fixtures and round-trip tests in both directions.
+- [ ] Verify generated packages in PES 2017 and PES 2021 in-game before unlocking batch/CPK.
