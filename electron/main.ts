@@ -189,7 +189,9 @@ function registerIpc(){
   if(colorSpace!=="LINEAR"&&colorSpace!=="SRGB"&&colorSpace!=="NORMAL")throw new Error("Invalid texture color-space selection.");
   const picked=await dialog.showOpenDialog(mainWindow!,{title:"Choose a DDS or FTEX texture",properties:["openFile"],filters:[{name:"PES textures",extensions:["dds","ftex"]}]});
   if(picked.canceled||!picked.filePaths[0])return null;
-  const source=picked.filePaths[0],extension=path.extname(source).toLowerCase(),sourceStat=await fs.promises.lstat(source);\n  if(sourceStat.isSymbolicLink()||!sourceStat.isFile()||sourceStat.size>128*1024*1024)throw new Error("Texture source must be a regular file no larger than 128 MiB.");\n  const input=await readFile(source);
+  const source=picked.filePaths[0],extension=path.extname(source).toLowerCase(),sourceStat=await fs.promises.lstat(source);
+  if(sourceStat.isSymbolicLink()||!sourceStat.isFile()||sourceStat.size>128*1024*1024)throw new Error("Texture source must be a regular file no larger than 128 MiB.");
+  const input=await readFile(source);
   const converted=extension===".dds"?ddsToFtex(input,colorSpace as TextureColorSpace):extension===".ftex"?ftexToDds(input):null;
   if(!converted)throw new Error("Choose a .dds or .ftex texture.");\n  if(converted.data.length>256*1024*1024)throw new Error("Converted texture exceeds the 256 MiB output safety limit.");
   const outputExtension=extension===".dds"?".ftex":".dds";
