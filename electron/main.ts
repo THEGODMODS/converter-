@@ -67,6 +67,7 @@ function registerIpc(){
   const extension=[...extensions][0],sourceFormat=isFoxPackage?"fpk":extension===".fmdl"?"fmdl":extension===".model"?"model":null;
   if(!sourceFormat)throw new Error("Select .fmdl, .model or a face .fpk package. The paired .fpkd file is a companion archive, not a standalone model.");
   const target=sourceFormat==="fmdl"||sourceFormat==="fpk"?"2017":"2021",args=["convert-model","--source-format",sourceFormat,"--target",target];
+  if(sourceFormat==="fpk")args.push("--textures-managed-externally");
   for(const modelPath of selectedPaths)args.push("--model",modelPath);
   for(const modelPath of selectedPaths){
    const sibling=(suffix:string)=>path.join(path.dirname(modelPath),path.basename(modelPath,path.extname(modelPath))+suffix);
