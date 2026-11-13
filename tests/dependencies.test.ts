@@ -33,4 +33,22 @@ describe("face package dependency resolver",()=>{
   ]);
   expect(result[0].status).toBe("resolved");
  });
+ it("prefers the longest matching source path when texture basenames repeat",()=>{
+  const result=resolveFaceDependencies([
+   {path:"face.fmdl",kind:"model-pes2021",assetReferences:["/Assets/pes16/model/character/face/real/123/sourceimages/#windx11/face_bsm_alp.ftex"]},
+   {path:"sourceimages/#windx11/face_bsm_alp.ftex",kind:"texture-pes2021"},
+   {path:"backup/face_bsm_alp.ftex",kind:"texture-pes2021"}
+  ]);
+  expect(result[0].status).toBe("resolved");
+  expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.ftex"]);
+ });
+ it("accepts byte-identical duplicate texture copies as one unambiguous dependency",()=>{
+  const result=resolveFaceDependencies([
+   {path:"face.fmdl",kind:"model-pes2021",assetReferences:["face_bsm_alp.ftex"]},
+   {path:"sourceimages/face_bsm_alp.ftex",kind:"texture-pes2021",sha256:"same-hash"},
+   {path:"backup/face_bsm_alp.ftex",kind:"texture-pes2021",sha256:"same-hash"}
+  ]);
+  expect(result[0].status).toBe("resolved");
+ });
+
 });
