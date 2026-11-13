@@ -15,7 +15,7 @@ export function createConversionPlan(direction:ConversionDirection,detected:"pes
  if(detected!==from)blockers.push(detected==="mixed"?"The project contains both PES generations. Select a clean source face folder.":detected==="unknown"?"Source generation could not be detected from valid binary signatures.":"Selected conversion direction does not match the detected source generation.");
  if(!hasModel)blockers.push("A valid source face model is required.");
  if(!hasTextures)warnings.push("No valid texture assets were detected; face appearance may be incomplete.");
- blockers.push("Whole-face package assembly, dependency relinking and target-game validation are not yet implemented.");
+ blockers.push("Whole-face package assembly, dependency relinking, generation-specific model adapters and target-game validation are not yet implemented.");
  return {direction,source,target,steps:[
   {id:"intake",label:"Project inventory and source detection",status:detected===from?"ready":"blocked",detail:"Validated file signatures and project inventory."},
   {id:"texture",label:"Texture format conversion",status:"ready",detail:"DDS ↔ FTEX container conversion is available for supported formats."},
