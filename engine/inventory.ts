@@ -3,9 +3,10 @@ import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { inspectDdsHeader, inspectFmdlHeader, inspectFtexHeader, inspectModelHeader } from "./formats/headers";
 import { decodeWesysModel } from "./formats/model-container";
+import { analyzeFacePackage,type FacePartCoverage } from "./face-package";
 import { inspectFaceDiff } from "./formats/face-diff";
 export type FaceFile = { path:string;bytes:number;kind:string;sha256:string;formatValid?:boolean;formatDetails?:string[] };
-export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[] };
+export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[];coverage:FacePartCoverage[] };
 const MAX_FILES=5000,MAX_TOTAL_BYTES=1024*1024*1024,MAX_FILE_BYTES=256*1024*1024;
 const RELEVANT=new Set([".fmdl",".model",".ftex",".dds",".xml",".mtl",".bin",".fpk",".cpk",".png",".jpg",".jpeg"]);
 async function inspectFile(rel:string,absolute:string,size:number):Promise<FaceFile>{
@@ -29,5 +30,5 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  if(!models)warnings.push("No valid supported face model was found. A file extension alone is not enough.");if(!textures)warnings.push("No valid DDS or FTEX texture was found.");if(detectedGame==="mixed")warnings.push("Both generation formats are present. Check whether this is a hybrid or previously converted project.");
  if(has21Model&&has17Texture||has17Model&&has21Texture)warnings.push("Model and texture generations do not match. Verify companion textures before conversion.");if(detectedGame==="unknown")warnings.push("The source game could not be identified from validated model and texture signatures.");
  for(const f of files.filter(f=>f.kind.startsWith("invalid-")))warnings.push(`Invalid ${f.kind.replace("invalid-","").toUpperCase()} header: ${f.path}`);
- return {root,detectedGame,fileCount:files.length,totalBytes,models,textures,files,warnings,missing:[]};
+ return {root,detectedGame,fileCount:files.length,totalBytes,models,textures,files,warnings,missing:[],coverage:analyzeFacePackage(files)};
 }
