@@ -12,7 +12,7 @@ function canonical(value){
 const [input,keyPath,keyId,output]=process.argv.slice(2);
 if(!input||!keyPath||!keyId||!/^[A-Za-z0-9_-]{1,64}$/.test(keyId)){process.stderr.write("Usage: node scripts/sign-package-manifest.mjs <unsigned-manifest.json> <ed25519-private-key.pem> <key-id> [signed-output.json]\n");process.exit(2);}
 const source=JSON.parse(await readFile(resolve(input),"utf8"));
-if(!source||typeof source!=="object"||Array.isArray(source)||Object.hasOwn(source,"signature"))throw new Error("Input must be an unsigned package manifest object.");
+if(!source||typeof source!=="object"||Array.isArray(source)||Object.hasOwn(source,"signature")||Object.keys(source).sort().join(",")!=="displayName,files,packageId,schema,version")throw new Error("Input must be an unsigned package manifest with exactly the supported fields.");
 if(source.schema!==1||typeof source.packageId!=="string"||!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(source.packageId)||typeof source.version!=="string"||!/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(source.version)||typeof source.displayName!=="string"||!source.displayName.trim()||source.displayName.length>120||!Array.isArray(source.files)||!source.files.length||source.files.length>500)throw new Error("Package manifest metadata or file count is invalid.");
 let total=0;const seen=new Set();
 for(const file of source.files){
