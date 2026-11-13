@@ -84,18 +84,4 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Build Windows installer
-        if: github.event_name != 'pull_request'
-        run: npm run dist:win
-      - name: Verify Windows installer
-        if: github.event_name != 'pull_request'
-        run: node scripts/verify-release-installer.mjs
-      - uses: actions/upload-artifact@v7
-        if: github.event_name != 'pull_request'
-        with:
-          name: face-forge-windows-${{ github.sha }}
-          path: |
-            release/*.exe
-            release/*.sha256
-          if-no-files-found: error
-          retention-days: 14
+      # Installer creation and release-artifact upload are intentionally paused until Phase 1, 2 and 3 are complete and audited.
