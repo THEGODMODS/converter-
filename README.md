@@ -60,3 +60,20 @@ npm run build
 The application does not include Konami game files, player likenesses, third-party face packs, or unlicensed proprietary utilities. Users supply their own assets and tools. CPK packaging is separate from model conversion: a valid archive alone does not prove a compatible face.
 
 See [engineering roadmap](docs/ROADMAP.md), [format notes](docs/FORMATS.md), and [release gates](docs/RELEASE_GATES.md).
+
+
+## Native model conversion bridge
+
+FACE FORGE now bundles a pinned native conversion bridge backed by the dual-licensed
+[Unlimited Tool Works](https://github.com/the4chancup/unlimited-tool-works) model conversion
+crates (revision `ca4fe4a32500ffc2d932a1a669a42a6f932d571a`). This engine provides PES FMDL and
+PES MODEL semantic import/export, a canonical model representation, material translation and
+version-specific skeleton retargeting. Its upstream test suite includes real PES 2017 and PES
+2021 model fixtures. Licence notices are in `native/UPSTREAM_NOTICES.md`.
+
+The current FACE FORGE UI exposes **single model-pair conversion** only: choose one `.fmdl`
+or `.model`, supply its required companion material/skeleton data, and write the translated
+model into a separate empty output directory. This is not yet full face-folder conversion.
+FPK/FPKD extraction/repacking, FTEX/DDS package dependency resolution, face-diff mapping,
+complete multi-model face package assembly, and in-game verification remain separate release
+gates. Batch and CPK conversion stay locked until those gates pass.
