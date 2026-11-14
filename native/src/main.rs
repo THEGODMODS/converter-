@@ -1787,7 +1787,7 @@ mod nested_face_archive_selection_tests {
         assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/face.xml"));
         assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/oral_face_high_win32.model"));
         assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/fcl_hair_sim.fclo"));
-        assert!(paths.iter().all(|path| !path.contains("/70101/")));
+        assert!(paths.iter().all(|path| !path.contains("/71405/")));
 
         std::fs::remove_dir_all(root).unwrap();
     }
