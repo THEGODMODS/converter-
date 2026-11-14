@@ -15,10 +15,14 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   const grid=new THREE.GridHelper(4,20,0x354657,0x1b2936);grid.position.y=-1.15;scene.add(grid);
   const group=new THREE.Group();scene.add(group);let min=new THREE.Vector3(Infinity,Infinity,Infinity),max=new THREE.Vector3(-Infinity,-Infinity,-Infinity);
   const ddsLoader=new DDSLoader(),builtMaterials=preview.materials.map(source=>{
-   const isHair=/hair/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:0x9ca3af,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
+   const isHair=/hair/i.test(source.name),isEyeOcclusion=/eye.?occlusion/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:isEyeOcclusion?0x72584f:0x9ca3af,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
 
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
     const semantic=slot+" "+(source.textures[slot]??"");
+    if(isEyeOcclusion||/eye_occlusion_alp/i.test(semantic)){
+     textureDiagnostics.push("Eye-occlusion mask for "+source.name+" uses a PES-specific shader; it is not treated as a black diffuse texture in the preview.");
+     continue;
+    }
     try{
      const binary=atob(encoded),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
      const view=new DataView(bytes.buffer),fourCC=String.fromCharCode(bytes[84]??0,bytes[85]??0,bytes[86]??0,bytes[87]??0);let texture:THREE.Texture;
@@ -42,7 +46,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
 
     }catch(error){textureDiagnostics.push("Could not decode "+slot+" for "+source.name+": "+(error instanceof Error?error.message:String(error)));}
    }
-   if(!material.map&&Object.keys(source.textures).length)textureDiagnostics.push("No recognised diffuse/base-colour texture was assigned to "+source.name+"; the mesh is shown with a neutral fallback.");
+   if(!material.map&&Object.keys(source.textures).length&&!isEyeOcclusion)textureDiagnostics.push("No recognised diffuse/base-colour texture was assigned to "+source.name+"; the mesh is shown with a neutral fallback.");
    if(!Object.keys(source.textureData??{}).length&&Object.keys(source.textures).length)textureDiagnostics.push("No referenced texture image was loaded for "+source.name+".");
    if(material.map){material.color.set(0xffffff);if(isHair){material.transparent=true;material.alphaTest=.35;material.depthWrite=true;}}
    return material;
