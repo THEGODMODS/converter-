@@ -14,7 +14,7 @@ export default function SingleFaceApp(){
   try{
    const scanned=await window.faceForge.inspectFolder(folder);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
-   const head=scanned.files.find(file=>file.kind==="model-pes2021"&&/face_high\\.fmdl$/i.test(file.path));
+   const head=scanned.files.find(file=>file.kind==="model-pes2021"&&/face_high\.fmdl$/i.test(file.path));
    if(!head)throw new Error("The source folder does not contain a valid face_high.fmdl head model.");
    setProject(scanned);
    const sourceId=inferPesPlayerIdFromPath(scanned.root);
