@@ -124,7 +124,7 @@ function verifyFaceXmlReferences(
       if (local !== null) {
         const localTextures = resolve(texturePath, "texture", materialDirectory);
         for (const localPath of localTextures) {
-          const localEntry = files.find((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === localPath);
+          const localEntry = files.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === localPath);
           if (!localEntry) throw new Error("Resolved local texture disappeared from the nested face CPK: " + localPath);
           const textureBytes = archiveBytes.subarray(localEntry.offset, localEntry.offset + localEntry.size);
           const dds = inspectDdsHeader(textureBytes);
