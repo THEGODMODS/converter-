@@ -457,8 +457,8 @@ fn inject_preserved_sidecars(
     let check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
         .map_err(|e| format!("Validate rebuilt nested face CPK: {e}"))?;
     for sidecar in sidecars {
-        let basename = Path::new(sidecar).file_name().and_then(|v| v.to_str()).unwrap_or(sidecar);
-        if !check_nested.entries().iter().any(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(basename))) {
+        let archive_name = sidecar.replace('\\\\', "/");
+        if !check_nested.entries().iter().any(|entry| entry.path.trim_start_matches('/').eq_ignore_ascii_case(&archive_name)) {
             return Err(format!("Sidecar preservation read-back failed for {sidecar}."));
         }
     }
