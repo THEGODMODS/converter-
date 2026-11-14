@@ -111,8 +111,11 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
     throw new Error("Independent outer CPK read-back failed: " + outerInspection.errors.join("; "));
   }
 
-  const expectedFaceCpk = expectedPlayerId + ".cpk";
-  const candidates = outerInspection.files.filter((entry) => entry.path.toLowerCase().split("/").at(-1) === expectedFaceCpk.toLowerCase());
+  const expectedFaceDirectory = "common/character0/model/character/face/real/" + expectedPlayerId;
+  const expectedFaceCpk = expectedFaceDirectory + ".cpk";
+  const candidates = outerInspection.files.filter((entry) =>
+    entry.path.replaceAll("\\\\", "/").toLowerCase() === expectedFaceCpk.toLowerCase()
+  );
   if (!candidates.length) throw new Error("PES 2017 team CPK has no nested player-face CPK for target player ID " + expectedPlayerId + ".");
 
   const failures: string[] = [];
@@ -128,9 +131,9 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
       failures.push(candidate.path + ": missing face.xml");
       continue;
     }
-    const faceDirectoryId = faceXml.path.replaceAll("\\", "/").split("/").slice(0, -1).at(-1);
-    if (faceDirectoryId?.toLowerCase() !== expectedPlayerId.toLowerCase()) {
-      failures.push(candidate.path + ": face.xml is stored under internal player folder " + (faceDirectoryId ?? "<root>") + ", expected " + expectedPlayerId);
+    const faceDirectory = faceXml.path.replaceAll("\\\\", "/").split("/").slice(0, -1).join("/");
+    if (faceDirectory.toLowerCase() !== expectedFaceDirectory.toLowerCase()) {
+      failures.push(candidate.path + ": face.xml is stored under internal folder " + (faceDirectory || "<root>") + ", expected " + expectedFaceDirectory);
       continue;
     }
     try {
