@@ -136,16 +136,18 @@ function registerIpc(){
   const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
-  const unresolvedTextureDependencies=inventory.dependencies.filter(dependency=>dependency.status!=="resolved"&&inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021"));
-  if(unresolvedTextureDependencies.length){
-   const details=unresolvedTextureDependencies.slice(0,8).map(dependency=>dependency.status.toUpperCase()+": "+dependency.source+" → "+dependency.reference+(dependency.candidates.length?" (matches: "+dependency.candidates.join(", ")+")":" (no matching texture file)"));
-   const remaining=unresolvedTextureDependencies.length-details.length;
-   throw new Error("Face texture preflight found "+unresolvedTextureDependencies.length+" unresolved texture reference(s). "+details.join(" | ")+(remaining>0?" | and "+remaining+" more.":""));
-  }
-  const unresolvedPackageDependencies=inventory.dependencies.filter(dependency=>dependency.status!=="resolved"&&inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd")));
-  if(unresolvedPackageDependencies.length){
-   const details=unresolvedPackageDependencies.slice(0,6).map(dependency=>dependency.status.toUpperCase()+": "+dependency.source+" → "+dependency.reference);
-   throw new Error("Face package preflight found unresolved FPK/FPKD references: "+details.join(" | "));
+  const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status!=="resolved");
+  if(unresolvedDependencies.length){
+   const describe=(dependency:typeof unresolvedDependencies[number])=>{
+    const source=inventory.files.find(file=>file.path===dependency.source);
+    const kind=source?.kind==="model-pes2021"?"FMDL texture":source?.kind==="container-fpk"||source?.kind==="container-fpkd"?"FPK package":source?.kind??"unknown source";
+    const matches=dependency.candidates.length?" (matches: "+dependency.candidates.slice(0,4).join(", ")+(dependency.candidates.length>4?", …":"")+")":" (no matching file)";
+    return dependency.status.toUpperCase()+" "+kind+": "+dependency.source+" → "+dependency.reference+matches;
+   };
+   const textureCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021")).length;
+   const packageCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd"))).length;
+   const unknownCount=unresolvedDependencies.length-textureCount-packageCount;
+   throw new Error("Face preflight found "+unresolvedDependencies.length+" unresolved dependency reference(s) ("+textureCount+" texture, "+packageCount+" package, "+unknownCount+" other). "+unresolvedDependencies.slice(0,8).map(describe).join(" | ")+(unresolvedDependencies.length>8?" | and "+(unresolvedDependencies.length-8)+" more.":""));
   }
   const destination=await dialog.showOpenDialog(mainWindow!,{title:target===2017?"Choose an empty output folder for the converted PES 2017 face CPK":"Choose an empty output folder for the converted PES 2021 face FPK/FPKD",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
