@@ -1738,7 +1738,7 @@ mod nested_face_archive_selection_tests {
 
         let mut nested_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "TEST FACE")
             .unwrap();
-        let compiler_dir = "common/character0/model/character/face/real/70101";
+        let compiler_dir = "common/character0/model/character/face/real/71405";
         nested_writer.add(&format!("{compiler_dir}/face.xml"), b"<config/>", None).unwrap();
         nested_writer.add(&format!("{compiler_dir}/oral_face_high_win32.model"), b"head-model", None).unwrap();
         let nested_bytes = nested_writer.finish().unwrap().into_inner();
@@ -1746,7 +1746,7 @@ mod nested_face_archive_selection_tests {
         let mut outer_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "TEST TEAM")
             .unwrap();
         outer_writer.add(
-            "common/character0/model/character/face/real/70101",
+            "common/character0/model/character/face/real/71405",
             &nested_bytes,
             None,
         ).unwrap();
