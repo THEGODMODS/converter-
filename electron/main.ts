@@ -143,9 +143,14 @@ function registerIpc(){
    if(typeof resolvedPlayerId!=="string"||!/^[0-9]{1,6}$/.test(resolvedPlayerId)||/^0+$/.test(resolvedPlayerId))throw new Error("Enter the numeric player ID belonging to this face.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
-  const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
+  const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
+  inspectedFaceProjects.set(root,inventory);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
+  const malformedAssets=inventory.files.filter(file=>file.kind.startsWith("invalid-"));
+  if(malformedAssets.length)throw new Error("Face preflight found "+malformedAssets.length+" malformed or unsupported file(s): "+malformedAssets.slice(0,8).map(file=>file.path+" ("+(file.formatDetails?.[0]??file.kind)+")").join(" | ")+(malformedAssets.length>8?" | and "+(malformedAssets.length-8)+" more.":""));
+  const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
+  if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
   const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
   if(unresolvedDependencies.length){
    const describe=(dependency:typeof unresolvedDependencies[number])=>{
