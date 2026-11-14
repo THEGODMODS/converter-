@@ -1,14 +1,16 @@
-# FACE FORGE v0.2.3
+# FACE FORGE v0.3.0
 
-## Performance and face-folder handling
-- Inventory and hash regular files across the selected face folder, including assets with unknown extensions, within the documented inspection limits.
-- Count embedded archive members in the inspection budget and preserve unknown auxiliary sidecars in the generated player CPK.
-- Reinspect the source immediately before conversion and report malformed or unreadable model files before invoking the native compiler.
-- Reduce preview model workload, cache repeated DDS texture decoding, and improve material-aware eye and occlusion fallbacks.
-- Reduce WebGL rendering overhead and improve responsive scrolling.
-- Allow conversion to proceed once source inventory is ready without waiting for optional 3D preview rendering.
+## Reliability and format handling
+- Correctly handle 2D FTEX textures whose depth field is zero.
+- Decode chunked FTEX frames that use an unknown uncompressed-size sentinel while validating aggregate compressed chunk sizes.
+- Ignore FPK XML metadata as a standalone asset and clean empty directories after duplicate archive-member cleanup.
+- Improve conversion diagnostics so full native compiler output is visible when conversion fails.
 
-## Diagnostics
-- Surface native process exit code, stderr, and stdout when conversion fails so compiler errors are actionable.
+## Validation status
+- Automated quality checks pass on the development branch.
+- The automated package smoke test uses synthetic hair geometry and verifies packaging only.
+- Genuine head-model conversion, visual fidelity, and loading in PES 2017 have not yet been validated. This build must not be described as game-ready or as proof that every face folder converts successfully.
 
-This release is built and published by the Windows release workflow after installer and updater metadata verification.
+## Installer
+- Windows x64 NSIS installer is built and SHA-256 verified by the Windows CI workflow.
+- This is an installer build candidate; it is not a public release until real-face validation is completed.

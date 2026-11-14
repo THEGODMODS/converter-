@@ -615,6 +615,12 @@ fn is_windows_metadata_file_name(name: &str) -> bool {
         .any(|ignored| name.eq_ignore_ascii_case(ignored))
 }
 
+/// Fox's adjacent *.fpk.xml file is an archive-editor manifest, not a game
+/// asset. The upstream Team Compiler intentionally drops these manifests.
+fn is_fpk_metadata_file_name(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".fpk.xml")
+}
+
 fn copy_face_source_tree(
     source_root: &Path,
     source_dir: &Path,
@@ -644,7 +650,7 @@ fn copy_face_source_tree(
         // Windows Explorer metadata is not part of a PES face. Ignore it before
         // inventory and path-collision checks, including copies in nested folders.
         let file_name = from.file_name().and_then(|name| name.to_str()).unwrap_or("");
-        if is_windows_metadata_file_name(file_name) {
+        if is_windows_metadata_file_name(file_name) || is_fpk_metadata_file_name(file_name) {
             continue;
         }
         let extension = from.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
@@ -736,6 +742,10 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 }
                 "dds" => inventory.texture_count += 1,
                 "fclo" => inventory.preserved_sidecars.push(relative_text),
+                "xml" if lower.ends_with(".fpk.xml") => {
+                    // Archive-editor metadata is deliberately dropped, not
+                    // forwarded to Team Compiler or re-injected into the CPK.
+                }
                 "xml" if lower == "face_diff.xml" => {
                     if inventory.face_diff.is_some() { return Err("The source face contains more than one FACE diff file (face_diff.bin/face_diff.xml).".into()); }
                     let bytes = fs::read(&path).map_err(|e| format!("Read FACE diff XML {}: {e}", relative_text))?;
@@ -995,7 +1005,7 @@ fn extract_face_archives(
             let basename = normalized.rsplit('/').next().unwrap_or("");
             // Windows Explorer metadata can also be embedded inside FPK/FPKD;
             // ignore it at extraction time, not only in loose source folders.
-            if is_windows_metadata_file_name(basename) {
+            if is_windows_metadata_file_name(basename) || is_fpk_metadata_file_name(basename) {
                 continue;
             }
             write_face_archive_member(destination, &normalized, data, seen, file_count, total_bytes)?;
@@ -1077,6 +1087,10 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
     let redundant_extracted_mirrors_removed =
         remove_redundant_extracted_fpk_mirrors(&input, &player, &archive_paths)?;
+    // Removing the archive mirrors can leave their parent platform folder empty
+    // (for example #Win after face.fpk.xml is filtered). Do not present empty
+    // source folders to Team Compiler as additional player model folders.
+    let _ = remove_empty_directories(&player)?;
     let normalized_texture_references = normalize_fox_face_model_paths(&player)?;
     let source_inventory = inspect_pes2021_face_source(&player)?;
     let has_model = {
@@ -1784,12 +1798,15 @@ mod nested_face_archive_selection_tests {
     }
 
     #[test]
-    fn ignores_windows_metadata_in_loose_and_archived_face_assets() {
-        use super::is_windows_metadata_file_name;
+    fn ignores_windows_metadata_and_fpk_manifests_in_face_assets() {
+        use super::{is_fpk_metadata_file_name, is_windows_metadata_file_name};
         assert!(is_windows_metadata_file_name("desktop.ini"));
         assert!(is_windows_metadata_file_name("Thumbs.db"));
         assert!(is_windows_metadata_file_name(".DS_Store"));
         assert!(!is_windows_metadata_file_name("face_diff.bin"));
+        assert!(is_fpk_metadata_file_name("face.fpk.xml"));
+        assert!(is_fpk_metadata_file_name("FACE.FPK.XML"));
+        assert!(!is_fpk_metadata_file_name("face.xml"));
     }
 
     #[test]
