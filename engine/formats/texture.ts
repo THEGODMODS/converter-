@@ -19,14 +19,34 @@ function mipSize(format:number,width:number,height:number,depth:number,mip:numbe
  const w=Math.max(width>>mip,1),h=Math.max(height>>mip,1),d=Math.max(depth>>mip,1);
  return Math.ceil(w/f.block)*Math.ceil(h/f.block)*d*f.bytes;
 }
-function readFrame(data:Buffer,offset:number,chunks:number,rawSize:number,compressedSize:number):Buffer{
+function readFrame(data:Buffer,offset:number,chunks:number,rawSize:number,compressedSize:number,expectedSize:number):Buffer{
  const range=(start:number,length:number)=>{if(start<0||length<0||start+length>data.length)throw new TextureFormatError("FTEX frame points outside the file.");return data.subarray(start,start+length);};
- if(chunks===0){const bytes=range(offset,compressedSize||rawSize);let decoded:Buffer;try{decoded=compressedSize?inflateSync(bytes):Buffer.from(bytes);}catch{throw new TextureFormatError("FTEX frame decompression failed.");}if(decoded.length!==rawSize)throw new TextureFormatError("FTEX frame size does not match its descriptor.");return decoded;}
- if(chunks>65535)throw new TextureFormatError("FTEX chunk count is unreasonable.");
- const table=range(offset,chunks*8),parts:Buffer[]=[];let storedTotal=0,rawTotal=0;
- for(let i=0;i<chunks;i++){const p=i*8,cs=table.readUInt16LE(p),us=table.readUInt16LE(p+2),encodedOffset=table.readUInt32LE(p+4),isCompressed=(encodedOffset&0x80000000)===0,relative=encodedOffset&0x7fffffff;if(relative<chunks*8)throw new TextureFormatError("FTEX chunk payload overlaps its descriptor table.");const bytes=range(offset+relative,cs);let decoded:Buffer;try{if(isCompressed)decoded=inflateSync(bytes);else{if(cs!==us)throw new TextureFormatError("Uncompressed FTEX chunk has inconsistent stored and raw sizes.");decoded=Buffer.from(bytes);}}catch(error){if(error instanceof TextureFormatError)throw error;throw new TextureFormatError("FTEX chunk decompression failed.");}if(decoded.length!==us)throw new TextureFormatError("FTEX chunk size does not match its descriptor.");storedTotal+=cs;rawTotal+=us;parts.push(decoded);}
- if(storedTotal!==compressedSize||rawTotal!==rawSize)throw new TextureFormatError("FTEX aggregate chunk sizes do not match the frame descriptor.");
- return Buffer.concat(parts);
+ if(rawSize!==expectedSize)throw new TextureFormatError("FTEX frame size does not match its declared dimensions.");
+ if(chunks===0){
+  const bytes=range(offset,compressedSize||rawSize);
+  let decoded:Buffer;
+  try{decoded=compressedSize?inflateSync(bytes,{maxOutputLength:expectedSize}):Buffer.from(bytes);}
+  catch{throw new TextureFormatError("FTEX frame decompression failed.");}
+  if(decoded.length!==expectedSize)throw new TextureFormatError("FTEX frame size does not match its declared dimensions.");
+  return decoded;
+ }
+ if(chunks*8>data.length-offset)throw new TextureFormatError("FTEX chunk table points outside the file.");
+ const table=range(offset,chunks*8),parts:Buffer[]=[];let total=0;
+ for(let i=0;i<chunks&&total<expectedSize;i++){
+  const p=i*8,cs=table.readUInt16LE(p),us=table.readUInt16LE(p+2),encodedOffset=table.readUInt32LE(p+4),relative=encodedOffset&0x7fffffff;
+  if(relative<chunks*8)throw new TextureFormatError("FTEX chunk payload overlaps its descriptor table.");
+  const bytes=range(offset+relative,cs),remaining=expectedSize-total;
+  let decoded:Buffer;
+  try{
+   // Fox's chunked FTEX may store uncompressed_size=0 as an unknown-size
+   // sentinel. The authoritative frame dimensions bound the decoder instead.
+   decoded=cs!==us?inflateSync(bytes,{maxOutputLength:remaining}):Buffer.from(bytes.subarray(0,remaining));
+  }catch{throw new TextureFormatError("FTEX chunk decompression failed.");}
+  if(decoded.length>remaining)decoded=decoded.subarray(0,remaining);
+  parts.push(decoded);total+=decoded.length;
+ }
+ if(total!==expectedSize)throw new TextureFormatError("FTEX chunks do not fill the declared mip dimensions.");
+ return Buffer.concat(parts,expectedSize);
 }
 export function inspectFtex(data:Buffer):TextureInfo{
  if(data.length<64||data.toString("ascii",0,4)!=="FTEX")throw new TextureFormatError("Not a valid FTEX file.");
@@ -62,7 +82,7 @@ export function ftexToDds(input:Buffer):{data:Buffer;info:TextureInfo}{
  const info=inspectFtex(input),imageCount=info.cubeMap?6:1,frames:Buffer[]=[];
  for(let image=0;image<imageCount;image++)for(let mip=0;mip<info.mipCount;mip++){
   const index=image*info.mipCount+mip,p=64+index*16,offset=input.readUInt32LE(p),raw=input.readUInt32LE(p+4),compressed=input.readUInt32LE(p+8),chunks=input.readUInt16LE(p+14);
-  let frame=readFrame(input,offset,chunks,raw,compressed);const expected=mipSize(info.pixelFormat,info.width,info.height,info.depth,mip);
+  const expected=mipSize(info.pixelFormat,info.width,info.height,info.depth,mip);let frame=readFrame(input,offset,chunks,raw,compressed,expected);
   if(frame.length!==expected)throw new TextureFormatError("FTEX mip "+mip+" byte count does not match its declared dimensions.");frames.push(frame);
  }
  return {data:Buffer.concat([ddsHeader(info),...frames]),info};
