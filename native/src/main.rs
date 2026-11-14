@@ -274,6 +274,28 @@ fn normalize_fox_texture_reference(directory: &mut String, file_name: &mut Strin
     }
 }
 
+/// Converts a Fox face FMDL's absolute game sourceimages path into the matching
+/// relative export path. Team Compiler resolves a relative path below the model folder;
+/// it does not descend into sourceimages when the FMDL keeps its absolute game path.
+fn normalize_fox_face_texture_directory(
+    root: &Path,
+    directory: &mut String,
+    file_name: &str,
+) -> bool {
+    let folded = directory.replace('\\', "/").to_ascii_lowercase();
+    if !folded.contains("/model/character/face/real/") || !folded.contains("/sourceimages/") {
+        return false;
+    }
+    for relative in ["sourceimages/#windx11/", "sourceimages/"] {
+        let candidate = root.join(relative).join(file_name);
+        if candidate.is_file() {
+            *directory = format!("./{relative}");
+            return true;
+        }
+    }
+    false
+}
+
 fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
     fn walk(root: &Path, changed_total: &mut usize) -> Result<(), String> {
         for entry in fs::read_dir(root).map_err(|e| format!("Read staged face folder {}: {e}", root.display()))? {
@@ -294,6 +316,7 @@ fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
             let mut model = FmdlFile::read(&bytes).map_err(|e| format!("Parse FMDL {} before texture-path normalization: {e}", path.display()))?;
             let changed = rewrite_texture_paths(&mut model, |texture| {
                 normalize_fox_texture_reference(&mut texture.directory, &mut texture.file_name);
+                normalize_fox_face_texture_directory(root, &mut texture.directory, &texture.file_name);
             }).map_err(|e| format!("Normalize FMDL texture paths {}: {e}", path.display()))?;
             if changed == 0 { continue; }
             let encoded = model.write();
@@ -1263,6 +1286,43 @@ mod face_source_path_tests {
         let entries = vec![("face_high.fmdl".to_string(), b"face-model".to_vec())];
         let error = super::redundant_mirror_members(&mirror, &entries).unwrap_err();
         assert!(error.contains("conflicts with the adjacent archive member"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn rewrites_face_texture_paths_to_the_actual_windx11_sourceimages_folder() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let sourceimages = root.join("sourceimages/#windx11");
+        std::fs::create_dir_all(&sourceimages).unwrap();
+        std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
+        let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
+        assert_eq!(directory, "./sourceimages/#windx11/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn falls_back_to_a_direct_sourceimages_folder_when_no_windx11_folder_exists() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-direct-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let sourceimages = root.join("sourceimages");
+        std::fs::create_dir_all(&sourceimages).unwrap();
+        std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
+        let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
+        assert_eq!(directory, "./sourceimages/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn leaves_shared_common_texture_directories_untouched() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-common-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut directory = "/Assets/pes16/model/character/common/sourceimages/".to_string();
+        assert!(!super::normalize_fox_face_texture_directory(&root, &mut directory, "head_wet_cbm.dds"));
+        assert_eq!(directory, "/Assets/pes16/model/character/common/sourceimages/");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
