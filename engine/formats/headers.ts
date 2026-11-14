@@ -33,7 +33,7 @@ export function inspectFmdlHeader(data:Buffer):FormatInspection{
 
 export function inspectModelHeader(data:Buffer):FormatInspection{
   if(data.length<24)return fail("MODEL","Header is shorter than 24 bytes.");
-  if(data.subarray(0,8).toString("binary")!=="MODEL\\0\\0\\0")return fail("MODEL","Missing MODEL signature (compressed WESYS files need a decompression adapter).");
+  if(data.subarray(0,8).toString("binary")!=="MODEL\0\0\0")return fail("MODEL","Missing MODEL signature (compressed WESYS files need a decompression adapter).");
   const sectionOffset=data.readUInt32LE(8),version=data.readUInt16LE(14);
   if(version<16||version>19)return fail("MODEL",`Unrecognized MODEL version ${version}; known PES 2017 versions are 16–19.`);
   if(sectionOffset<24||sectionOffset+12>data.length)return fail("MODEL","Section array offset is outside the file.");
