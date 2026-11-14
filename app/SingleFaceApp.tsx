@@ -28,7 +28,9 @@ export default function SingleFaceApp(){
      return !/(?:^|[_-])(?:low|lod[0-9]*)\.fmdl$/i.test(name);
     }).sort((a,b)=>Number(!a.path.toLowerCase().endsWith("_high.fmdl"))-Number(!b.path.toLowerCase().endsWith("_high.fmdl")));
     const candidates=[head,...otherFaceModels],seenModels=new Set<string>();
-    const previewModels=candidates.filter(file=>{if(seenModels.has(file.sha256))return false;seenModels.add(file.sha256);return true;}).slice(0,32);
+    const uniqueModels=candidates.filter(file=>{if(seenModels.has(file.sha256))return false;seenModels.add(file.sha256);return true;});
+    const previewPriority=(file:typeof head)=>{const name=file.path.split("/").pop()?.toLowerCase()??"";if(/face_high\\.fmdl$/.test(name))return 0;if(/(eye|eyeline|eyeball|sclera|iris|pupil|eyelash|eyebrow)/.test(name))return 1;if(/hair_high\\.fmdl$/.test(name))return 2;if(/(oral|teeth|tongue|lip)/.test(name))return 3;return 4;};
+    const previewModels=uniqueModels.sort((a,b)=>previewPriority(a)-previewPriority(b)).slice(0,8);
     const settled=await Promise.allSettled(previewModels.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
     const materials:FacePreviewData["materials"]=[],meshes:FacePreviewData["meshes"]=[],warnings:string[]=[];
     let loaded=0;
@@ -38,7 +40,7 @@ export default function SingleFaceApp(){
      const scene=result.value,offset=materials.length;loaded++;materials.push(...scene.materials);meshes.push(...scene.meshes.map(mesh=>({...mesh,materialIndex:mesh.materialIndex+offset})));warnings.push(...scene.warnings);
     }
     if(!loaded||!meshes.length)throw new Error("No high-detail face component could be rendered.");
-    if(candidates.length>previewModels.length)warnings.push("Preview limited to the first 32 unique face components; low-detail LOD models are excluded.");
+    if(uniqueModels.length>previewModels.length)warnings.push("Preview loaded the 8 highest-priority face components for responsiveness; "+(uniqueModels.length-previewModels.length)+" additional models remain indexed for conversion.");
     setPreview({source:"PES 2021 face assembly ("+loaded+" models)",generation:"pes2021",meshes,materials,warnings});
    }catch(previewError){
     console.error("FACE FORGE 3D preview failed; conversion remains available",previewError);
