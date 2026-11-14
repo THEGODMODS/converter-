@@ -38,11 +38,11 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
        if(!width||!height||offset+length>bytes.length)throw new Error("Invalid BC7 DDS payload.");
        if(!renderer.extensions.has("EXT_texture_compression_bptc"))throw new Error("BC7 texture needs GPU BPTC support; geometry preview remains available.");
        const compressed=new THREE.CompressedTexture([{data:new Uint8Array(bytes.buffer,offset,length),width,height}],width,height,THREE.RGBA_BPTC_Format);compressed.generateMipmaps=false;compressed.minFilter=THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
-      }else if(dxgi===80||dxgi===81||dxgi===83||dxgi===84){
-       const width=view.getUint32(16,true),height=view.getUint32(12,true),offset=148,bytesPerBlock=dxgi===80||dxgi===81?8:16,length=Math.max(1,Math.ceil(width/4))*Math.max(1,Math.ceil(height/4))*bytesPerBlock;
-       if(!width||!height||offset+length>bytes.length)throw new Error("Invalid BC4/BC5 DDS payload.");
-       if(!renderer.extensions.has("EXT_texture_compression_rgtc"))throw new Error("BC4/BC5 texture needs GPU RGTC support; geometry preview remains available.");
-       const format=dxgi===80?THREE.RED_RGTC1_Format:dxgi===81?THREE.SIGNED_RED_RGTC1_Format:dxgi===83?THREE.RED_GREEN_RGTC2_Format:THREE.SIGNED_RED_GREEN_RGTC2_Format;
+      }else if(dxgi===80||dxgi===81){
+       const width=view.getUint32(16,true),height=view.getUint32(12,true),offset=148,length=Math.max(1,Math.ceil(width/4))*Math.max(1,Math.ceil(height/4))*8;
+       if(!width||!height||offset+length>bytes.length)throw new Error("Invalid BC4 DDS payload.");
+       if(!renderer.extensions.has("EXT_texture_compression_rgtc"))throw new Error("BC4 texture needs GPU RGTC support; geometry preview remains available.");
+       const format=dxgi===80?THREE.RED_RGTC1_Format:THREE.SIGNED_RED_RGTC1_Format;
        const compressed=new THREE.CompressedTexture([{data:new Uint8Array(bytes.buffer,offset,length),width,height}],width,height,format);compressed.generateMipmaps=false;compressed.minFilter=THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
       }else{
        const parsed=ddsLoader.parse(bytes.buffer,true);if(!parsed.format||!parsed.mipmaps.length)throw new Error("Unsupported DDS preview format.");
