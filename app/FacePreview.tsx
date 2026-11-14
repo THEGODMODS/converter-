@@ -9,7 +9,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   const element=host.current;if(!element)return;const textureDiagnostics:string[]=[];
   const scene=new THREE.Scene();scene.background=new THREE.Color("#0b111a");
   const camera=new THREE.PerspectiveCamera(42,1,0.01,1000);camera.position.set(2.6,1.8,3.2);
-  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.82;element.appendChild(renderer.domElement);
+  const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:"low-power",preserveDrawingBuffer:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.82;element.appendChild(renderer.domElement);
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=.5;controls.maxDistance=20;
   scene.add(new THREE.HemisphereLight(0xcbdcff,0x27313b,.72));const key=new THREE.DirectionalLight(0xffffff,.95);key.position.set(3,5,4);scene.add(key);const rim=new THREE.DirectionalLight(0x9edbff,.28);rim.position.set(-4,2,-3);scene.add(rim);
   const grid=new THREE.GridHelper(4,20,0x354657,0x1b2936);grid.position.y=-1.15;scene.add(grid);
