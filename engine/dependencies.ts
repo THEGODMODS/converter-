@@ -2,7 +2,7 @@ import path from "node:path";
 export type DependencyFile={path:string;kind:string;sha256?:string;assetReferences?:string[];packageReferences?:string[]};
 export type FaceDependency={source:string;reference:string;status:"resolved"|"missing"|"ambiguous"|"external";candidates:string[]};
 function normalizeAsset(value:string):string{
- return value.split(String.fromCharCode(92)).join("/").replace(/^\/+/, "").replace(/^Assets\//i,"").toLowerCase();
+ return value.split(String.fromCharCode(92)).join("/").replace(/\/+/g,"/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\/#windx11(?=\/)/ig,"").toLowerCase();
 }
 function suffixScore(candidate:string,requested:string):number{
  const a=candidate.split("/"),b=requested.split("/");let score=0;
