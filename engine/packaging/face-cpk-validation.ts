@@ -91,7 +91,7 @@ function verifyFaceXmlReferences(
   const resolvedModels = unique(models);
   const resolvedMaterials = unique(materials);
   for (const modelPath of resolvedModels) {
-    const modelEntry = files.find((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === modelPath);
+    const modelEntry = files.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === modelPath);
     if (!modelEntry) throw new Error("Resolved model entry disappeared from the nested face CPK: " + modelPath);
     const modelBytes = archiveBytes.subarray(modelEntry.offset, modelEntry.offset + modelEntry.size);
     const modelInspection = inspectModelHeader(modelBytes);
