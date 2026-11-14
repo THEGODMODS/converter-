@@ -454,7 +454,7 @@ fn inject_preserved_sidecars(
     let check_entry = check_outer.entries().iter().find(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{target_player_id}.cpk"))))
         .ok_or_else(|| "Rebuilt Team CPK lost its nested player archive.".to_string())?.clone();
     let check_nested_bytes = check_outer.read(&check_entry).map_err(|e| format!("Read back rebuilt nested face CPK: {e}"))?;
-    let mut check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
+    let check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
         .map_err(|e| format!("Validate rebuilt nested face CPK: {e}"))?;
     for sidecar in sidecars {
         let basename = Path::new(sidecar).file_name().and_then(|v| v.to_str()).unwrap_or(sidecar);
@@ -1333,7 +1333,7 @@ mod face_source_path_tests {
         std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
         let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
         assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
-        assert_eq!(directory, "./sourceimages/#windx11/");
+        assert_eq!(directory, "sourceimages/#windx11/");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -1361,7 +1361,7 @@ mod face_source_path_tests {
         std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
         let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
         assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
-        assert_eq!(directory, "./sourceimages/");
+        assert_eq!(directory, "sourceimages/");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
