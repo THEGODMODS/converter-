@@ -128,7 +128,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
       failures.push(candidate.path + ": missing face.xml");
       continue;
     }
-    const faceDirectoryId = faceXml.path.replaceAll("\\\\", "/").split("/").slice(0, -1).at(-1);
+    const faceDirectoryId = faceXml.path.replaceAll("\\", "/").split("/").slice(0, -1).at(-1);
     if (faceDirectoryId?.toLowerCase() !== expectedPlayerId.toLowerCase()) {
       failures.push(candidate.path + ": face.xml is stored under internal player folder " + (faceDirectoryId ?? "<root>") + ", expected " + expectedPlayerId);
       continue;
