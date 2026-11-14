@@ -18,6 +18,27 @@ describe("face package dependency resolver",()=>{
   expect(result[0].status).toBe("resolved");
   expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.ftex"]);
  });
+ it("resolves the real PES 2021 FMDL DDS reference against the DDS side of a DDS/FTEX pair",()=>{
+  const result=resolveFaceDependencies([
+   {path:"#Win/face.fpk!/face_high.fmdl",kind:"model-pes2021",assetReferences:["/Assets/pes16/model/character/face/real/176104/sourceimages/face_bsm_alp.dds"]},
+   {path:"sourceimages/#windx11/face_bsm_alp.dds",kind:"texture-pes2017",sha256:"dds"},
+   {path:"sourceimages/#windx11/face_bsm_alp.ftex",kind:"texture-pes2021",sha256:"ftex"}
+  ]);
+  expect(result[0].status).toBe("resolved");
+  expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.dds"]);
+ });
+ it("classifies PES common sourceimages as external game dependencies",()=>{
+  const result=resolveFaceDependencies([
+   {path:"face_high.fmdl",kind:"model-pes2021",assetReferences:[
+    "/Assets/pes16/model/character/common/sourceimages/head_wet_cbm.dds",
+    "/Assets/pes16/model/character/common/sourceimages/dummy_nrm.tga",
+    "/Assets/pes16/model/character/face/real/176104/sourceimages/face_bsm_alp.dds"
+   ]},
+   {path:"sourceimages/face_bsm_alp.dds",kind:"texture-pes2017",sha256:"dds"}
+  ]);
+  expect(result.map(item=>item.status)).toEqual(["external","external","resolved"]);
+  expect(result[0].candidates).toEqual([]);
+ });
  it("matches DDS references to DDS assets without confusing them with FTEX companions",()=>{
   const result=resolveFaceDependencies([
    {path:"face.mtl",kind:"material-pes2017",assetReferences:["face_bsm_alp.dds"]},
