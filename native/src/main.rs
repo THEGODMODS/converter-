@@ -594,6 +594,109 @@ fn write_face_archive_member(
     Ok(())
 }
 
+/// Whether an extracted mirror folder contains only byte-identical members of its FPK.
+/// Such mirrors are common in unpacked face distributions (for example #Win/face_fpk beside
+/// #Win/face.fpk); retaining both copies makes Team Compiler treat the same face models as
+/// separate subfolder components.
+fn extracted_folder_matches_archive_entries(
+    folder: &Path,
+    archive_entries: &[(String, Vec<u8>)],
+) -> Result<bool, String> {
+    fn walk(
+        root: &Path,
+        current: &Path,
+        archive_entries: &[(String, Vec<u8>)],
+        has_model: &mut bool,
+    ) -> Result<bool, String> {
+        for entry in fs::read_dir(current)
+            .map_err(|e| format!("Read extracted FPK mirror {}: {e}", current.display()))?
+        {
+            let entry = entry.map_err(|e| format!("Read extracted FPK mirror entry: {e}"))?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|e| format!("Inspect extracted FPK mirror {}: {e}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!("Symbolic link in extracted FPK mirror: {}", path.display()));
+            }
+            if metadata.is_dir() {
+                if !walk(root, &path, archive_entries, has_model)? {
+                    return Ok(false);
+                }
+                continue;
+            }
+            if !metadata.is_file() {
+                return Ok(false);
+            }
+            let relative = path.strip_prefix(root)
+                .map_err(|_| "Extracted FPK mirror path escaped its root.")?
+                .to_string_lossy().replace('\\', "/");
+            let normalized = normalize_fox_virtual_path(&relative)?;
+            let Some((_, expected)) = archive_entries
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(&normalized))
+            else {
+                return Ok(false);
+            };
+            let actual = fs::read(&path)
+                .map_err(|e| format!("Read extracted FPK mirror member {}: {e}", path.display()))?;
+            if actual != *expected {
+                return Ok(false);
+            }
+            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fmdl")) {
+                *has_model = true;
+            }
+        }
+        Ok(true)
+    }
+
+    let mut has_model = false;
+    Ok(walk(folder, folder, archive_entries, &mut has_model)? && has_model)
+}
+
+/// Removes only the conventional <archive-stem>_fpk extraction mirror, and only after
+/// verifying every file in it is byte-identical to a member of the adjacent FPK. Any extra or
+/// differing file keeps the folder intact; this is not a broad folder-name exclusion.
+fn remove_redundant_extracted_fpk_mirrors(
+    source_root: &Path,
+    staged_root: &Path,
+    archive_paths: &[PathBuf],
+) -> Result<Vec<String>, String> {
+    let mut removed = Vec::new();
+    for archive_path in archive_paths {
+        if !archive_path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fpk")) {
+            continue;
+        }
+        let relative = archive_path.strip_prefix(source_root)
+            .map_err(|_| "Face FPK path escaped the source root.")?;
+        let stem = archive_path.file_stem().and_then(|value| value.to_str())
+            .ok_or("Face FPK has no valid UTF-8 file stem.")?;
+        let mirror_name = format!("{stem}_fpk");
+        let mirror = staged_root.join(relative.parent().unwrap_or_else(|| Path::new(""))).join(&mirror_name);
+        let metadata = match fs::symlink_metadata(&mirror) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("Inspect extracted FPK mirror {}: {error}", mirror.display())),
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            continue;
+        }
+        let bytes = fs::read(archive_path)
+            .map_err(|e| format!("Read FPK for mirror verification {}: {e}", archive_path.display()))?;
+        let archive = FpkFile::read(&bytes)
+            .map_err(|e| format!("Decode FPK for mirror verification {}: {e}", archive_path.display()))?;
+        let entries: Vec<(String, Vec<u8>)> = archive.entries().into_iter()
+            .map(|(name, data)| (normalize_fox_virtual_path(name).unwrap_or_else(|_| name.to_owned()), data.to_vec()))
+            .collect();
+        if extracted_folder_matches_archive_entries(&mirror, &entries)? {
+            fs::remove_dir_all(&mirror)
+                .map_err(|e| format!("Remove verified redundant FPK mirror {}: {e}", mirror.display()))?;
+            removed.push(relative.parent().unwrap_or_else(|| Path::new(""))
+                .join(mirror_name).to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(removed)
+}
+
 fn extract_face_archives(
     archive_paths: &[PathBuf],
     destination: &Path,
@@ -674,6 +777,8 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let mut total_bytes = 0u64;
     copy_face_source_tree(&input, &input, &player, &mut archive_paths, &mut seen, &mut file_count, &mut total_bytes)?;
     extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
+    let redundant_extracted_mirrors_removed =
+        remove_redundant_extracted_fpk_mirrors(&input, &player, &archive_paths)?;
     let normalized_texture_references = normalize_fox_face_model_paths(&player)?;
     let source_inventory = inspect_pes2021_face_source(&player)?;
     let has_model = {
@@ -761,6 +866,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "sourceModels": source_inventory.models,
         "sourceTextureCount": source_inventory.texture_count,
         "normalizedTextureReferences": normalized_texture_references,
+        "redundantExtractedMirrorsRemoved": redundant_extracted_mirrors_removed,
         "sourceFaceDiff": source_inventory.face_diff,
         "preservedSidecars": source_inventory.preserved_sidecars,
         "outputFiles": output_files,
