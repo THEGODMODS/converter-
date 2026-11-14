@@ -992,6 +992,12 @@ fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A single-face conversion must not publish a partial Team Compiler result.
+/// Warnings are allowed; any Error/Fatal finding makes Complete.success false.
+fn team_compiler_completed_cleanly(exit_code: u8, complete: Option<(bool, usize)>) -> bool {
+    exit_code == 0 && complete.is_some_and(|(success, files_written)| success && files_written > 0)
+}
+
 fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
     if target != 2017 {
         return Err("The first FACE FORGE release supports PES 2021 → PES 2017 only. PES 2017 → PES 2021 is deferred.".into());
@@ -1091,15 +1097,14 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
             other => event_summaries.push(format!("{other:?}")),
         }
     }
-    // Team Compiler uses exit 1 for a completed run that reported Error-level
-    // findings on one or more exports. It can still have committed usable CPKs.
-    // Do not discard those outputs blindly: accept only a completed run that wrote
-    // files, then independently require and verify the generated face CPK below.
-    // Exit 2/3, a missing Complete event, or zero committed files remain fatal.
-    let completed_with_output = complete.is_some_and(|(_, files_written)| files_written > 0);
-    if exit_code > 1 || !completed_with_output {
-        let details = event_summaries.iter().take(48).cloned().collect::<Vec<_>>().join(" | ");
-        return Err(format!("Upstream Team compiler did not produce a completed output (exit {exit_code}). {details}"));
+    // Unlike a multi-team batch compile, this route promises one complete face.
+    // Never publish a partial player when Team Compiler reports an Error-level
+    // finding, even if it wrote some unrelated or incomplete CPK output.
+    if !team_compiler_completed_cleanly(exit_code, complete) {
+        let details = event_summaries.iter().take(64).cloned().collect::<Vec<_>>().join(" | ");
+        return Err(format!(
+            "Upstream Team compiler did not complete a clean single-face conversion (exit {exit_code}, completion={complete:?}). Error-level findings are not accepted. {details}"
+        ));
     }
     let mut output_files = Vec::new();
     for entry in fs::read_dir(output).map_err(|e| format!("Read converted output: {e}"))? {
@@ -1627,6 +1632,16 @@ mod pes2017_target_id_tests {
         assert!(result.unwrap_err().contains("different data"));
         assert_eq!(std::fs::read(root.join("face_diff.bin")).unwrap(), b"loose-version");
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn accepts_only_clean_team_compiler_completion_with_written_output() {
+        use super::team_compiler_completed_cleanly;
+        assert!(team_compiler_completed_cleanly(0, Some((true, 1))));
+        assert!(!team_compiler_completed_cleanly(1, Some((false, 1))));
+        assert!(!team_compiler_completed_cleanly(0, Some((false, 1))));
+        assert!(!team_compiler_completed_cleanly(0, Some((true, 0))));
+        assert!(!team_compiler_completed_cleanly(0, None));
     }
 
     #[test]
