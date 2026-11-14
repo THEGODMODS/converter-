@@ -9,14 +9,32 @@ type TargetGeneration="2017"|"2021";
 type PlannedTexture={source:string;reference:string;destination:string;data:Buffer;format:string;width:number;height:number};
 const MAX_TEXTURE_BYTES=128*1024*1024,MAX_TOTAL_BYTES=512*1024*1024;
 
-function outputPath(reference:string,sourceExtension:string,targetExtension:string):string{
+function outputPath(reference:string,targetExtension:string):string{
  const normalized=reference.replace(/\\/g,"/").trim();
  if(!normalized||/^[a-z]:/i.test(normalized))throw new Error("Texture reference is empty or drive-qualified: "+reference);
- const relative=normalized.replace(/^\/+/,"").replace(/^\.\/+/,"");
+ const relative=normalized.replace(/^\\/+/, "").replace(/^\\.\\/+/, "");
  const parts=relative.split("/");
  if(parts.some(part=>!part||part==="."||part===".."))throw new Error("Texture reference escapes its project root: "+reference);
- if(path.posix.extname(relative).toLowerCase()!=="."+sourceExtension)throw new Error("Texture reference has an unexpected source extension: "+reference);
+ if(![".dds",".ftex"].includes(path.posix.extname(relative).toLowerCase()))throw new Error("Texture reference has an unsupported source extension: "+reference);
  return path.posix.join(path.posix.dirname(relative),path.posix.basename(relative,path.posix.extname(relative))+"."+targetExtension);
+}
+function textureStemKey(value:string):string{
+ const normalized=value.split("!/").pop()!.replace(/\\/g,"/").replace(/\\/+/g,"/").replace(/\\/#windx11(?=\\/)/ig,"").replace(/^\\/+/, "").replace(/^Assets\\//i,"").replace(/\\.(?:dds|ftex)$/i,"").toLowerCase();
+ return normalized;
+}
+function suffixPathScore(candidate:string,requested:string):number{
+ const a=candidate.split("/"),b=requested.split("/");let score=0;
+ while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;
+ return score;
+}
+function findFoxFtexCounterpart(project:FaceProject,reference:string):string{
+ const wanted=textureStemKey(reference);
+ const candidates=project.files.filter(file=>file.kind==="texture-pes2021").map(file=>({file,score:suffixPathScore(textureStemKey(file.path),wanted)})).filter(item=>item.score>0);
+ if(!candidates.length)throw new Error("The PES 2021 FMDL reference "+reference+" has no matching FTEX game texture. A same-stem DDS authoring image is not a substitute for the Fox game texture.");
+ const best=Math.max(...candidates.map(item=>item.score)),matches=candidates.filter(item=>item.score===best);
+ const hashes=new Set(matches.map(item=>item.file.sha256).filter(Boolean));
+ if(matches.length>1&&hashes.size!==1)throw new Error("The PES 2021 FTEX counterpart for "+reference+" is ambiguous: "+matches.map(item=>item.file.path).join(", "));
+ return matches[0].file.path;
 }
 
 async function readProjectFile(root:string,relative:string):Promise<Buffer>{
@@ -42,7 +60,7 @@ async function readProjectFile(root:string,relative:string):Promise<Buffer>{
 
 export async function convertFaceTextureDependencies(project:FaceProject,sourceRoot:string,outputRoot:string,target:TargetGeneration){
  const sourceKind=target==="2017"?"model-pes2021":"material-pes2017";
- const fromExtension=target==="2017"?"ftex":"dds",toExtension=target==="2017"?"dds":"ftex";
+ const toExtension=target==="2017"?"dds":"ftex";
  const relevantDependencies=project.dependencies.filter(dep=>dep.status!=="external"&&project.files.some(file=>file.path===dep.source&&file.kind===sourceKind));
  const unresolved=relevantDependencies.filter(dep=>dep.status==="missing"||dep.status==="ambiguous");
  if(unresolved.length)throw new Error("Face texture dependency closure is incomplete; missing or ambiguous sampler references: "+unresolved.map(dep=>dep.source+" -> "+dep.reference+" ("+dep.status+")").join("; "));
@@ -51,7 +69,9 @@ export async function convertFaceTextureDependencies(project:FaceProject,sourceR
  let totalBytes=0;
  for(const dependency of dependencies){
   if(dependency.candidates.length!==1)throw new Error("Texture dependency is not uniquely resolved: "+dependency.reference);
-  const source=dependency.candidates[0],file=project.files.find(item=>item.path===source);
+  const resolvedSource=dependency.candidates[0];
+  const source=target==="2017"?findFoxFtexCounterpart(project,dependency.reference):resolvedSource;
+  const file=project.files.find(item=>item.path===source);
   if(!file||file.kind!==(target==="2017"?"texture-pes2021":"texture-pes2017"))throw new Error("Resolved texture has the wrong source generation: "+source);
   const input=await readProjectFile(sourceRoot,source);
   if(input.length>MAX_TEXTURE_BYTES)throw new Error("Texture exceeds the 128 MiB conversion limit: "+source);
@@ -70,7 +90,7 @@ export async function convertFaceTextureDependencies(project:FaceProject,sourceR
    const colorSpace:TextureColorSpace=srgb?"SRGB":normal?"NORMAL":"LINEAR";
    converted=ddsToFtex(input,colorSpace);
   }
-  const destination=outputPath(dependency.reference,fromExtension,toExtension);
+  const destination=outputPath(dependency.reference,toExtension);
   const key=destination.toLowerCase(),prior=destinations.get(key);
   if(prior&&prior!==source)throw new Error("Two source textures map to the same Windows output path: "+destination);
   if(prior)continue;
