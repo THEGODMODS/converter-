@@ -381,7 +381,13 @@ fn has_face_archive_manifest(names: &[String]) -> bool {
     let has_face_xml = names.iter().any(|name| name.rsplit('/').next() == Some("face.xml"));
     let has_head_model = names.iter().any(|name| {
         let basename = name.rsplit('/').next().unwrap_or(name);
-        basename.ends_with("face_high_win32.model") || basename == "face_high.model"
+        // Team Compiler renames PES 2017 source face_high.model to
+        // oral_face_high_win32.model inside the generated player CPK.
+        // This is the canonical filename in the upstream pre-Fox fixtures.
+        basename == "oral_face_high_win32.model"
+            || basename == "oral_face_high.model"
+            || basename.ends_with("face_high_win32.model")
+            || basename == "face_high.model"
     });
     has_face_xml && has_head_model
 }
@@ -1603,6 +1609,18 @@ mod nested_face_archive_selection_tests {
             "face.xml".to_string(),
             "face_high_win32.model".to_string(),
             "face.mtl".to_string(),
+        ];
+        assert!(has_face_archive_manifest(&names));
+    }
+
+    #[test]
+    fn recognizes_the_actual_upstream_pes2017_nested_face_archive_layout() {
+        // Mirrors Team Compiler's prefox_faces.rs: the archive contains face.xml
+        // and oral_face_high_win32.model, not face_high_win32.model.
+        let names = vec![
+            "common/character0/model/character/face/real/71405/face.xml".to_string(),
+            "common/character0/model/character/face/real/71405/oral_face_high_win32.model".to_string(),
+            "common/character0/model/character/face/real/71405/face_high.mtl".to_string(),
         ];
         assert!(has_face_archive_manifest(&names));
     }
