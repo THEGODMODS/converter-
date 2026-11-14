@@ -1,12 +1,12 @@
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useRef} from "react";
 import * as THREE from "three";
 import {OrbitControls} from "three/examples/jsm/controls/OrbitControls.js";
 import {DDSLoader} from "three/examples/jsm/loaders/DDSLoader.js";
 import type {FacePreviewData} from "./types";
 export default function FacePreview({preview}:{preview:FacePreviewData}){
- const host=useRef<HTMLDivElement>(null);const [textureWarnings,setTextureWarnings]=useState<string[]>([]);
+ const host=useRef<HTMLDivElement>(null);
  useEffect(()=>{
-  const element=host.current;if(!element)return;const textureDiagnostics:string[]=[];
+  const element=host.current;if(!element)return;
   const scene=new THREE.Scene();scene.background=new THREE.Color("#0b111a");
   const camera=new THREE.PerspectiveCamera(42,1,0.01,1000);camera.position.set(2.6,1.8,3.2);
   const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:"low-power",preserveDrawingBuffer:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.82;element.appendChild(renderer.domElement);
@@ -20,7 +20,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
     const semantic=slot+" "+(source.textures[slot]??"");
     if(isEyeOcclusion||/eye_occlusion_alp/i.test(semantic)){
-     textureDiagnostics.push("Eye-occlusion mask for "+source.name+" uses a PES-specific shader; it is not treated as a black diffuse texture in the preview.");
+     
      continue;
     }
     try{
@@ -60,14 +60,13 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
      else if(/metallic|metalness/i.test(semantic)){material.metalnessMap=texture;material.metalness=1;}
      else if(/opacity|alpha/i.test(semantic)){material.alphaMap=texture;material.transparent=true;}
 
-    }catch(error){textureDiagnostics.push("Could not decode "+slot+" for "+source.name+": "+(error instanceof Error?error.message:String(error)));}
+    }catch{
+     // Texture preview failures fall back silently; diagnostics are not rendered under the 3D preview.
+    }
    }
-   if(!material.map&&Object.keys(source.textures).length&&!isEyeOcclusion)textureDiagnostics.push("No recognised diffuse/base-colour texture was assigned to "+source.name+"; the mesh is shown with a neutral fallback.");
-   if(!Object.keys(source.textureData??{}).length&&Object.keys(source.textures).length)textureDiagnostics.push("No referenced texture image was loaded for "+source.name+".");
    if(material.map){material.color.set(0xffffff);if(isHair){material.transparent=true;material.alphaTest=.35;material.depthWrite=true;}}
    return material;
   });
-  setTextureWarnings([...new Set(textureDiagnostics)].slice(0,12));
   for(const item of preview.meshes){
    const geometry=new THREE.BufferGeometry();const positions=new Float32Array(item.positions);geometry.setAttribute("position",new THREE.BufferAttribute(positions,3));if(item.normals.length===item.positions.length)geometry.setAttribute("normal",new THREE.BufferAttribute(new Float32Array(item.normals),3));else geometry.computeVertexNormals();if(item.uvs.length===item.positions.length/3*2)geometry.setAttribute("uv",new THREE.BufferAttribute(new Float32Array(item.uvs),2));geometry.setIndex(item.indices);geometry.computeBoundingBox();geometry.computeBoundingSphere();if(geometry.boundingBox){min.min(geometry.boundingBox.min);max.max(geometry.boundingBox.max);}
    const hasVertexColors=!!item.colors&&item.colors.length===positions.length;if(hasVertexColors){geometry.setAttribute("color",new THREE.BufferAttribute(new Float32Array(item.colors!),3));}const uvSets=item.uvSets??[item.uvs];uvSets.forEach((values,index)=>{if(values.length===positions.length/3*2){geometry.setAttribute(index===0?"uv":"uv"+index,new THREE.BufferAttribute(new Float32Array(values),2));}});const baseMaterial=builtMaterials[item.materialIndex]??new THREE.MeshStandardMaterial({color:0x8b929c,roughness:.76,side:THREE.DoubleSide});const material=hasVertexColors?baseMaterial.clone():baseMaterial;if(hasVertexColors)material.vertexColors=true;const mesh=new THREE.Mesh(geometry,material);mesh.name=item.name;mesh.userData.materialIndex=item.materialIndex;group.add(mesh);
@@ -77,5 +76,5 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   let frame=0;const render=()=>{if(frame)return;frame=requestAnimationFrame(()=>{frame=0;controls.update();renderer.render(scene,camera);});};controls.addEventListener("change",render);render();
   return()=>{if(frame)cancelAnimationFrame(frame);controls.removeEventListener("change",render);observer.disconnect();controls.dispose();group.traverse(object=>{if(object instanceof THREE.Mesh){object.geometry.dispose();const materials=Array.isArray(object.material)?object.material:[object.material];materials.forEach(material=>material.dispose());}});for(const texture of textureCache.values())texture.dispose();renderer.dispose();renderer.domElement.remove();};
  },[preview]);
- return <><div className="face-preview-canvas" ref={host} aria-label="Interactive 3D face geometry preview"/>{textureWarnings.length>0&&<div className="error-line preview-diagnostics" role="status">{textureWarnings.join(" · ")}</div>}</>;
+ return <div className="face-preview-canvas" ref={host} aria-label="Interactive 3D face geometry preview"/>;
 }

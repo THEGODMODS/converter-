@@ -4,6 +4,11 @@ export type FaceDependency={source:string;reference:string;status:"resolved"|"mi
 function normalizeAsset(value:string):string{
  return value.split(String.fromCharCode(92)).join("/").replace(/\/+/g,"/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\/#windx11(?=\/)/ig,"").toLowerCase();
 }
+function normalizeAssetPreservingPlatform(value:string):string{
+ const normalized=value.split(String.fromCharCode(92)).join("/").split("/").filter(Boolean).join("/");
+ const lower=normalized.toLowerCase();
+ return lower.startsWith("assets/")?lower.slice(7):lower;
+}
 function suffixScore(candidate:string,requested:string):number{
  const a=candidate.split("/"),b=requested.split("/");let score=0;
  while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;
@@ -16,6 +21,11 @@ export function isExternalFoxCommonTexture(reference:string):boolean{
 }
 /** Match the full virtual path, including its extension. DDS and FTEX files with the same stem are distinct assets, not interchangeable duplicates. */
 export function matchTextureFiles<T extends {path:string}>(files:T[],reference:string):T[]{
+ // First honor an explicit sourceimages/#windx11 spelling. Only fall back to
+ // platform-neutral matching when that exact directory variant is absent.
+ const exactWanted=normalizeAssetPreservingPlatform(reference);
+ const exactScored=files.map(file=>({file,score:suffixScore(normalizeAssetPreservingPlatform(file.path.split("!/").pop()??file.path),exactWanted)})).filter(item=>item.score>1);
+ if(exactScored.length){const best=Math.max(...exactScored.map(item=>item.score));return exactScored.filter(item=>item.score===best).map(item=>item.file);}
  const wanted=normalizeAsset(reference),scored=files.map(file=>({file,score:suffixScore(normalizeAsset(file.path.split("!/").pop()??file.path),wanted)})).filter(item=>item.score>0);
  if(scored.length){const best=Math.max(...scored.map(item=>item.score));return scored.filter(item=>item.score===best).map(item=>item.file);}
  const base=wanted.split("/").pop()??wanted;
@@ -37,8 +47,9 @@ export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]
     dependencies.push({source:model.path,reference,status:"external",candidates:[]});
     continue;
    }
-   const normalized=normalizeAsset(reference);
-   const relative=model.kind==="material-pes2017"?normalizeAsset(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference)):normalized;
+   const relative=model.kind==="material-pes2017"
+    ?normalizeAssetPreservingPlatform(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference))
+    :normalizeAssetPreservingPlatform(reference);
    const escapesRoot=model.kind==="material-pes2017"&&(relative===".."||relative.startsWith("../"));
    const candidates=escapesRoot?[]:matchTextureFiles(textures,relative);
    dependencies.push({source:model.path,reference,status:statusFor(candidates),candidates:candidates.map(file=>file.path)});

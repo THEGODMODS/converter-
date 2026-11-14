@@ -314,8 +314,16 @@ fn normalize_fox_face_texture_directory(
     if !folded.contains("/model/character/face/real/") || !folded.contains("/sourceimages/") {
         return false;
     }
+    // Preserve the source FMDL's platform directory preference. A folder can
+    // contain both DDS and FTEX variants under sourceimages and #windx11; always
+    // choosing #windx11 can silently bind a same-named but different asset.
+    let variants = if folded.contains("/sourceimages/#windx11/") {
+        ["sourceimages/#windx11", "sourceimages"]
+    } else {
+        ["sourceimages", "sourceimages/#windx11"]
+    };
     for ancestor in model_directory.ancestors() {
-        for relative in ["sourceimages/#windx11", "sourceimages"] {
+        for relative in variants {
             let texture_directory = ancestor.join(relative);
             if !texture_directory.join(file_name).is_file() {
                 continue;
@@ -373,6 +381,61 @@ fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
     Ok(changed)
 }
 
+
+/// Select the compiler's nested player-face archive. The temporary filename is
+/// preferred when present; a sole independently identified face CPK is accepted
+/// even if a newer upstream compiler changes its naming convention.
+fn has_face_archive_manifest(names: &[String]) -> bool {
+    let has_face_xml = names.iter().any(|name| name.rsplit('/').next() == Some("face.xml"));
+    let has_head_model = names.iter().any(|name| {
+        let basename = name.rsplit('/').next().unwrap_or(name);
+        // Team Compiler renames PES 2017 source face_high.model to
+        // oral_face_high_win32.model inside the generated player CPK.
+        // This is the canonical filename in the upstream pre-Fox fixtures.
+        basename == "oral_face_high_win32.model"
+            || basename == "oral_face_high.model"
+            || basename.ends_with("face_high_win32.model")
+            || basename == "face_high.model"
+    });
+    has_face_xml && has_head_model
+}
+
+fn choose_nested_face_cpk_index(candidates: &[(usize, String)], compiler_player_id: &str) -> Result<usize, String> {
+    let expected = format!("{compiler_player_id}.cpk");
+    let exact: Vec<usize> = candidates.iter()
+        .filter(|(_, path)| path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&expected)))
+        .map(|(index, _)| *index)
+        .collect();
+    if exact.len() == 1 {
+        return Ok(exact[0]);
+    }
+    if exact.len() > 1 {
+        return Err(format!("Team Compiler produced multiple nested face archives named {expected}."));
+    }
+    if candidates.len() == 1 {
+        return Ok(candidates[0].0);
+    }
+    if candidates.is_empty() {
+        return Err(format!("Team Compiler CPK has no independently verifiable nested face archive (temporary slot {compiler_player_id})."));
+    }
+    Err(format!(
+        "Team Compiler CPK has multiple independently verifiable nested face archives for temporary slot {compiler_player_id}: {}",
+        candidates.iter().map(|(_, path)| path.as_str()).collect::<Vec<_>>().join(" | ")
+    ))
+}
+
+/// Rewrite only the compiler-generated player-face directory, leaving shared texture
+/// paths (which may contain team/slot names) untouched.
+fn remap_compiler_face_archive_path(path: &str, compiler_face_dir: &str, target_face_dir: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let prefix = format!("{}/", compiler_face_dir.trim_end_matches('/'));
+    if normalized.to_ascii_lowercase().starts_with(&prefix.to_ascii_lowercase()) {
+        format!("{}/{}", target_face_dir.trim_end_matches('/'), &normalized[prefix.len()..])
+    } else {
+        normalized
+    }
+}
+
 /// Re-inject Fox-only sidecars after Team Compiler export. The upstream
 /// Team Compiler filters .fclo files from its Pre-Fox output, so source inventory
 /// alone is not evidence of preservation. Rebuild the nested player CPK and
@@ -388,23 +451,79 @@ fn inject_preserved_sidecars(
     let mut outer = cpk::CpkArchive::open(Cursor::new(outer_bytes))
         .map_err(|e| format!("Open Team Compiler CPK for sidecar preservation: {e}"))?;
     let outer_entries = outer.entries().to_vec();
-    let nested_index = outer_entries.iter().position(|entry| {
-        entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{compiler_player_id}.cpk")))
-    }).ok_or_else(|| format!("Team Compiler CPK has no nested face archive for temporary player {compiler_player_id}."))?;
+    // The compiler's temporary team/slot identity (70101) is an implementation
+    // detail, not the imported face's real PES player ID. Prefer the expected
+    // temporary filename, but do not assume the upstream compiler always uses it:
+    // identify the unique nested face CPK by its contents, then rename it to the
+    // actual target_player_id below.
+    let mut verified_face_candidates: Vec<(usize, String)> = Vec::new();
+    let mut cpk_entry_names: Vec<String> = Vec::new();
+    for (index, entry) in outer_entries.iter().enumerate() {
+        // A PES player-face archive belongs under the face/real directory and is
+        // at least a CPK header/table in size. Keep unrelated large textures out
+        // of the probe, but do not trust the member's filename extension.
+        let outer_path = entry.path.replace('\\', "/").to_ascii_lowercase();
+        if !outer_path.contains("/character/face/real/") || entry.size < 0x800 {
+            continue;
+        }
+        // Some compiler builds may omit or change the .cpk extension. The archive
+        // signature and its internal face manifest are authoritative.
+        let Ok(candidate_bytes) = outer.read(entry) else { continue };
+        let Ok(candidate) = cpk::CpkArchive::open(Cursor::new(candidate_bytes)) else { continue };
+        cpk_entry_names.push(entry.path.clone());
+        let names: Vec<String> = candidate.entries().iter()
+            .map(|item| item.path.replace('\\', "/").to_ascii_lowercase())
+            .collect();
+        if has_face_archive_manifest(&names) {
+            verified_face_candidates.push((index, entry.path.clone()));
+        }
+    }
+    let nested_index = choose_nested_face_cpk_index(&verified_face_candidates, &compiler_player_id)
+        .map_err(|reason| format!(
+            "{reason} Verified nested CPK candidates: {}. Outer archive members that parsed as CPK: {}",
+            verified_face_candidates.iter().map(|(_, path)| path.as_str()).collect::<Vec<_>>().join(" | "),
+            if cpk_entry_names.is_empty() { "<none>".to_string() } else { cpk_entry_names.join(" | ") }
+        ))?;
     let nested_entry = &outer_entries[nested_index];
     let nested_bytes = outer.read(nested_entry)
         .map_err(|e| format!("Read nested player CPK before sidecar preservation: {e}"))?;
     let mut nested = cpk::CpkArchive::open(Cursor::new(nested_bytes))
         .map_err(|e| format!("Open nested player CPK before sidecar preservation: {e}"))?;
     let nested_entries = nested.entries().to_vec();
+    // PES face CPKs use the player ID twice: as the outer <ID>.cpk member and
+    // as the final directory component containing face.xml/models/materials.
+    // Renaming only the outer CPK leaves the compiler's synthetic 70101 folder
+    // embedded inside it, so the game still cannot resolve the real player's face.
+    let face_xml_entries: Vec<_> = nested_entries.iter()
+        .filter(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("face.xml")))
+        .collect();
+    if face_xml_entries.len() != 1 {
+        return Err(format!("Expected exactly one face.xml in the generated nested CPK, found {}.", face_xml_entries.len()));
+    }
+    let compiler_face_dir = face_xml_entries[0].path.rsplit_once('/')
+        .map(|(parent, _)| parent.to_string())
+        .ok_or_else(|| "Generated face.xml is missing its player directory path.".to_string())?;
+    let compiler_folder_id = compiler_face_dir.rsplit('/').next().unwrap_or("");
+    let compiler_face_parent = compiler_face_dir.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("");
+    if !compiler_face_parent.eq_ignore_ascii_case("common/character0/model/character/face/real") {
+        return Err(format!("Generated face.xml is outside the PES 2017 face real directory: {compiler_face_dir}."));
+    }
+    if validate_target_player_id(compiler_folder_id).is_err() {
+        return Err(format!("Generated face.xml directory has an invalid temporary player folder ID: {compiler_folder_id}."));
+    }
+    // The compiler slot ID is a hint, not an identity guarantee. If upstream
+    // changes its synthetic team/slot numbering, a unique verified face CPK is
+    // still safe to remap from its own numeric directory to the requested ID.
+    let target_face_dir = format!("{compiler_face_parent}/{target_player_id}");
     let mut nested_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "FACE FORGE PLAYER FACE")
         .map_err(|e| format!("Create rebuilt nested face CPK: {e}"))?;
     let mut existing = std::collections::HashSet::new();
     for entry in &nested_entries {
-        existing.insert(entry.path.trim_start_matches('/').to_ascii_lowercase());
+        let output_path = remap_compiler_face_archive_path(&entry.path, &compiler_face_dir, &target_face_dir);
+        existing.insert(output_path.trim_start_matches('/').to_ascii_lowercase());
         let bytes = nested.read(entry).map_err(|e| format!("Read nested CPK entry {}: {e}", entry.path))?;
-        nested_writer.add(&entry.path, &bytes, None)
-            .map_err(|e| format!("Copy nested CPK entry {}: {e}", entry.path))?;
+        nested_writer.add(&output_path, &bytes, None)
+            .map_err(|e| format!("Copy nested CPK entry {} as {}: {e}", entry.path, output_path))?;
     }
     for sidecar in sidecars {
         let relative = Path::new(sidecar);
@@ -416,11 +535,14 @@ fn inject_preserved_sidecars(
         if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 256 * 1024 * 1024 {
             return Err(format!("Preserved sidecar is missing, unsafe or oversized: {sidecar}"));
         }
-        let archive_name = relative.to_string_lossy().replace('\\', "/");
+        let relative_name = relative.to_string_lossy().replace('\\', "/");
+        let archive_name = format!("{target_face_dir}/{relative_name}");
         let bytes = fs::read(&source).map_err(|e| format!("Read preserved sidecar {}: {e}", sidecar))?;
         if !existing.insert(archive_name.to_ascii_lowercase()) {
-            let prior = nested_entries.iter().find(|entry| entry.path.trim_start_matches('/').eq_ignore_ascii_case(&archive_name))
-                .ok_or_else(|| format!("Sidecar path collision could not be resolved for {archive_name}."))?;
+            let prior = nested_entries.iter().find(|entry| {
+                remap_compiler_face_archive_path(&entry.path, &compiler_face_dir, &target_face_dir)
+                    .trim_start_matches('/').eq_ignore_ascii_case(&archive_name)
+            }).ok_or_else(|| format!("Sidecar path collision could not be resolved for {archive_name}."))?;
             let prior_bytes = nested.read(prior)
                 .map_err(|e| format!("Read existing sidecar collision {archive_name}: {e}"))?;
             if prior_bytes.as_slice() == bytes.as_slice() {
@@ -464,10 +586,16 @@ fn inject_preserved_sidecars(
     let check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
         .map_err(|e| format!("Validate rebuilt nested face CPK: {e}"))?;
     for sidecar in sidecars {
-        let archive_name = sidecar.replace('\\', "/");
+        let archive_name = format!("{target_face_dir}/{}", sidecar.replace('\\', "/"));
         if !check_nested.entries().iter().any(|entry| entry.path.trim_start_matches('/').eq_ignore_ascii_case(&archive_name)) {
-            return Err(format!("Sidecar preservation read-back failed for {sidecar}."));
+            return Err(format!("Sidecar preservation read-back failed for {sidecar} at {archive_name}."));
         }
+    }
+    if !check_nested.entries().iter().any(|entry| {
+        entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("face.xml"))
+            && entry.path.rsplit_once('/').is_some_and(|(parent, _)| parent.eq_ignore_ascii_case(&target_face_dir))
+    }) {
+        return Err(format!("Rebuilt nested face CPK does not contain face.xml under the real player folder {target_face_dir}."));
     }
     fs::write(outer_path, rebuilt_outer).map_err(|e| format!("Write rebuilt Team CPK: {e}"))?;
     Ok(())
@@ -479,6 +607,12 @@ fn companion_fmdl_for_skeleton(skeleton: &Path) -> PathBuf {
     } else {
         skeleton.with_extension("fmdl")
     }
+}
+
+fn is_windows_metadata_file_name(name: &str) -> bool {
+    ["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
+        .iter()
+        .any(|ignored| name.eq_ignore_ascii_case(ignored))
 }
 
 fn copy_face_source_tree(
@@ -510,9 +644,7 @@ fn copy_face_source_tree(
         // Windows Explorer metadata is not part of a PES face. Ignore it before
         // inventory and path-collision checks, including copies in nested folders.
         let file_name = from.file_name().and_then(|name| name.to_str()).unwrap_or("");
-        if ["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
-            .iter().any(|ignored| file_name.eq_ignore_ascii_case(ignored))
-        {
+        if is_windows_metadata_file_name(file_name) {
             continue;
         }
         let extension = from.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
@@ -621,9 +753,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                     // Keep every non-metadata auxiliary asset for lossless reinjection into the
                     // generated player CPK. The upstream compiler is configured permissively
                     // below so unknown sidecars do not abort geometry conversion.
-                    if !["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
-                        .iter().any(|ignored| name.eq_ignore_ascii_case(ignored))
-                    {
+                    if !is_windows_metadata_file_name(name) {
                         inventory.preserved_sidecars.push(relative_text);
                     }
                 }
@@ -862,6 +992,12 @@ fn extract_face_archives(
         let archive = FpkFile::read(&bytes).map_err(|e| format!("Decode Fox archive {}: {e}", path.display()))?;
         for (name, data) in archive.entries() {
             let normalized = normalize_fox_virtual_path(name)?;
+            let basename = normalized.rsplit('/').next().unwrap_or("");
+            // Windows Explorer metadata can also be embedded inside FPK/FPKD;
+            // ignore it at extraction time, not only in loose source folders.
+            if is_windows_metadata_file_name(basename) {
+                continue;
+            }
             write_face_archive_member(destination, &normalized, data, seen, file_count, total_bytes)?;
         }
     }
@@ -880,6 +1016,16 @@ fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A single-face conversion must not publish a partial Team Compiler result.
+/// Warnings are allowed; any Error/Fatal finding makes Complete.success false.
+fn synthetic_player_folder_name(player_slot: &str, target_player_id: &str) -> String {
+    format!("{player_slot} - FACE FORGE {target_player_id}")
+}
+
+fn team_compiler_completed_cleanly(exit_code: u8, complete: Option<(bool, usize)>) -> bool {
+    exit_code == 0 && complete.is_some_and(|(success, files_written)| success && files_written > 0)
+}
+
 fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
     if target != 2017 {
         return Err("The first FACE FORGE release supports PES 2021 → PES 2017 only. PES 2017 → PES 2021 is deferred.".into());
@@ -889,7 +1035,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     // temporary identity and rename its nested CPK to the real player ID.
     let team_id = "701";
     let player_slot = "01";
-    let compiler_player_id = "70101";
+    let compiler_player_id = format!("{team_id}{player_slot}");
     let input_metadata = fs::symlink_metadata(input).map_err(|e| format!("Inspect face input: {e}"))?;
     if input_metadata.file_type().is_symlink() || !input_metadata.is_dir() {
         return Err("Complete face conversion requires a real source folder.".into());
@@ -906,7 +1052,10 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let workspace = create_temp_workspace()?;
     // Team Compiler requires the coverage tag as the second word in team export names.
     let export = workspace.0.join("exports").join("ff Full FACE FORGE");
-    let player = export.join("Players").join(format!("{player_slot} - FACE FORGE"));
+    // Keep the Team Compiler's player-common texture namespace unique per
+    // target ID. A fixed slot name would make every separately converted face
+    // point at the same common/701/01 - FACE FORGE texture directory.
+    let player = export.join("Players").join(synthetic_player_folder_name(player_slot, target_player_id));
     let data = workspace.0.join("data");
     let pes = workspace.0.join("PES");
     fs::create_dir_all(&player).map_err(|e| format!("Create staged player folder: {e}"))?;
@@ -979,15 +1128,14 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
             other => event_summaries.push(format!("{other:?}")),
         }
     }
-    // Team Compiler uses exit 1 for a completed run that reported Error-level
-    // findings on one or more exports. It can still have committed usable CPKs.
-    // Do not discard those outputs blindly: accept only a completed run that wrote
-    // files, then independently require and verify the generated face CPK below.
-    // Exit 2/3, a missing Complete event, or zero committed files remain fatal.
-    let completed_with_output = complete.is_some_and(|(_, files_written)| files_written > 0);
-    if exit_code > 1 || !completed_with_output {
-        let details = event_summaries.iter().take(48).cloned().collect::<Vec<_>>().join(" | ");
-        return Err(format!("Upstream Team compiler did not produce a completed output (exit {exit_code}). {details}"));
+    // Unlike a multi-team batch compile, this route promises one complete face.
+    // Never publish a partial player when Team Compiler reports an Error-level
+    // finding, even if it wrote some unrelated or incomplete CPK output.
+    if !team_compiler_completed_cleanly(exit_code, complete) {
+        let details = event_summaries.iter().take(64).cloned().collect::<Vec<_>>().join(" | ");
+        return Err(format!(
+            "Upstream Team compiler did not complete a clean single-face conversion (exit {exit_code}, completion={complete:?}). Error-level findings are not accepted. {details}"
+        ));
     }
     let mut output_files = Vec::new();
     for entry in fs::read_dir(output).map_err(|e| format!("Read converted output: {e}"))? {
@@ -1001,7 +1149,12 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         return Err("Upstream Team compiler reported success but produced no CPK archive.".into());
     }
     for archive_name in &cpk_files {
-        inject_preserved_sidecars(&output.join(archive_name), &player, compiler_player_id, target_player_id, &source_inventory.preserved_sidecars)?;
+        inject_preserved_sidecars(&output.join(archive_name), &player, &compiler_player_id, target_player_id, &source_inventory.preserved_sidecars)
+            .map_err(|error| format!(
+                "Post-compile face archive assembly failed for {archive_name}. Team Compiler exit={exit_code}, completion={complete:?}, warnings={}. Recent compiler events={}. {error}",
+                warning_summaries.iter().take(12).cloned().collect::<Vec<_>>().join(" | "),
+                event_summaries.iter().take(24).cloned().collect::<Vec<_>>().join(" | ")
+            ))?;
     }
     let report = serde_json::json!({
         "ok": true,
@@ -1513,6 +1666,23 @@ mod pes2017_target_id_tests {
     }
 
     #[test]
+    fn synthetic_player_texture_namespace_is_unique_per_real_player_id() {
+        use super::synthetic_player_folder_name;
+        assert_eq!(synthetic_player_folder_name("01", "176104"), "01 - FACE FORGE 176104");
+        assert_ne!(synthetic_player_folder_name("01", "176104"), synthetic_player_folder_name("01", "3997"));
+    }
+
+    #[test]
+    fn accepts_only_clean_team_compiler_completion_with_written_output() {
+        use super::team_compiler_completed_cleanly;
+        assert!(team_compiler_completed_cleanly(0, Some((true, 1))));
+        assert!(!team_compiler_completed_cleanly(1, Some((false, 1))));
+        assert!(!team_compiler_completed_cleanly(0, Some((false, 1))));
+        assert!(!team_compiler_completed_cleanly(0, Some((true, 0))));
+        assert!(!team_compiler_completed_cleanly(0, None));
+    }
+
+    #[test]
     fn accepts_real_player_ids_without_compiler_team_prefix_assumptions() {
         for id in ["1", "15958", "176104", "70101", "999999"] {
             assert!(validate_target_player_id(id).is_ok(), "{id}");
@@ -1524,5 +1694,221 @@ mod pes2017_target_id_tests {
         for id in ["", "0000000", "abcde", "17 6104", "1234567"] {
             assert!(validate_target_player_id(id).is_err(), "{id}");
         }
+    }
+}
+
+#[cfg(test)]
+mod nested_face_archive_selection_tests {
+    use super::{choose_nested_face_cpk_index, has_face_archive_manifest};
+
+    #[test]
+    fn identical_loose_and_fpk_face_members_are_deduplicated() {
+        use super::write_face_archive_member;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-duplicate-identical-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut seen = std::collections::HashSet::new();
+        let mut count = 0usize;
+        let mut total = 0u64;
+        write_face_archive_member(&root, "face_diff.bin", b"same-face-diff", &mut seen, &mut count, &mut total).unwrap();
+        write_face_archive_member(&root, "face_diff.bin", b"same-face-diff", &mut seen, &mut count, &mut total).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(total, b"same-face-diff".len() as u64);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn conflicting_loose_and_fpk_face_members_fail_without_choosing_one() {
+        use super::write_face_archive_member;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-duplicate-conflict-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut seen = std::collections::HashSet::new();
+        let mut count = 0usize;
+        let mut total = 0u64;
+        write_face_archive_member(&root, "face_diff.bin", b"loose-version", &mut seen, &mut count, &mut total).unwrap();
+        let error = write_face_archive_member(&root, "face_diff.bin", b"fpkd-version", &mut seen, &mut count, &mut total).unwrap_err();
+        assert!(error.contains("different data"));
+        assert_eq!(std::fs::read(root.join("face_diff.bin")).unwrap(), b"loose-version");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sourceimages_resolution_preserves_the_fmdl_platform_directory_preference() {
+        use super::normalize_fox_face_texture_directory;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-sourceimages-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let model_dir = root.join("#Win");
+        let standard = root.join("sourceimages");
+        let windx11 = standard.join("#windx11");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        std::fs::create_dir_all(&windx11).unwrap();
+        std::fs::write(standard.join("skin.dds"), b"standard").unwrap();
+        std::fs::write(windx11.join("skin.dds"), b"windx11").unwrap();
+
+        let mut standard_reference = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(normalize_fox_face_texture_directory(&model_dir, &mut standard_reference, "skin.dds"));
+        assert_eq!(standard_reference, "../sourceimages/");
+
+        let mut windx11_reference = "/Assets/pes16/model/character/face/real/176104/sourceimages/#windx11/".to_string();
+        assert!(normalize_fox_face_texture_directory(&model_dir, &mut windx11_reference, "skin.dds"));
+        assert_eq!(windx11_reference, "../sourceimages/#windx11/");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ignores_windows_metadata_in_loose_and_archived_face_assets() {
+        use super::is_windows_metadata_file_name;
+        assert!(is_windows_metadata_file_name("desktop.ini"));
+        assert!(is_windows_metadata_file_name("Thumbs.db"));
+        assert!(is_windows_metadata_file_name(".DS_Store"));
+        assert!(!is_windows_metadata_file_name("face_diff.bin"));
+    }
+
+    #[test]
+    fn identifies_a_face_archive_from_its_manifest_not_its_outer_filename() {
+        let names = vec![
+            "face.xml".to_string(),
+            "face_high_win32.model".to_string(),
+            "face.mtl".to_string(),
+        ];
+        assert!(has_face_archive_manifest(&names));
+    }
+
+    #[test]
+    fn recognizes_the_actual_upstream_pes2017_nested_face_archive_layout() {
+        // Mirrors Team Compiler's prefox_faces.rs: the archive contains face.xml
+        // and oral_face_high_win32.model, not face_high_win32.model.
+        let names = vec![
+            "common/character0/model/character/face/real/71405/face.xml".to_string(),
+            "common/character0/model/character/face/real/71405/oral_face_high_win32.model".to_string(),
+            "common/character0/model/character/face/real/71405/face_high.mtl".to_string(),
+        ];
+        assert!(has_face_archive_manifest(&names));
+    }
+
+    #[test]
+    fn rejects_archives_without_both_manifest_and_head_model() {
+        assert!(!has_face_archive_manifest(&["face.xml".to_string(), "hair_high_win32.model".to_string()]));
+        assert!(!has_face_archive_manifest(&["face_high_win32.model".to_string()]));
+    }
+
+    #[test]
+    fn rewrites_only_the_compiler_face_directory_and_preserves_shared_paths() {
+        use super::remap_compiler_face_archive_path;
+        assert_eq!(
+            remap_compiler_face_archive_path(
+                "common/character0/model/character/face/real/71405/face.xml",
+                "common/character0/model/character/face/real/71405",
+                "common/character0/model/character/face/real/176104"
+            ),
+            "common/character0/model/character/face/real/176104/face.xml"
+        );
+        assert_eq!(
+            remap_compiler_face_archive_path(
+                "common/character1/model/character/uniform/common/701/01 - FACE FORGE/skin.dds",
+                "common/character0/model/character/face/real/70101",
+                "common/character0/model/character/face/real/176104"
+            ),
+            "common/character1/model/character/uniform/common/701/01 - FACE FORGE/skin.dds"
+        );
+    }
+
+    #[test]
+    fn rebuilds_both_face_id_paths_and_places_sidecars_under_the_real_player_folder() {
+        use super::inject_preserved_sidecars;
+        use std::io::Cursor;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-cpk-remap-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let player_root = root.join("player");
+        std::fs::create_dir_all(&player_root).unwrap();
+        std::fs::write(player_root.join("fcl_hair_sim.fclo"), b"sidecar-bytes").unwrap();
+
+        let mut nested_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "TEST FACE")
+            .unwrap();
+        let compiler_dir = "common/character0/model/character/face/real/71405";
+        nested_writer.add(&format!("{compiler_dir}/face.xml"), b"<config/>", None).unwrap();
+        nested_writer.add(&format!("{compiler_dir}/oral_face_high_win32.model"), b"head-model", None).unwrap();
+        let nested_bytes = nested_writer.finish().unwrap().into_inner();
+
+        let mut outer_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "TEST TEAM")
+            .unwrap();
+        outer_writer.add(
+            "common/character0/model/character/face/real/71405",
+            &nested_bytes,
+            None,
+        ).unwrap();
+        let outer_bytes = outer_writer.finish().unwrap().into_inner();
+        let outer_path = root.join("team.cpk");
+        std::fs::write(&outer_path, outer_bytes).unwrap();
+
+        inject_preserved_sidecars(
+            &outer_path,
+            &player_root,
+            "70101",
+            "176104",
+            &["fcl_hair_sim.fclo".to_string()],
+        ).unwrap();
+
+        let outer_bytes = std::fs::read(&outer_path).unwrap();
+        let mut outer = cpk::CpkArchive::open(Cursor::new(outer_bytes)).unwrap();
+        let face_entry = outer.entries().iter()
+            .find(|entry| entry.path.ends_with("176104.cpk"))
+            .unwrap().clone();
+        let nested_bytes = outer.read(&face_entry).unwrap();
+        let nested = cpk::CpkArchive::open(Cursor::new(nested_bytes)).unwrap();
+        let paths: Vec<String> = nested.entries().iter().map(|entry| entry.path.clone()).collect();
+        assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/face.xml"));
+        assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/oral_face_high_win32.model"));
+        assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/fcl_hair_sim.fclo"));
+        assert!(paths.iter().all(|path| !path.contains("/71405/")));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn prefers_the_expected_temporary_compiler_filename() {
+        let candidates = vec![
+            (2, "Players/70102.cpk".to_string()),
+            (4, "Players/70101.cpk".to_string()),
+        ];
+        assert_eq!(choose_nested_face_cpk_index(&candidates, "70101").unwrap(), 4);
+    }
+
+    #[test]
+    fn accepts_a_single_verified_face_archive_with_a_different_upstream_name() {
+        let candidates = vec![(3, "face/compiled-player.cpk".to_string())];
+        assert_eq!(choose_nested_face_cpk_index(&candidates, "70101").unwrap(), 3);
+    }
+
+    #[test]
+    fn rejects_multiple_nonmatching_face_archives_instead_of_guessing() {
+        let candidates = vec![
+            (1, "face/player-a.cpk".to_string()),
+            (2, "face/player-b.cpk".to_string()),
+        ];
+        assert!(choose_nested_face_cpk_index(&candidates, "70101").unwrap_err().contains("multiple"));
     }
 }
