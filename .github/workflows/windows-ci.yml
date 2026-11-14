@@ -128,11 +128,20 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm install
-      - name: Ensure release tag matches package version
+      - name: Ensure release tag and draft release exist
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $expected = "v" + (node -p "require('./package.json').version")
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne $expected) { throw "Release tag $env:GITHUB_REF_NAME does not match package version $expected." }
+          # Create the release explicitly against this checked-out commit. This also
+          # guarantees GitHub has a valid tag before electron-builder uploads assets.
+          gh release view $expected --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $expected --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "FACE FORGE $expected" --notes "FACE FORGE Windows installer and automatic-update release." --draft
+            if ($LASTEXITCODE -ne 0) { throw "Could not create draft GitHub release $expected." }
+          }
       - name: Build and publish Windows installer plus updater metadata
         run: npm run dist:win:publish
         env:
