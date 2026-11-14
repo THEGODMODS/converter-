@@ -1,0 +1,55 @@
+name: Release-only Windows build
+on:
+  push:
+    branches:
+      - "release/v*"
+permissions:
+  contents: write
+concurrency:
+  group: face-forge-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    name: Build, verify and publish Windows release (no quality rerun)
+    if: startsWith(github.ref, 'refs/heads/release/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm install
+      - name: Confirm release version and create draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $expected = "v" + (node -p "require('./package.json').version")
+          if ($expected -ne "v0.2.8") { throw "Unexpected package version: $expected" }
+          gh release view $expected --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $expected --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "FACE FORGE $expected" --notes "FACE FORGE Windows installer and automatic-update release." --draft
+            if ($LASTEXITCODE -ne 0) { throw "Could not create draft GitHub release $expected." }
+          }
+      - name: Build and publish Windows installer plus updater metadata
+        run: npm run dist:win:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify installer and updater metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/verify-release-installer.mjs
+          if (!(Test-Path 'release/latest.yml')) { throw 'Missing latest.yml; updater feed is incomplete.' }
+          if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'Missing NSIS blockmap.' }
+          if (!(Test-Path 'release/win-unpacked/resources/app-update.yml')) { throw 'Missing packaged GitHub update-feed configuration.' }
+      - name: Publish verified release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $expected = "v" + (node -p "require('./package.json').version")
+          gh release edit $expected --draft=false --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Could not publish verified release $expected." }
