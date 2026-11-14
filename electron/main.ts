@@ -147,8 +147,38 @@ function registerIpc(){
   inspectedFaceProjects.set(root,inventory);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
-  const malformedAssets=inventory.files.filter(file=>file.kind.startsWith("invalid-"));
-  if(malformedAssets.length)throw new Error("Face preflight found "+malformedAssets.length+" malformed or unsupported file(s): "+malformedAssets.slice(0,8).map(file=>file.path+" ("+(file.formatDetails?.[0]??file.kind)+")").join(" | ")+(malformedAssets.length>8?" | and "+(malformedAssets.length-8)+" more.":""));
+  // Critical malformed assets always block conversion (models, materials, archives, face-diff).
+// Unreferenced invalid FTEX/DDS are common in community face packs (extra platform variants,
+// placeholder stubs under sourceimages/#Win/dx11, etc.) and must not abort the whole job.
+const criticalInvalidKinds = new Set([
+  "invalid-fmdl",
+  "invalid-model",
+  "invalid-mtl",
+  "invalid-fpk",
+  "invalid-face-diff",
+  "container-kpfd-unknown",
+]);
+const referencedTexturePaths = new Set(
+  inventory.dependencies
+    .filter(dep => dep.status === "resolved" || dep.status === "ambiguous")
+    .flatMap(dep => dep.candidates)
+);
+const criticalMalformed = inventory.files.filter(file => {
+  if (!file.kind.startsWith("invalid-") && file.kind !== "container-kpfd-unknown") return false;
+  if (criticalInvalidKinds.has(file.kind)) return true;
+  // invalid-ftex / invalid-dds only critical when actually referenced by a model
+  if (file.kind === "invalid-ftex" || file.kind === "invalid-dds") {
+    return referencedTexturePaths.has(file.path);
+  }
+  return true;
+});
+if (criticalMalformed.length) {
+  throw new Error(
+    "Face preflight found " + criticalMalformed.length + " critical malformed or unsupported file(s): " +
+    criticalMalformed.slice(0, 8).map(file => file.path + " (" + (file.formatDetails?.[0] ?? file.kind) + ")").join(" | ") +
+    (criticalMalformed.length > 8 ? " | and " + (criticalMalformed.length - 8) + " more." : "")
+  );
+}
   const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
   if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
   const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
