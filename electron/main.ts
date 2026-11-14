@@ -9,7 +9,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync=promisify(execFile);
 import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
-import { matchTextureFiles } from "../engine/dependencies";
+import { isExternalFoxCommonTexture, matchTextureFiles } from "../engine/dependencies";
 import { inferPesPlayerIdFromPath } from "../engine/player-id";
 import { inspectFaceDatabase } from "../engine/database";
 import { buildFaceProjectManifest } from "../engine/manifest";
@@ -47,7 +47,7 @@ function registerIpc(){
   const packageFiles=inventory.files.filter(file=>(file.kind==="container-fpk"||file.kind==="container-fpkd")&&!file.path.includes("!/"));
   const referencedPackages=packageFiles.filter(file=>(file.packageReferences?.length??0)>0);
   if(referencedPackages.length)throw new Error("This face package declares inter-package references. The current native conversion bridge cannot yet preserve or remap referenced package paths; conversion was stopped rather than silently dropping them.");
-  const unresolvedTextureDependencies=inventory.dependencies.filter(item=>item.status!=="resolved"&&inventory.files.some(file=>file.path===item.source&&(file.kind==="model-pes2021"||file.kind==="material-pes2017")));
+  const unresolvedTextureDependencies=inventory.dependencies.filter(item=>(item.status==="missing"||item.status==="ambiguous")&&inventory.files.some(file=>file.path===item.source&&(file.kind==="model-pes2021"||file.kind==="material-pes2017")));
   if(unresolvedTextureDependencies.length){const examples=unresolvedTextureDependencies.slice(0,5).map(item=>item.reference).join(", ");throw new Error("Conversion stopped: "+unresolvedTextureDependencies.length+" FMDL texture reference(s) are missing or ambiguous. Resolve these dependencies before model export. Examples: "+examples);}
   if(inventory.files.some(file=>file.kind==="model-pes2021"&&(file.assetReferences?.length??0)===0))throw new Error("Conversion stopped: at least one FMDL has no semantically decoded material/texture references. The current inspector cannot prove that its external dependencies are preserved.");
   if(inventory.files.some(file=>file.kind==="invalid-mtl"))throw new Error("Conversion stopped: a PES 2017 MTL file is malformed or unsupported. Repair the material definition before converting.");
@@ -137,7 +137,7 @@ function registerIpc(){
   const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
-  const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status!=="resolved");
+  const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
   if(unresolvedDependencies.length){
    const describe=(dependency:typeof unresolvedDependencies[number])=>{
     const source=inventory.files.find(file=>file.path===dependency.source);
@@ -260,7 +260,10 @@ function registerIpc(){
      const best=matchTextureFiles(textureFiles,reference);
      const uniqueHashes=new Set(best.map(file=>file.sha256));
      const resolved=uniqueHashes.size===1&&best.length?[best[0]]:best.length===1?best:[];
-     if(!resolved.length){warnings.push("Texture "+reference+" for "+material.name+" could not be matched uniquely by full path and extension; it is not shown in the preview.");continue;}
+     if(!resolved.length){
+      if(isExternalFoxCommonTexture(reference)){warnings.push("Shared PES common texture "+reference+" is not bundled with this face; the preview uses a fallback for that material.");continue;}
+      warnings.push("Texture "+reference+" for "+material.name+" could not be matched uniquely by full path and extension; it is not shown in the preview.");continue;
+     }
      const asset=resolved[0];let textureBytes:Buffer;
      if(asset.path.includes("!/")){
       const marker=asset.path.indexOf("!/"),archiveRelative=asset.path.slice(0,marker),memberName=asset.path.slice(marker+2);
