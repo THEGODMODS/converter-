@@ -598,16 +598,16 @@ fn write_face_archive_member(
 /// Such mirrors are common in unpacked face distributions (for example #Win/face_fpk beside
 /// #Win/face.fpk); retaining both copies makes Team Compiler treat the same face models as
 /// separate subfolder components.
-fn extracted_folder_matches_archive_entries(
+fn redundant_mirror_members(
     folder: &Path,
     archive_entries: &[(String, Vec<u8>)],
-) -> Result<bool, String> {
+) -> Result<Vec<PathBuf>, String> {
     fn walk(
         root: &Path,
         current: &Path,
         archive_entries: &[(String, Vec<u8>)],
-        has_model: &mut bool,
-    ) -> Result<bool, String> {
+        members: &mut Vec<PathBuf>,
+    ) -> Result<(), String> {
         for entry in fs::read_dir(current)
             .map_err(|e| format!("Read extracted FPK mirror {}: {e}", current.display()))?
         {
@@ -619,13 +619,11 @@ fn extracted_folder_matches_archive_entries(
                 return Err(format!("Symbolic link in extracted FPK mirror: {}", path.display()));
             }
             if metadata.is_dir() {
-                if !walk(root, &path, archive_entries, has_model)? {
-                    return Ok(false);
-                }
+                walk(root, &path, archive_entries, members)?;
                 continue;
             }
             if !metadata.is_file() {
-                return Ok(false);
+                continue;
             }
             let relative = path.strip_prefix(root)
                 .map_err(|_| "Extracted FPK mirror path escaped its root.")?
@@ -635,27 +633,54 @@ fn extracted_folder_matches_archive_entries(
                 .iter()
                 .find(|(name, _)| name.eq_ignore_ascii_case(&normalized))
             else {
-                return Ok(false);
+                continue;
             };
             let actual = fs::read(&path)
                 .map_err(|e| format!("Read extracted FPK mirror member {}: {e}", path.display()))?;
             if actual.as_slice() != expected.as_slice() {
-                return Ok(false);
+                return Err(format!(
+                    "Extracted FPK mirror member {} conflicts with the adjacent archive member; conversion stopped rather than choosing one copy.",
+                    path.display()
+                ));
             }
-            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fmdl")) {
-                *has_model = true;
-            }
+            members.push(path);
         }
-        Ok(true)
+        Ok(())
     }
 
-    let mut has_model = false;
-    Ok(walk(folder, folder, archive_entries, &mut has_model)? && has_model)
+    let mut members = Vec::new();
+    walk(folder, folder, archive_entries, &mut members)?;
+    if !members.iter().any(|path| path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fmdl"))) {
+        return Ok(Vec::new());
+    }
+    Ok(members)
 }
 
-/// Removes only the conventional <archive-stem>_fpk extraction mirror, and only after
-/// verifying every file in it is byte-identical to a member of the adjacent FPK. Any extra or
-/// differing file keeps the folder intact; this is not a broad folder-name exclusion.
+fn remove_empty_directories(folder: &Path) -> Result<bool, String> {
+    for entry in fs::read_dir(folder)
+        .map_err(|e| format!("Read extracted FPK mirror folder {}: {e}", folder.display()))?
+    {
+        let entry = entry.map_err(|e| format!("Read extracted FPK mirror folder entry: {e}"))?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|e| format!("Inspect extracted FPK mirror folder {}: {e}", path.display()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!("Symbolic link in extracted FPK mirror: {}", path.display()));
+        }
+        if metadata.is_dir() && remove_empty_directories(&path)? {
+            fs::remove_dir(&path)
+                .map_err(|e| format!("Remove empty extracted FPK mirror folder {}: {e}", path.display()))?;
+        }
+    }
+    Ok(fs::read_dir(folder)
+        .map_err(|e| format!("Recheck extracted FPK mirror folder {}: {e}", folder.display()))?
+        .next()
+        .is_none())
+}
+
+/// Removes byte-identical files from the conventional <archive-stem>_fpk mirror only after
+/// verifying them against the adjacent FPK. Extra files are retained; conflicting same-path
+/// files fail closed instead of leaving duplicate models for the compiler.
 fn remove_redundant_extracted_fpk_mirrors(
     source_root: &Path,
     staged_root: &Path,
@@ -687,15 +712,23 @@ fn remove_redundant_extracted_fpk_mirrors(
         let entries: Vec<(String, Vec<u8>)> = archive.entries().into_iter()
             .map(|(name, data)| Ok((normalize_fox_virtual_path(name)?, data.to_vec())))
             .collect::<Result<_, String>>()?;
-        if extracted_folder_matches_archive_entries(&mirror, &entries)? {
-            fs::remove_dir_all(&mirror)
-                .map_err(|e| format!("Remove verified redundant FPK mirror {}: {e}", mirror.display()))?;
+        let members = redundant_mirror_members(&mirror, &entries)?;
+        for member in members {
+            let relative_member = member.strip_prefix(&mirror)
+                .map_err(|_| "Extracted FPK mirror member escaped its root.")?;
+            fs::remove_file(&member)
+                .map_err(|e| format!("Remove verified duplicate FPK mirror member {}: {e}", member.display()))?;
             removed.push(relative.parent().unwrap_or_else(|| Path::new(""))
-                .join(mirror_name).to_string_lossy().replace('\\', "/"));
+                .join(&mirror_name).join(relative_member).to_string_lossy().replace('\\', "/"));
+        }
+        if remove_empty_directories(&mirror)? {
+            fs::remove_dir(&mirror)
+                .map_err(|e| format!("Remove empty extracted FPK mirror {}: {e}", mirror.display()))?;
         }
     }
     Ok(removed)
 }
+
 
 fn extract_face_archives(
     archive_paths: &[PathBuf],
@@ -866,7 +899,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "sourceModels": source_inventory.models,
         "sourceTextureCount": source_inventory.texture_count,
         "normalizedTextureReferences": normalized_texture_references,
-        "redundantExtractedMirrorsRemoved": redundant_extracted_mirrors_removed,
+        "redundantExtractedMirrorFilesRemoved": redundant_extracted_mirrors_removed,
         "sourceFaceDiff": source_inventory.face_diff,
         "preservedSidecars": source_inventory.preserved_sidecars,
         "outputFiles": output_files,
@@ -1196,7 +1229,7 @@ mod face_source_path_tests {
     use super::{companion_fmdl_for_skeleton, is_face_archive_extension};
 
     #[test]
-    fn recognizes_the_real_face_fpk_extraction_folder_as_a_byte_identical_mirror() {
+    fn removes_only_byte_identical_members_from_the_face_fpk_mirror() {
         let root = std::env::temp_dir().join(format!("face-forge-fpk-mirror-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let mirror = root.join("#Win/face_fpk");
@@ -1204,26 +1237,32 @@ mod face_source_path_tests {
         std::fs::write(mirror.join("face_high.fmdl"), b"face-model").unwrap();
         std::fs::write(mirror.join("hair_high.fmdl"), b"hair-model").unwrap();
         std::fs::write(mirror.join("face_diff.bin"), b"face-diff").unwrap();
+        std::fs::write(mirror.join("extra_texture.dds"), b"custom").unwrap();
         let entries = vec![
             ("face_high.fmdl".to_string(), b"face-model".to_vec()),
             ("hair_high.fmdl".to_string(), b"hair-model".to_vec()),
             ("face_diff.bin".to_string(), b"face-diff".to_vec()),
         ];
-        assert!(super::extracted_folder_matches_archive_entries(&mirror, &entries).unwrap());
+        let members = super::redundant_mirror_members(&mirror, &entries).unwrap();
+        assert_eq!(members.len(), 3);
+        for member in members {
+            std::fs::remove_file(member).unwrap();
+        }
+        assert!(mirror.join("extra_texture.dds").is_file());
+        assert!(!mirror.join("face_high.fmdl").exists());
         std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
-    fn keeps_an_extracted_face_folder_when_it_contains_extra_or_changed_assets() {
+    fn rejects_a_changed_duplicate_instead_of_choosing_between_two_models() {
         let root = std::env::temp_dir().join(format!("face-forge-fpk-mirror-conflict-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let mirror = root.join("#Win/face_fpk");
         std::fs::create_dir_all(&mirror).unwrap();
         std::fs::write(mirror.join("face_high.fmdl"), b"changed-face-model").unwrap();
         let entries = vec![("face_high.fmdl".to_string(), b"face-model".to_vec())];
-        assert!(!super::extracted_folder_matches_archive_entries(&mirror, &entries).unwrap());
-        std::fs::write(mirror.join("custom_component.fmdl"), b"custom").unwrap();
-        assert!(!super::extracted_folder_matches_archive_entries(&mirror, &entries).unwrap());
+        let error = super::redundant_mirror_members(&mirror, &entries).unwrap_err();
+        assert!(error.contains("conflicts with the adjacent archive member"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 
