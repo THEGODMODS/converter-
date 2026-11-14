@@ -12,15 +12,14 @@ const MAX_TEXTURE_BYTES=128*1024*1024,MAX_TOTAL_BYTES=512*1024*1024;
 function outputPath(reference:string,targetExtension:string):string{
  const normalized=reference.replace(/\\/g,"/").trim();
  if(!normalized||/^[a-z]:/i.test(normalized))throw new Error("Texture reference is empty or drive-qualified: "+reference);
- const relative=normalized.replace(/^\\/+/, "").replace(/^\\.\\/+/, "");
+ const relative=normalized.replace(/^\/+/, "").replace(/^\.\//, "");
  const parts=relative.split("/");
  if(parts.some(part=>!part||part==="."||part===".."))throw new Error("Texture reference escapes its project root: "+reference);
  if(![".dds",".ftex"].includes(path.posix.extname(relative).toLowerCase()))throw new Error("Texture reference has an unsupported source extension: "+reference);
  return path.posix.join(path.posix.dirname(relative),path.posix.basename(relative,path.posix.extname(relative))+"."+targetExtension);
 }
 function textureStemKey(value:string):string{
- const normalized=value.split("!/").pop()!.replace(/\\/g,"/").replace(/\\/+/g,"/").replace(/\\/#windx11(?=\\/)/ig,"").replace(/^\\/+/, "").replace(/^Assets\\//i,"").replace(/\\.(?:dds|ftex)$/i,"").toLowerCase();
- return normalized;
+ return value.split("!/").pop()!.replace(/\\/g,"/").replace(/\/+/g,"/").replace(/\/#windx11(?=\/)/ig,"").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(?:dds|ftex)$/i,"").toLowerCase();
 }
 function suffixPathScore(candidate:string,requested:string):number{
  const a=candidate.split("/"),b=requested.split("/");let score=0;
