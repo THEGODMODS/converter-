@@ -97,7 +97,7 @@ function verifyFaceXmlReferences(
       }
       const texturePath = attributes.get("path");
       if (!texturePath) throw new Error("Material sampler is missing its texture path: " + materialPath);
-      const materialDirectory = materialEntry.path.replaceAll("\\\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
+      const materialDirectory = materialEntry.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
       const local = localReference(texturePath);
       if (local !== null) {
         textures.push(...resolve(texturePath, "texture", materialDirectory));
@@ -106,15 +106,15 @@ function verifyFaceXmlReferences(
       // Team Compiler emits player-owned PES 2017 textures into the outer team
       // CPK under common/character1/, while the nested face MTL keeps the game
       // virtual path without that prefix. These are not arbitrary external files.
-      const virtualPath = texturePath.trim().replaceAll("\\\\", "/").replace(/^\\/+/, "").toLowerCase();
+      const virtualPath = texturePath.trim().replaceAll("\\", "/").replace(/^\\/+/, "").toLowerCase();
       if (virtualPath.startsWith("model/character/uniform/common/")) {
         const outerPath = "common/character1/" + virtualPath;
-        if (!outerFiles.some((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === outerPath)) {
+        if (!outerFiles.some((file) => file.path.replaceAll("\\", "/").toLowerCase() === outerPath)) {
           throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
         }
         textures.push(outerPath);
       } else if (virtualPath.startsWith("common/character1/")) {
-        if (!outerFiles.some((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === virtualPath)) {
+        if (!outerFiles.some((file) => file.path.replaceAll("\\", "/").toLowerCase() === virtualPath)) {
           throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
         }
         textures.push(virtualPath);
@@ -135,7 +135,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
   const expectedFaceDirectory = "common/character0/model/character/face/real/" + expectedPlayerId;
   const expectedFaceCpk = expectedFaceDirectory + ".cpk";
   const candidates = outerInspection.files.filter((entry) =>
-    entry.path.replaceAll("\\\\", "/").toLowerCase() === expectedFaceCpk.toLowerCase()
+    entry.path.replaceAll("\\", "/").toLowerCase() === expectedFaceCpk.toLowerCase()
   );
   if (!candidates.length) throw new Error("PES 2017 team CPK has no nested player-face CPK for target player ID " + expectedPlayerId + ".");
 
@@ -152,7 +152,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
       failures.push(candidate.path + ": missing face.xml");
       continue;
     }
-    const faceDirectory = faceXml.path.replaceAll("\\\\", "/").split("/").slice(0, -1).join("/");
+    const faceDirectory = faceXml.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/");
     if (faceDirectory.toLowerCase() !== expectedFaceDirectory.toLowerCase()) {
       failures.push(candidate.path + ": face.xml is stored under internal folder " + (faceDirectory || "<root>") + ", expected " + expectedFaceDirectory);
       continue;
