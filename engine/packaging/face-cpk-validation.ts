@@ -80,8 +80,8 @@ function verifyFaceXmlReferences(
     models.push(...modelPaths);
     materials.push(...materialPaths);
     if (
-      modelPaths.some((name) => /(?:^|\\/)(?:oral_)?face_high_win32\\.model$/i.test(name)) &&
-      materialPaths.some((name) => /(?:^|\\/)(?:face_high|face)\\.mtl$/i.test(name))
+      modelPaths.some((name) => /(?:^|\/)(?:oral_)?face_high_win32\.model$/i.test(name)) &&
+      materialPaths.some((name) => /(?:^|\/)(?:face_high|face)\.mtl$/i.test(name))
     ) {
       headMaterialPairFound = true;
     }
@@ -109,7 +109,7 @@ function verifyFaceXmlReferences(
     const materialEntry = files.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === materialPath);
     if (!materialEntry) continue;
     const materialXml = archiveBytes.subarray(materialEntry.offset, materialEntry.offset + materialEntry.size).toString("utf8");
-    if (!/<materialset(?:\\s|>)/i.test(materialXml) || !/<\\/materialset\\s*>\\s*$/i.test(materialXml)) {
+    if (!/<materialset(?:\s|>)/i.test(materialXml) || !/<\/materialset\s*>\s*$/i.test(materialXml)) {
       throw new Error("Referenced PES 2017 material set is not a complete materialset document: " + materialPath);
     }
     for (const sampler of materialXml.matchAll(/<sampler\b([^>]*)\/?\s*>/gi)) {
