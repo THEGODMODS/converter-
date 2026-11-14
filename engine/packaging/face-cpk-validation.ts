@@ -35,6 +35,7 @@ function verifyFaceXmlReferences(
   files: CpkInspection["files"],
   faceXmlPath: string,
   archiveBytes: Buffer,
+  outerFiles: CpkInspection["files"],
 ) {
   const xml = xmlBytes.toString("utf8");
   if (xml.includes("\u0000") || !/^\s*<\?xml\b[\s\S]*?\?>/i.test(xml) ||
@@ -96,8 +97,28 @@ function verifyFaceXmlReferences(
       }
       const texturePath = attributes.get("path");
       if (!texturePath) throw new Error("Material sampler is missing its texture path: " + materialPath);
-      const materialDirectory = materialEntry.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
-      textures.push(...resolve(texturePath, "texture", materialDirectory));
+      const materialDirectory = materialEntry.path.replaceAll("\\\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
+      const local = localReference(texturePath);
+      if (local !== null) {
+        textures.push(...resolve(texturePath, "texture", materialDirectory));
+        continue;
+      }
+      // Team Compiler emits player-owned PES 2017 textures into the outer team
+      // CPK under common/character1/, while the nested face MTL keeps the game
+      // virtual path without that prefix. These are not arbitrary external files.
+      const virtualPath = texturePath.trim().replaceAll("\\\\", "/").replace(/^\\/+/, "").toLowerCase();
+      if (virtualPath.startsWith("model/character/uniform/common/")) {
+        const outerPath = "common/character1/" + virtualPath;
+        if (!outerFiles.some((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === outerPath)) {
+          throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
+        }
+        textures.push(outerPath);
+      } else if (virtualPath.startsWith("common/character1/")) {
+        if (!outerFiles.some((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === virtualPath)) {
+          throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
+        }
+        textures.push(virtualPath);
+      }
     }
   }
   return { models: resolvedModels, materials: resolvedMaterials, head, headMaterial, textures: unique(textures) };
@@ -138,7 +159,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
     }
     try {
       const xmlBytes = nestedBytes.subarray(faceXml.offset, faceXml.offset + faceXml.size);
-      const references = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path, nestedBytes);
+      const references = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path, nestedBytes, outerInspection.files);
       return {
         outerInspection,
         faceCpkPath: candidate.path,
