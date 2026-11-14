@@ -10,16 +10,11 @@ import { promisify } from "node:util";
 const execFileAsync=promisify(execFile);
 function describeProcessFailure(error:unknown):string{
  const processError=error as NodeJS.ErrnoException&{stderr?:string;stdout?:string;signal?:string};
- // execFile's message begins with the full executable and command line. Put the
- // compiler's actual stderr/stdout first so a concise renderer message never
- // truncates the actionable failure before the user can see it.
- const details:string[]=[];
- if(typeof processError.stderr==="string"&&processError.stderr.trim())details.push("Native error: "+processError.stderr.trim().slice(0,12000));
- if(typeof processError.stdout==="string"&&processError.stdout.trim())details.push("Native output: "+processError.stdout.trim().slice(0,12000));
+ const details=[error instanceof Error?error.message:String(error)];
  if(processError.code!==undefined)details.push("Process exit code: "+processError.code);
  if(processError.signal)details.push("Process signal: "+processError.signal);
- const message=error instanceof Error?error.message:String(error);
- if(message)details.push("Process: "+message.slice(0,2000));
+ if(typeof processError.stderr==="string"&&processError.stderr.trim())details.push("Native stderr: "+processError.stderr.trim().slice(0,12000));
+ if(typeof processError.stdout==="string"&&processError.stdout.trim())details.push("Native stdout: "+processError.stdout.trim().slice(0,12000));
  return details.join("\n");
 }
 import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
@@ -212,7 +207,19 @@ function registerIpc(){
   const stageOutput=path.join(stageParent,"output");
   try{
    await fs.promises.mkdir(stageOutput);
-   const result=await execFileAsync(binary,["convert-face-folder","--input",realRoot,"--target",String(target),"--player-id",resolvedPlayerId,"--out",stageOutput],{timeout:600000,maxBuffer:16*1024*1024,windowsHide:true});
+   
+   // Normalized path strings to protect windows spacing in process execution bridge
+   const normalizedInput = path.normalize(realRoot);
+   const normalizedOutput = path.normalize(stageOutput);
+
+   const result=await execFileAsync(binary,[
+     "convert-face-folder",
+     "--input", normalizedInput,
+     "--target", String(target),
+     "--player-id", resolvedPlayerId,
+     "--out", normalizedOutput
+   ],{timeout:600000,maxBuffer:16*1024*1024,windowsHide:true});
+
    let parsedReport:unknown;try{parsedReport=JSON.parse(result.stdout.trim());}catch{throw new Error("The upstream face compiler returned an invalid conversion report.");}
    if(!parsedReport||typeof parsedReport!=="object"||(parsedReport as {ok?:unknown}).ok!==true||!Array.isArray((parsedReport as {cpkFiles?:unknown}).cpkFiles)||(parsedReport as {cpkFiles:string[]}).cpkFiles.length===0)throw new Error("The upstream compiler did not produce a conversion report with CPK outputs.");
    const cpkNames=(parsedReport as {cpkFiles:string[]}).cpkFiles;
