@@ -1718,7 +1718,7 @@ mod nested_face_archive_selection_tests {
         use super::remap_compiler_face_archive_path;
         assert_eq!(
             remap_compiler_face_archive_path(
-                "common/character0/model/character/face/real/70101/face.xml",
+                "common/character0/model/character/face/real/71405/face.xml",
                 "common/character0/model/character/face/real/71405",
                 "common/character0/model/character/face/real/176104"
             ),
