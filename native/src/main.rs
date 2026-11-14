@@ -416,6 +416,18 @@ fn choose_nested_face_cpk_index(candidates: &[(usize, String)], compiler_player_
     ))
 }
 
+/// Rewrite only the compiler-generated player-face directory, leaving shared texture
+/// paths (which may contain team/slot names) untouched.
+fn remap_compiler_face_archive_path(path: &str, compiler_face_dir: &str, target_face_dir: &str) -> String {
+    let normalized = path.replace('\\\\', "/");
+    let prefix = format!("{}/", compiler_face_dir.trim_end_matches('/'));
+    if normalized.to_ascii_lowercase().starts_with(&prefix.to_ascii_lowercase()) {
+        format!("{}{}", target_face_dir.trim_end_matches('/'), &normalized[prefix.len()..])
+    } else {
+        normalized
+    }
+}
+
 /// Re-inject Fox-only sidecars after Team Compiler export. The upstream
 /// Team Compiler filters .fclo files from its Pre-Fox output, so source inventory
 /// alone is not evidence of preservation. Rebuild the nested player CPK and
@@ -464,14 +476,38 @@ fn inject_preserved_sidecars(
     let mut nested = cpk::CpkArchive::open(Cursor::new(nested_bytes))
         .map_err(|e| format!("Open nested player CPK before sidecar preservation: {e}"))?;
     let nested_entries = nested.entries().to_vec();
+    // PES face CPKs use the player ID twice: as the outer <ID>.cpk member and
+    // as the final directory component containing face.xml/models/materials.
+    // Renaming only the outer CPK leaves the compiler's synthetic 70101 folder
+    // embedded inside it, so the game still cannot resolve the real player's face.
+    let face_xml_entries: Vec<_> = nested_entries.iter()
+        .filter(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("face.xml")))
+        .collect();
+    if face_xml_entries.len() != 1 {
+        return Err(format!("Expected exactly one face.xml in the generated nested CPK, found {}.", face_xml_entries.len()));
+    }
+    let compiler_face_dir = face_xml_entries[0].path.rsplit_once('/')
+        .map(|(parent, _)| parent.to_string())
+        .ok_or_else(|| "Generated face.xml is missing its player directory path.".to_string())?;
+    let compiler_folder_id = compiler_face_dir.rsplit('/').next().unwrap_or("");
+    if !compiler_folder_id.eq_ignore_ascii_case(compiler_player_id) {
+        return Err(format!(
+            "Generated face.xml directory ends in {compiler_folder_id}, expected temporary compiler player ID {compiler_player_id}."
+        ));
+    }
+    let target_face_dir = match compiler_face_dir.rsplit_once('/') {
+        Some((parent, _)) => format!("{parent}/{target_player_id}"),
+        None => target_player_id.to_string(),
+    };
     let mut nested_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "FACE FORGE PLAYER FACE")
         .map_err(|e| format!("Create rebuilt nested face CPK: {e}"))?;
     let mut existing = std::collections::HashSet::new();
     for entry in &nested_entries {
-        existing.insert(entry.path.trim_start_matches('/').to_ascii_lowercase());
+        let output_path = remap_compiler_face_archive_path(&entry.path, &compiler_face_dir, &target_face_dir);
+        existing.insert(output_path.trim_start_matches('/').to_ascii_lowercase());
         let bytes = nested.read(entry).map_err(|e| format!("Read nested CPK entry {}: {e}", entry.path))?;
-        nested_writer.add(&entry.path, &bytes, None)
-            .map_err(|e| format!("Copy nested CPK entry {}: {e}", entry.path))?;
+        nested_writer.add(&output_path, &bytes, None)
+            .map_err(|e| format!("Copy nested CPK entry {} as {}: {e}", entry.path, output_path))?;
     }
     for sidecar in sidecars {
         let relative = Path::new(sidecar);
@@ -483,11 +519,14 @@ fn inject_preserved_sidecars(
         if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 256 * 1024 * 1024 {
             return Err(format!("Preserved sidecar is missing, unsafe or oversized: {sidecar}"));
         }
-        let archive_name = relative.to_string_lossy().replace('\\', "/");
+        let relative_name = relative.to_string_lossy().replace('\\', "/");
+        let archive_name = format!("{target_face_dir}/{relative_name}");
         let bytes = fs::read(&source).map_err(|e| format!("Read preserved sidecar {}: {e}", sidecar))?;
         if !existing.insert(archive_name.to_ascii_lowercase()) {
-            let prior = nested_entries.iter().find(|entry| entry.path.trim_start_matches('/').eq_ignore_ascii_case(&archive_name))
-                .ok_or_else(|| format!("Sidecar path collision could not be resolved for {archive_name}."))?;
+            let prior = nested_entries.iter().find(|entry| {
+                remap_compiler_face_archive_path(&entry.path, &compiler_face_dir, &target_face_dir)
+                    .trim_start_matches('/').eq_ignore_ascii_case(&archive_name)
+            }).ok_or_else(|| format!("Sidecar path collision could not be resolved for {archive_name}."))?;
             let prior_bytes = nested.read(prior)
                 .map_err(|e| format!("Read existing sidecar collision {archive_name}: {e}"))?;
             if prior_bytes.as_slice() == bytes.as_slice() {
@@ -531,10 +570,16 @@ fn inject_preserved_sidecars(
     let check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
         .map_err(|e| format!("Validate rebuilt nested face CPK: {e}"))?;
     for sidecar in sidecars {
-        let archive_name = sidecar.replace('\\', "/");
+        let archive_name = format!("{target_face_dir}/{}", sidecar.replace('\\', "/"));
         if !check_nested.entries().iter().any(|entry| entry.path.trim_start_matches('/').eq_ignore_ascii_case(&archive_name)) {
-            return Err(format!("Sidecar preservation read-back failed for {sidecar}."));
+            return Err(format!("Sidecar preservation read-back failed for {sidecar} at {archive_name}."));
         }
+    }
+    if !check_nested.entries().iter().any(|entry| {
+        entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("face.xml"))
+            && entry.path.rsplit_once('/').is_some_and(|(parent, _)| parent.eq_ignore_ascii_case(&target_face_dir))
+    }) {
+        return Err(format!("Rebuilt nested face CPK does not contain face.xml under the real player folder {target_face_dir}."));
     }
     fs::write(outer_path, rebuilt_outer).map_err(|e| format!("Write rebuilt Team CPK: {e}"))?;
     Ok(())
@@ -1629,6 +1674,27 @@ mod nested_face_archive_selection_tests {
     fn rejects_archives_without_both_manifest_and_head_model() {
         assert!(!has_face_archive_manifest(&["face.xml".to_string(), "hair_high_win32.model".to_string()]));
         assert!(!has_face_archive_manifest(&["face_high_win32.model".to_string()]));
+    }
+
+    #[test]
+    fn rewrites_only_the_compiler_face_directory_and_preserves_shared_paths() {
+        use super::remap_compiler_face_archive_path;
+        assert_eq!(
+            remap_compiler_face_archive_path(
+                "common/character0/model/character/face/real/70101/face.xml",
+                "common/character0/model/character/face/real/70101",
+                "common/character0/model/character/face/real/176104"
+            ),
+            "common/character0/model/character/face/real/176104/face.xml"
+        );
+        assert_eq!(
+            remap_compiler_face_archive_path(
+                "common/character1/model/character/uniform/common/701/01 - FACE FORGE/skin.dds",
+                "common/character0/model/character/face/real/70101",
+                "common/character0/model/character/face/real/176104"
+            ),
+            "common/character1/model/character/uniform/common/701/01 - FACE FORGE/skin.dds"
+        );
     }
 
     #[test]
