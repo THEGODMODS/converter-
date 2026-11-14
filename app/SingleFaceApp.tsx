@@ -29,7 +29,7 @@ export default function SingleFaceApp(){
     }).sort((a,b)=>Number(!a.path.toLowerCase().endsWith("_high.fmdl"))-Number(!b.path.toLowerCase().endsWith("_high.fmdl")));
     const candidates=[head,...otherFaceModels],seenModels=new Set<string>();
     const uniqueModels=candidates.filter(file=>{if(seenModels.has(file.sha256))return false;seenModels.add(file.sha256);return true;});
-    const previewPriority=(file:typeof head)=>{const name=file.path.split("/").pop()?.toLowerCase()??"";if(/face_high\\.fmdl$/.test(name))return 0;if(/(eye|eyeline|eyeball|sclera|iris|pupil|eyelash|eyebrow)/.test(name))return 1;if(/hair_high\\.fmdl$/.test(name))return 2;if(/(oral|teeth|tongue|lip)/.test(name))return 3;return 4;};
+    const previewPriority=(file:typeof head)=>{const name=file.path.split("/").pop()?.toLowerCase()??"";if(name.endsWith("face_high.fmdl"))return 0;if(/(eye|eyeline|eyeball|sclera|iris|pupil|eyelash|eyebrow)/.test(name))return 1;if(name.endsWith("hair_high.fmdl"))return 2;if(/(oral|teeth|tongue|lip)/.test(name))return 3;return 4;};
     const previewModels=uniqueModels.sort((a,b)=>previewPriority(a)-previewPriority(b)).slice(0,8);
     const settled=await Promise.allSettled(previewModels.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
     const materials:FacePreviewData["materials"]=[],meshes:FacePreviewData["meshes"]=[],warnings:string[]=[];
