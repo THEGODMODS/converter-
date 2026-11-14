@@ -1002,6 +1002,10 @@ fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
 
 /// A single-face conversion must not publish a partial Team Compiler result.
 /// Warnings are allowed; any Error/Fatal finding makes Complete.success false.
+fn synthetic_player_folder_name(target_player_id: &str) -> String {
+    format!("01 - FACE FORGE {target_player_id}")
+}
+
 fn team_compiler_completed_cleanly(exit_code: u8, complete: Option<(bool, usize)>) -> bool {
     exit_code == 0 && complete.is_some_and(|(success, files_written)| success && files_written > 0)
 }
@@ -1032,7 +1036,10 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let workspace = create_temp_workspace()?;
     // Team Compiler requires the coverage tag as the second word in team export names.
     let export = workspace.0.join("exports").join("ff Full FACE FORGE");
-    let player = export.join("Players").join(format!("{player_slot} - FACE FORGE"));
+    // Keep the Team Compiler's player-common texture namespace unique per
+    // target ID. A fixed slot name would make every separately converted face
+    // point at the same common/701/01 - FACE FORGE texture directory.
+    let player = export.join("Players").join(synthetic_player_folder_name(target_player_id));
     let data = workspace.0.join("data");
     let pes = workspace.0.join("PES");
     fs::create_dir_all(&player).map_err(|e| format!("Create staged player folder: {e}"))?;
@@ -1640,6 +1647,13 @@ mod pes2017_target_id_tests {
         assert!(result.unwrap_err().contains("different data"));
         assert_eq!(std::fs::read(root.join("face_diff.bin")).unwrap(), b"loose-version");
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn synthetic_player_texture_namespace_is_unique_per_real_player_id() {
+        use super::synthetic_player_folder_name;
+        assert_eq!(synthetic_player_folder_name("176104"), "01 - FACE FORGE 176104");
+        assert_ne!(synthetic_player_folder_name("176104"), synthetic_player_folder_name("3997"));
     }
 
     #[test]
