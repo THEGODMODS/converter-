@@ -49,7 +49,14 @@ describe("PES 2017 nested face CPK verification",()=>{
       path:"common/character0/model/character/face/real/176104.cpk",
       data:buildCpk(wrongFolderFiles),
     }]);
-    expect(()=>verifyPes2017FaceCpk(wrongOuter,"176104")).toThrow(/internal player folder 70101, expected 176104/i);
+    expect(()=>verifyPes2017FaceCpk(wrongOuter,"176104")).toThrow(/internal folder .*70101, expected common\/character0\/model\/character\/face\/real\/176104/i);
+  });
+  it("rejects a nested face CPK stored outside the PES face real directory",()=>{
+    const misplaced=buildCpk([{
+      path:"common/character0/model/character/face/custom/176104.cpk",
+      data:buildCpk(faceFiles.map(file=>({...file,path:"common/character0/model/character/face/custom/176104/"+file.path}))),
+    }]);
+    expect(()=>verifyPes2017FaceCpk(misplaced,"176104")).toThrow(/no nested player-face CPK/i);
   });
   it("rejects an outer CPK that contains no nested face CPK",()=>{
     expect(()=>verifyPes2017FaceCpk(buildCpk([{path:"readme.txt",data:Buffer.from("not a face")}]),"71405")).toThrow(/nested player-face CPK/i);
