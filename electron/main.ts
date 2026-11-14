@@ -250,11 +250,11 @@ function registerIpc(){
    if(!archivePath.startsWith(prefix))throw new Error("Preview archive escapes the selected face folder.");
    const realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
    if(!realArchive.startsWith(realPrefix))throw new Error("Preview archive resolves outside the selected face folder.");
-   const stat=await fs.promises.lstat(archivePath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview archive is not a safe file.");
+   const stat=await fs.promises.lstat(archivePath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("Preview archive is not a safe file.");
    const archive=await readArchiveCached(archivePath);
    const member=archive.entries.find(entry=>entry.name.toLowerCase()===memberName.toLowerCase());
    if(!member)throw new Error("The requested model was not found inside the FPK archive. Re-scan the face folder.");
-   if(member.size>256*1024*1024)throw new Error("Embedded model exceeds the preview size limit.");
+   if(member.size>512*1024*1024)throw new Error("Embedded model exceeds the preview size limit.");
    data=member.data;extension=path.extname(member.name).toLowerCase();
   }else{
    const source=path.resolve(root,relativePath),prefix=root.endsWith(path.sep)?root:root+path.sep;
@@ -304,7 +304,7 @@ function registerIpc(){
      }else{
       const texturePath=path.resolve(root,...asset.path.split("/")),realTexture=await fs.promises.realpath(texturePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
       if(!realTexture.startsWith(realPrefix))throw new Error("Preview texture resolves outside the selected face folder.");
-      const textureStat=await fs.promises.lstat(texturePath);if(textureStat.isSymbolicLink()||!textureStat.isFile()||textureStat.size>128*1024*1024)throw new Error("Preview texture is not a safe regular file.");
+      const textureStat=await fs.promises.lstat(texturePath);if(textureStat.isSymbolicLink()||!textureStat.isFile()||textureStat.size>256*1024*1024)throw new Error("Preview texture is not a safe regular file.");
       textureBytes=await readFile(texturePath);
      }
      const dds=asset.kind==="texture-pes2021"?ftexToDds(textureBytes).data:textureBytes;
@@ -317,7 +317,7 @@ function registerIpc(){
   if(!meshes.length)throw new Error("No renderable mesh geometry was found in this model.");
   const malformed=meshes.find(mesh=>mesh.positions.length<9||mesh.positions.length%3!==0||mesh.indices.length<3||mesh.indices.length%3!==0||mesh.indices.some(index=>!Number.isInteger(index)||index<0||index>=mesh.positions.length/3));
   if(malformed)throw new Error("The selected model contains no valid triangle surface for preview ("+malformed.name+"). The file header and material bindings alone are not a 3D face preview.");
-  const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
+  const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>2000000)throw new Error("Preview exceeds the 2,000,000-vertex geometry safety limit.");
   const triangleCount=meshes.reduce((sum,mesh)=>sum+mesh.indices.length/3,0);
   const hasVisibleSurface=meshes.some(mesh=>{for(let i=0;i<mesh.indices.length;i+=3){const a=mesh.indices[i]*3,b=mesh.indices[i+1]*3,c=mesh.indices[i+2]*3;const abx=mesh.positions[b]-mesh.positions[a],aby=mesh.positions[b+1]-mesh.positions[a+1],abz=mesh.positions[b+2]-mesh.positions[a+2],acx=mesh.positions[c]-mesh.positions[a],acy=mesh.positions[c+1]-mesh.positions[a+1],acz=mesh.positions[c+2]-mesh.positions[a+2];const x=aby*acz-abz*acy,y=abz*acx-abx*acz,z=abx*acy-aby*acx;if(x*x+y*y+z*z>1e-16)return true;}return false;});
   if(!triangleCount||!hasVisibleSurface)throw new Error("The selected model contains no non-degenerate triangle surface to display.");
