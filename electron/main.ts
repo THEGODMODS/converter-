@@ -46,6 +46,15 @@ function trusted(event:Electron.IpcMainInvokeEvent){
  */
 function preflightPes2021FaceProject(inventory:FaceProject):void{
  if(inventory.detectedGame!=="pes2021")throw new Error("The selected route requires PES2021 source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
+ const unsafeEntries=inventory.warnings.filter(warning=>warning.startsWith("Skipped symbolic link:")||warning.startsWith("Skipped unsupported filesystem entry:")||warning.startsWith("Could not extract "));
+ if(unsafeEntries.length)throw new Error("Face inspection found filesystem or archive entries that the native converter cannot safely stage: "+unsafeEntries.slice(0,8).join(" | ")+(unsafeEntries.length>8?" | and "+(unsafeEntries.length-8)+" more.":""));
+ const archives=inventory.files.filter(file=>["container-fpk","container-fpkd"].includes(file.kind));
+ const fpk=archives.filter(file=>file.path.toLowerCase().endsWith(".fpk"));
+ const fpkd=archives.filter(file=>file.path.toLowerCase().endsWith(".fpkd")||file.path.toLowerCase().endsWith(".kpfd"));
+ if(fpk.length>1||fpkd.length>1)throw new Error("This single-face conversion expects one Windows face.fpk and at most one paired face.fpkd/.kpfd archive. Select the #Win face folder rather than a multi-platform parent folder.");
+ if(fpkd.length&&!fpk.length)throw new Error("A face.fpkd/.kpfd archive was found without its face.fpk companion: "+fpkd[0].path);
+ if(fpkd.length&&fpk.length){const stem=(value:string)=>value.slice(0,value.lastIndexOf("/")+1)+value.split("/").pop()!.replace(/\.(?:fpkd|kpfd)$/i,"").toLowerCase();if(stem(fpkd[0].path)!==stem(fpk[0].path))throw new Error("The face.fpkd/.kpfd archive does not match the face.fpk in the same folder.");}
+ if(archives.some(file=>file.bytes>1024*1024*1024))throw new Error("A Fox face archive exceeds the native 1 GiB per-archive safety limit.");
  const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
  // This route converts PES 2021 FMDLs. Legacy PES 2017 MTL sidecars are not
  // inputs to this route and must not make their own stale texture links fatal.
