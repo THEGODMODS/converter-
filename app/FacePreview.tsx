@@ -44,7 +44,8 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
    }
    if(!material.map&&Object.keys(source.textures).length)textureDiagnostics.push("No recognised diffuse/base-colour texture was assigned to "+source.name+"; the mesh is shown with a neutral fallback.");
    if(!Object.keys(source.textureData??{}).length&&Object.keys(source.textures).length)textureDiagnostics.push("No referenced texture image was loaded for "+source.name+".");
-   if(material.map)material.color.set(0xffffff);return material;
+   if(material.map){material.color.set(0xffffff);if(isHair){material.transparent=true;material.alphaTest=.35;material.depthWrite=true;}}
+   return material;
   });
   setTextureWarnings([...new Set(textureDiagnostics)].slice(0,12));
   for(const item of preview.meshes){
