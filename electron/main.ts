@@ -300,16 +300,24 @@ function registerIpc(){
       const archivePath=path.resolve(root,...archiveRelative.split("/")),realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
       if(!realArchive.startsWith(realPrefix))throw new Error("Preview texture archive resolves outside the selected face folder.");
       const archive=await readArchiveCached(realArchive);
-      const entry=archive.entries.find(item=>item.name.toLowerCase()===memberName.toLowerCase());if(!entry)throw new Error("Preview texture "+reference+" is missing from its FPK archive.");textureBytes=entry.data;
+      const entry=archive.entries.find(item=>item.name.toLowerCase()===memberName.toLowerCase());
+      if(!entry){warnings.push("Texture "+reference+" is missing from its FPK archive; geometry preview continues without that map.");continue;}
+      if(entry.size>256*1024*1024){warnings.push("Texture "+reference+" exceeds the 256 MiB preview decode budget; geometry preview continues without that map.");continue;}
+      textureBytes=entry.data;
      }else{
       const texturePath=path.resolve(root,...asset.path.split("/")),realTexture=await fs.promises.realpath(texturePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
       if(!realTexture.startsWith(realPrefix))throw new Error("Preview texture resolves outside the selected face folder.");
-      const textureStat=await fs.promises.lstat(texturePath);if(textureStat.isSymbolicLink()||!textureStat.isFile()||textureStat.size>256*1024*1024)throw new Error("Preview texture is not a safe regular file.");
+      const textureStat=await fs.promises.lstat(texturePath);if(textureStat.isSymbolicLink()||!textureStat.isFile())throw new Error("Preview texture is not a safe regular file.");
+      if(textureStat.size>256*1024*1024){warnings.push("Texture "+reference+" exceeds the 256 MiB preview decode budget; geometry preview continues without that map.");continue;}
       textureBytes=await readFile(texturePath);
      }
-     const dds=asset.kind==="texture-pes2021"?ftexToDds(textureBytes).data:textureBytes;
-     if(dds.length<128||dds.toString("ascii",0,4)!=="DDS ")throw new Error("Decoded preview texture is not a valid DDS payload: "+reference);
-     textureData[slot]=dds.toString("base64");
+     try{
+      const dds=asset.kind==="texture-pes2021"?ftexToDds(textureBytes).data:textureBytes;
+      if(dds.length<128||dds.toString("ascii",0,4)!=="DDS ")throw new Error("Decoded preview texture is not a valid DDS payload.");
+      textureData[slot]=dds.toString("base64");
+     }catch(error){
+      warnings.push("Texture "+reference+" for "+material.name+" could not be decoded for preview: "+(error instanceof Error?error.message:String(error))+". The 3D geometry will still be shown.");
+     }
     }
     material.textureData=textureData;
    }
