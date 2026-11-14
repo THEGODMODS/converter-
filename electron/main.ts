@@ -46,7 +46,7 @@ function trusted(event:Electron.IpcMainInvokeEvent){
  */
 function preflightPes2021FaceProject(inventory:FaceProject):void{
  if(inventory.detectedGame!=="pes2021")throw new Error("The selected route requires PES2021 source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
- const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-mtl","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
+ const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
  const referencedTexturePaths=new Set(inventory.dependencies.filter(dep=>dep.status==="resolved"||dep.status==="ambiguous").flatMap(dep=>dep.candidates));
  const criticalMalformed=inventory.files.filter(file=>{
   if(!file.kind.startsWith("invalid-")&&file.kind!=="container-kpfd-unknown")return false;
