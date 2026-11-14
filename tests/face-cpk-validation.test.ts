@@ -2,6 +2,17 @@ import {describe,expect,it} from "vitest";
 import {buildCpk} from "../engine/packaging/cpk";
 import {verifyPes2017FaceCpk} from "../engine/packaging/face-cpk-validation";
 
+function modelFixture():Buffer {
+  const data=Buffer.alloc(36);
+  data.write("MODEL\\0\\0\\0",0,"binary");
+  data.writeUInt32LE(24,8);
+  data.writeUInt16LE(16,14);
+  data.writeUInt32LE(12,24);
+  data.writeUInt32LE(0,28);
+  data.writeUInt32LE(4,32);
+  return data;
+}
+
 function ddsFixture():Buffer {
   const data=Buffer.alloc(128);
   data.write("DDS ",0,"ascii");
@@ -17,7 +28,7 @@ describe("PES 2017 nested face CPK verification",()=>{
   const mtl=(texture="./face.dds")=>Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="'+texture+'"/></material></materialset>');
   const faceFiles=[
     {path:"face.xml",data:xml()},
-    {path:"face_high_win32.model",data:Buffer.from("legacy-model")},
+    {path:"face_high_win32.model",data:modelFixture()},
     {path:"face.mtl",data:mtl()},
     {path:"face.dds",data:Buffer.from("texture")},
   ];
@@ -41,7 +52,7 @@ describe("PES 2017 nested face CPK verification",()=>{
   it("accepts the exact upstream Team Compiler oral_face_high_win32.model output",()=>{
     const upstreamFiles=[
       {path:"common/character0/model/character/face/real/176104/face.xml",data:Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\r\n<config>\r\n   <model level="0" type="face_neck" path="./oral_face_high_*.model" material="./face_high.mtl" />\r\n</config>')},
-      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:Buffer.from("upstream-model")},
+      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:modelFixture()},
       {path:"common/character0/model/character/face/real/176104/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
     ];
     const outer=buildCpk([
@@ -53,10 +64,14 @@ describe("PES 2017 nested face CPK verification",()=>{
     expect(result.faceMaterialPath).toMatch(/face_high\.mtl$/i);
     expect(result.referencedTextures).toContain("common/character1/model/character/uniform/common/714/05 - A/skin.dds");
   });
+  it("rejects a referenced model with an invalid PES 2017 MODEL header",()=>{
+    const invalidFiles=faceFiles.map(file=>file.path==="face_high_win32.model"?{...file,data:Buffer.from("not-a-model")}:file);
+    expect(()=>verifyPes2017FaceCpk(teamArchive(invalidFiles),"71405")).toThrow(/referenced PES 2017 model is invalid/i);
+  });
   it("rejects a corrupt DDS stored at a player-owned outer texture path",()=>{
     const upstreamFiles=[
       {path:"common/character0/model/character/face/real/176104/face.xml",data:Buffer.from('<?xml version="1.0"?><config><model path="./oral_face_high_*.model" material="./face_high.mtl"/></config>')},
-      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:Buffer.from("head")},
+      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:modelFixture()},
       {path:"common/character0/model/character/face/real/176104/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
     ];
     const outer=buildCpk([
