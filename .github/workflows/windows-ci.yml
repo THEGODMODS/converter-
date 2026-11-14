@@ -133,24 +133,14 @@ jobs:
         run: |
           $expected = "v" + (node -p "require('./package.json').version")
           if ($env:GITHUB_REF_NAME -ne $expected) { throw "Release tag $env:GITHUB_REF_NAME does not match package version $expected." }
-      - name: Build Windows installer and updater metadata
-        run: npm run dist:win
-      - name: Verify installer and updater metadata
+      - name: Build and publish Windows installer plus updater metadata
+        run: npm run dist:win:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify published installer and updater metadata
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           node scripts/verify-release-installer.mjs
           if (!(Test-Path 'release/latest.yml')) { throw 'electron-builder did not generate latest.yml; automatic updates cannot work.' }
           if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'electron-builder did not generate the NSIS blockmap required for update downloads.' }
-      - name: Publish GitHub release for in-app updates
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: FACE FORGE ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe
-            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe.sha256
-            release/latest.yml
-            release/*.blockmap
-          fail_on_unmatched_files: true
