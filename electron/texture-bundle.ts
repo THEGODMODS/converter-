@@ -64,8 +64,9 @@ export async function convertFaceTextureDependencies(project:FaceProject,sourceR
    else if(file.kind==="texture-pes2017"){
     const info=inspectDdsHeader(input);
     if(!info.valid)throw new Error("Resolved DDS texture failed header validation: "+source);
-    if(!["DXT1","DXT3","DXT5","RGBA8"].includes(info.pixelFormat??""))throw new Error("DDS texture "+source+" uses "+(info.pixelFormat??"an unsupported format")+"; FACE FORGE will not pass an unverified modern codec into PES 2017.");
-    converted={data:input,info:{formatName:info.pixelFormat??"DDS",width:info.width??0,height:info.height??0}};
+    const pixelFormat=info.pixelFormat;
+    if(typeof pixelFormat!=="string"||!["DXT1","DXT3","DXT5","RGBA8"].includes(pixelFormat))throw new Error("DDS texture "+source+" uses "+(pixelFormat??"an unsupported format")+"; FACE FORGE will not pass an unverified modern codec into PES 2017.");
+    converted={data:input,info:{formatName:pixelFormat,width:info.width??0,height:info.height??0}};
    }else throw new Error("Resolved texture has the wrong source generation: "+source);
   }else{
    if(file.kind!=="texture-pes2017")throw new Error("Resolved texture has the wrong source generation: "+source);
