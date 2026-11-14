@@ -33,9 +33,9 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
        const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format as THREE.CompressedPixelFormat);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
       }
      }
-     texture.colorSpace=/base|diff|albedo|color/i.test(semantic)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
+     texture.colorSpace=/base|diff|albedo|color|bsm_alp|_srgb/i.test(semantic)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
      if(/normal|nrm/i.test(semantic))material.normalMap=texture;
-     else if(/base|diff|albedo|color/i.test(semantic)&&!material.map)material.map=texture;
+     else if(/base|diff|albedo|color|bsm_alp|_srgb/i.test(semantic)&&!material.map)material.map=texture;
      else if(/roughness|specular|srm/i.test(semantic)){material.roughnessMap=texture;material.roughness=1;}
      else if(/metallic|metalness/i.test(semantic)){material.metalnessMap=texture;material.metalness=1;}
      else if(/opacity|alpha/i.test(semantic)){material.alphaMap=texture;material.transparent=true;}
