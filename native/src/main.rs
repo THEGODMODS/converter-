@@ -373,6 +373,34 @@ fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
     Ok(changed)
 }
 
+
+/// Select the compiler's nested player-face archive. The temporary filename is
+/// preferred when present; a sole independently identified face CPK is accepted
+/// even if a newer upstream compiler changes its naming convention.
+fn choose_nested_face_cpk_index(candidates: &[(usize, String)], compiler_player_id: &str) -> Result<usize, String> {
+    let expected = format!("{compiler_player_id}.cpk");
+    let exact: Vec<usize> = candidates.iter()
+        .filter(|(_, path)| path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&expected)))
+        .map(|(index, _)| *index)
+        .collect();
+    if exact.len() == 1 {
+        return Ok(exact[0]);
+    }
+    if exact.len() > 1 {
+        return Err(format!("Team Compiler produced multiple nested face archives named {expected}."));
+    }
+    if candidates.len() == 1 {
+        return Ok(candidates[0].0);
+    }
+    if candidates.is_empty() {
+        return Err(format!("Team Compiler CPK has no independently verifiable nested face archive (temporary slot {compiler_player_id})."));
+    }
+    Err(format!(
+        "Team Compiler CPK has multiple independently verifiable nested face archives for temporary slot {compiler_player_id}: {}",
+        candidates.iter().map(|(_, path)| path.as_str()).collect::<Vec<_>>().join(" | ")
+    ))
+}
+
 /// Re-inject Fox-only sidecars after Team Compiler export. The upstream
 /// Team Compiler filters .fclo files from its Pre-Fox output, so source inventory
 /// alone is not evidence of preservation. Rebuild the nested player CPK and
@@ -388,9 +416,29 @@ fn inject_preserved_sidecars(
     let mut outer = cpk::CpkArchive::open(Cursor::new(outer_bytes))
         .map_err(|e| format!("Open Team Compiler CPK for sidecar preservation: {e}"))?;
     let outer_entries = outer.entries().to_vec();
-    let nested_index = outer_entries.iter().position(|entry| {
-        entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{compiler_player_id}.cpk")))
-    }).ok_or_else(|| format!("Team Compiler CPK has no nested face archive for temporary player {compiler_player_id}."))?;
+    // The compiler's temporary team/slot identity (70101) is an implementation
+    // detail, not the imported face's real PES player ID. Prefer the expected
+    // temporary filename, but do not assume the upstream compiler always uses it:
+    // identify the unique nested face CPK by its contents, then rename it to the
+    // actual target_player_id below.
+    let mut verified_face_candidates: Vec<(usize, String)> = Vec::new();
+    let mut cpk_entry_names: Vec<String> = Vec::new();
+    for (index, entry) in outer_entries.iter().enumerate() {
+        if !entry.path.to_ascii_lowercase().ends_with(".cpk") {
+            continue;
+        }
+        cpk_entry_names.push(entry.path.clone());
+        let Ok(candidate_bytes) = outer.read(entry) else { continue };
+        let Ok(mut candidate) = cpk::CpkArchive::open(Cursor::new(candidate_bytes)) else { continue };
+        let names: Vec<String> = candidate.entries().iter().map(|item| item.path.replace('\\', "/").to_ascii_lowercase()).collect();
+        let has_face_xml = names.iter().any(|name| name.rsplit('/').next() == Some("face.xml"));
+        let has_head_model = names.iter().any(|name| name.rsplit('/').next().is_some_and(|name| name.ends_with("face_high_win32.model")));
+        if has_face_xml && has_head_model {
+            verified_face_candidates.push((index, entry.path.clone()));
+        }
+    }
+    let nested_index = choose_nested_face_cpk_index(&verified_face_candidates, compiler_player_id)
+        .map_err(|reason| format!("{reason} CPK entries: {}", cpk_entry_names.join(" | ")))?;
     let nested_entry = &outer_entries[nested_index];
     let nested_bytes = outer.read(nested_entry)
         .map_err(|e| format!("Read nested player CPK before sidecar preservation: {e}"))?;
@@ -1524,5 +1572,34 @@ mod pes2017_target_id_tests {
         for id in ["", "0000000", "abcde", "17 6104", "1234567"] {
             assert!(validate_target_player_id(id).is_err(), "{id}");
         }
+    }
+}
+
+#[cfg(test)]
+mod nested_face_archive_selection_tests {
+    use super::choose_nested_face_cpk_index;
+
+    #[test]
+    fn prefers_the_expected_temporary_compiler_filename() {
+        let candidates = vec![
+            (2, "Players/70102.cpk".to_string()),
+            (4, "Players/70101.cpk".to_string()),
+        ];
+        assert_eq!(choose_nested_face_cpk_index(&candidates, "70101").unwrap(), 4);
+    }
+
+    #[test]
+    fn accepts_a_single_verified_face_archive_with_a_different_upstream_name() {
+        let candidates = vec![(3, "face/compiled-player.cpk".to_string())];
+        assert_eq!(choose_nested_face_cpk_index(&candidates, "70101").unwrap(), 3);
+    }
+
+    #[test]
+    fn rejects_multiple_nonmatching_face_archives_instead_of_guessing() {
+        let candidates = vec![
+            (1, "face/player-a.cpk".to_string()),
+            (2, "face/player-b.cpk".to_string()),
+        ];
+        assert!(choose_nested_face_cpk_index(&candidates, "70101").unwrap_err().contains("multiple"));
     }
 }
