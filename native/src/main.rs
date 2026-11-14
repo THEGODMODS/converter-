@@ -844,7 +844,15 @@ fn extract_face_archives(
         return Err("A face folder must contain at most one face.fpk and one paired face.fpkd/.kpfd archive.".into());
     }
     if fpk.is_empty() && !fpkd.is_empty() {
-        return Err("A face.fpkd/.kpfd archive was found without its face.fpk companion.".into());    }
+        return Err("A face.fpkd/.kpfd archive was found without its face.fpk companion.".into());
+    }
+    if let (Some(archive), Some(data)) = (fpk.first(), fpkd.first()) {
+        let archive_stem = archive.file_stem().and_then(|value| value.to_str()).unwrap_or("");
+        let data_stem = data.file_stem().and_then(|value| value.to_str()).unwrap_or("");
+        if archive.parent() != data.parent() || !archive_stem.eq_ignore_ascii_case(data_stem) {
+            return Err(format!("The face data archive {} is not paired with {} in the same folder.", data.display(), archive.display()));
+        }
+    }
     for path in fpk.iter().chain(fpkd.iter()) {
         let metadata = fs::symlink_metadata(path).map_err(|e| format!("Inspect Fox archive {}: {e}", path.display()))?;
         if !metadata.is_file() || metadata.len() > 1024 * 1024 * 1024 {
