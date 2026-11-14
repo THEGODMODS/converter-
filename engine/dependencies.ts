@@ -24,7 +24,7 @@ export function matchTextureFiles<T extends {path:string}>(files:T[],reference:s
  // First honor an explicit sourceimages/#windx11 spelling. Only fall back to
  // platform-neutral matching when that exact directory variant is absent.
  const exactWanted=normalizeAssetPreservingPlatform(reference);
- const exactScored=files.map(file=>({file,score:suffixScore(normalizeAssetPreservingPlatform(file.path.split("!/").pop()??file.path),exactWanted)} )).filter(item=>item.score>1);
+ const exactScored=files.map(file=>({file,score:suffixScore(normalizeAssetPreservingPlatform(file.path.split("!/").pop()??file.path),exactWanted)})).filter(item=>item.score>1);
  if(exactScored.length){const best=Math.max(...exactScored.map(item=>item.score));return exactScored.filter(item=>item.score===best).map(item=>item.file);}
  const wanted=normalizeAsset(reference),scored=files.map(file=>({file,score:suffixScore(normalizeAsset(file.path.split("!/").pop()??file.path),wanted)})).filter(item=>item.score>0);
  if(scored.length){const best=Math.max(...scored.map(item=>item.score));return scored.filter(item=>item.score===best).map(item=>item.file);}
