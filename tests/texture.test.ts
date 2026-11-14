@@ -45,5 +45,12 @@ describe("FTEX and DDS container conversion",()=>{
   encoded.writeUInt32LE(encoded.readUInt32LE(72)+1,72);
   expect(()=>ftexToDds(encoded)).toThrow(/aggregate chunk sizes/i);
  });
+ it("reads Fox's depth-zero 2D FTEX sentinel as one slice",()=>{
+  const encoded=ddsToFtex(rgbaDds(),"SRGB").data;
+  encoded.writeUInt16LE(0,14);
+  const decoded=ftexToDds(encoded);
+  expect(decoded.info.depth).toBe(1);
+  expect(decoded.data.subarray(148)).toEqual(rgbaDds().subarray(128));
+ });
  it("rejects a truncated DDS payload",()=>{expect(()=>ddsToFtex(rgbaDds().subarray(0,140))).toThrow(/truncated/i);});
 });
