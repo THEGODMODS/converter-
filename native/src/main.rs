@@ -1744,7 +1744,7 @@ mod nested_face_archive_selection_tests {
         let mut outer_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "TEST TEAM")
             .unwrap();
         outer_writer.add(
-            "common/character0/model/character/face/real/70101.cpk",
+            "common/character0/model/character/face/real/70101",
             &nested_bytes,
             None,
         ).unwrap();
