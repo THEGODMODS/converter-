@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { autoUpdater } from "electron-updater";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
@@ -356,6 +357,42 @@ function registerIpc(){
   return {source,destination:save.filePath,format:converted.info.formatName,width:converted.info.width,height:converted.info.height,bytes:converted.data.length};
  });
 }
+type UpdateStatus={state:"checking"|"available"|"downloading"|"downloaded"|"up-to-date"|"error"|"unsupported";version?:string;percent?:number;message?:string};
+let updateStatus:UpdateStatus={state:"checking"};
+function publishUpdateStatus(next:UpdateStatus){
+ updateStatus=next;
+ if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send("app:update-status",updateStatus);
+}
+function registerAutoUpdater(){
+ ipcMain.handle("app:update-check",async event=>{
+  trusted(event);
+  if(!app.isPackaged||process.platform!=="win32")return {state:"unsupported"} satisfies UpdateStatus;
+  try{await autoUpdater.checkForUpdates();return updateStatus;}
+  catch(error){const message=error instanceof Error?error.message:String(error);publishUpdateStatus({state:"error",message});return updateStatus;}
+ });
+ ipcMain.handle("app:update-download",async event=>{
+  trusted(event);
+  if(!app.isPackaged||process.platform!=="win32")throw new Error("Updates are available only in the installed Windows app.");
+  if(updateStatus.state!=="available")throw new Error("There is no available update to download.");
+  await autoUpdater.downloadUpdate();
+  return updateStatus;
+ });
+ if(!app.isPackaged||process.platform!=="win32"){publishUpdateStatus({state:"unsupported"});return;}
+ autoUpdater.autoDownload=false;
+ autoUpdater.autoInstallOnAppQuit=false;
+ autoUpdater.allowPrerelease=false;
+ autoUpdater.on("checking-for-update",()=>publishUpdateStatus({state:"checking"}));
+ autoUpdater.on("update-available",info=>publishUpdateStatus({state:"available",version:info.version}));
+ autoUpdater.on("update-not-available",()=>publishUpdateStatus({state:"up-to-date"}));
+ autoUpdater.on("download-progress",progress=>publishUpdateStatus({state:"downloading",percent:Math.max(0,Math.min(100,Math.round(progress.percent)))}));
+ autoUpdater.on("update-downloaded",info=>{
+  publishUpdateStatus({state:"downloaded",version:info.version,percent:100});
+  setTimeout(()=>autoUpdater.quitAndInstall(true,true),1200);
+ });
+ autoUpdater.on("error",error=>publishUpdateStatus({state:"error",message:error.message}));
+ setTimeout(()=>{if(app.isReady())void autoUpdater.checkForUpdates().catch(error=>publishUpdateStatus({state:"error",message:error instanceof Error?error.message:String(error)}));},12000);
+ setInterval(()=>{if(app.isReady()&&updateStatus.state!=="downloading"&&updateStatus.state!=="downloaded")void autoUpdater.checkForUpdates().catch(error=>publishUpdateStatus({state:"error",message:error instanceof Error?error.message:String(error)}));},6*60*60*1000);
+}
 function createWindow(){
  const iconPath=app.isPackaged?path.join(process.resourcesPath,"face-forge.ico"):path.join(app.getAppPath(),"assets","face-forge.ico");
  mainWindow=new BrowserWindow({width:1440,height:960,minWidth:980,minHeight:720,backgroundColor:"#090b10",title:"THEGODMODS FACE FORGE",...(fs.existsSync(iconPath)?{icon:iconPath}:{}),webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false,sandbox:true}});
@@ -365,5 +402,5 @@ function createWindow(){
  mainWindow.webContents.on("will-navigate",(event,url)=>{if(url!==trustedUrl)event.preventDefault();});
  mainWindow.on("closed",()=>{mainWindow=null;});
 }
-app.whenReady().then(()=>{registerIpc();createWindow();app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createWindow();});});
+app.whenReady().then(()=>{registerIpc();registerAutoUpdater();createWindow();app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createWindow();});});
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});

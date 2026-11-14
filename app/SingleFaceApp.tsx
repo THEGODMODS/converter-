@@ -4,6 +4,7 @@ import {CheckCircle2,FolderOpen,LoaderCircle,ShieldCheck,Sparkles,UploadCloud,XC
 import type {FaceProject,FacePreviewData} from "./types";
 import {inferPesPlayerIdFromPath} from "../engine/player-id";
 import FacePreview from "./FacePreview";
+import UpdateNotice from "./UpdateNotice";
 const validTarget=/^[0-9]{1,6}$/;
 export default function SingleFaceApp(){
  const [project,setProject]=useState<FaceProject|null>(null),[targetId,setTargetId]=useState(""),[preview,setPreview]=useState<FacePreviewData|null>(null);
@@ -14,7 +15,7 @@ export default function SingleFaceApp(){
   try{
    const scanned=await window.faceForge.inspectFolder(folder);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
-   const head=scanned.files.find(file=>file.kind==="model-pes2021"&&/face_high\\.fmdl$/i.test(file.path));
+   const head=scanned.files.find(file=>file.kind==="model-pes2021"&&/face_high\.fmdl$/i.test(file.path));
    if(!head)throw new Error("The source folder does not contain a valid face_high.fmdl head model.");
    setProject(scanned);
    const sourceId=inferPesPlayerIdFromPath(scanned.root);
@@ -46,6 +47,7 @@ export default function SingleFaceApp(){
  return <div className="shell">
   <aside className="sidebar"><div className="brand"><div className="brand-mark"><img src="/face-forge.svg" alt=""/></div><div><strong>KFC GODMODS</strong><span>FACE FORGE</span></div></div><div className="side-label">SINGLE FACE CONVERTER</div><div className="sidebar-bottom"><div className="version">PES 2021 → PES 2017</div></div></aside>
   <main className="main">
+   <UpdateNotice/>
    <header className="topbar"><div><div className="eyebrow">KFC GODMODS · FACE FORGE</div><h1>PES 2021 → PES 2017</h1><p>Convert a PES 2021 face for PES 2017.</p></div><div className="top-status"><span className="status-led"/> READY</div></header>
    
    <section className="workspace-grid">

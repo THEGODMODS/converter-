@@ -3,7 +3,15 @@ import type { FaceProject } from "../engine/inventory";
 import type { FacePreviewData } from "../app/types";
 import type { FaceDatabase } from "../engine/database";
 import type { TextureColorSpace } from "../engine/formats/texture";
+import type { UpdateStatus } from "../app/types";
 const api = {
+  checkForUpdates: ():Promise<UpdateStatus> => ipcRenderer.invoke("app:update-check"),
+  downloadUpdate: ():Promise<UpdateStatus> => ipcRenderer.invoke("app:update-download"),
+  onUpdateStatus: (callback:(status:UpdateStatus)=>void):(()=>void) => {
+    const listener=(_event:Electron.IpcRendererEvent,status:UpdateStatus)=>callback(status);
+    ipcRenderer.on("app:update-status",listener);
+    return ()=>ipcRenderer.removeListener("app:update-status",listener);
+  },
   chooseFolder: ():Promise<string|null> => ipcRenderer.invoke("face:choose-folder"),
   chooseFolders: ():Promise<string[]> => ipcRenderer.invoke("face:choose-folders"),
   inspectDatabase: (folder:string):Promise<FaceDatabase> => ipcRenderer.invoke("face:inspect-database",folder),
