@@ -1,4 +1,5 @@
 import { inspectCpk, type CpkInspection } from "./cpk";
+import { inspectDdsHeader } from "../formats/headers";
 
 export type Pes2017FaceCpkVerification = {
   outerInspection: CpkInspection;
@@ -36,6 +37,7 @@ function verifyFaceXmlReferences(
   faceXmlPath: string,
   archiveBytes: Buffer,
   outerFiles: CpkInspection["files"],
+  outerBytes: Buffer,
 ) {
   const xml = xmlBytes.toString("utf8");
   if (xml.includes("\u0000") || !/^\s*<\?xml\b[\s\S]*?\?>/i.test(xml) ||
@@ -109,14 +111,18 @@ function verifyFaceXmlReferences(
       const virtualPath = texturePath.trim().replaceAll("\\", "/").replace(/^\/+/, "").toLowerCase();
       if (virtualPath.startsWith("model/character/uniform/common/")) {
         const outerPath = "common/character1/" + virtualPath;
-        if (!outerFiles.some((file) => file.path.replaceAll("\\", "/").toLowerCase() === outerPath)) {
-          throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
-        }
+        const outerEntry = outerFiles.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === outerPath);
+        if (!outerEntry) throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
+        const textureBytes = outerBytes.subarray(outerEntry.offset, outerEntry.offset + outerEntry.size);
+        const dds = inspectDdsHeader(textureBytes);
+        if (!dds.valid) throw new Error("Player texture in the outer team CPK is not a valid DDS: " + texturePath + " (" + dds.details.join("; ") + ")");
         textures.push(outerPath);
       } else if (virtualPath.startsWith("common/character1/")) {
-        if (!outerFiles.some((file) => file.path.replaceAll("\\", "/").toLowerCase() === virtualPath)) {
-          throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
-        }
+        const outerEntry = outerFiles.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === virtualPath);
+        if (!outerEntry) throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
+        const textureBytes = outerBytes.subarray(outerEntry.offset, outerEntry.offset + outerEntry.size);
+        const dds = inspectDdsHeader(textureBytes);
+        if (!dds.valid) throw new Error("Player texture in the outer team CPK is not a valid DDS: " + texturePath + " (" + dds.details.join("; ") + ")");
         textures.push(virtualPath);
       }
     }
@@ -159,7 +165,7 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
     }
     try {
       const xmlBytes = nestedBytes.subarray(faceXml.offset, faceXml.offset + faceXml.size);
-      const references = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path, nestedBytes, outerInspection.files);
+      const references = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path, nestedBytes, outerInspection.files, bytes);
       return {
         outerInspection,
         faceCpkPath: candidate.path,
