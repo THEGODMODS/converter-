@@ -639,7 +639,7 @@ fn extracted_folder_matches_archive_entries(
             };
             let actual = fs::read(&path)
                 .map_err(|e| format!("Read extracted FPK mirror member {}: {e}", path.display()))?;
-            if actual != *expected {
+            if actual.as_slice() != expected.as_slice() {
                 return Ok(false);
             }
             if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fmdl")) {
@@ -685,8 +685,8 @@ fn remove_redundant_extracted_fpk_mirrors(
         let archive = FpkFile::read(&bytes)
             .map_err(|e| format!("Decode FPK for mirror verification {}: {e}", archive_path.display()))?;
         let entries: Vec<(String, Vec<u8>)> = archive.entries().into_iter()
-            .map(|(name, data)| (normalize_fox_virtual_path(name).unwrap_or_else(|_| name.to_owned()), data.to_vec()))
-            .collect();
+            .map(|(name, data)| Ok((normalize_fox_virtual_path(name)?, data.to_vec())))
+            .collect::<Result<_, String>>()?;
         if extracted_folder_matches_archive_entries(&mirror, &entries)? {
             fs::remove_dir_all(&mirror)
                 .map_err(|e| format!("Remove verified redundant FPK mirror {}: {e}", mirror.display()))?;
@@ -1194,6 +1194,38 @@ mod face_diff_xml_tests {
 #[cfg(test)]
 mod face_source_path_tests {
     use super::{companion_fmdl_for_skeleton, is_face_archive_extension};
+
+    #[test]
+    fn recognizes_the_real_face_fpk_extraction_folder_as_a_byte_identical_mirror() {
+        let root = std::env::temp_dir().join(format!("face-forge-fpk-mirror-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mirror = root.join("#Win/face_fpk");
+        std::fs::create_dir_all(&mirror).unwrap();
+        std::fs::write(mirror.join("face_high.fmdl"), b"face-model").unwrap();
+        std::fs::write(mirror.join("hair_high.fmdl"), b"hair-model").unwrap();
+        std::fs::write(mirror.join("face_diff.bin"), b"face-diff").unwrap();
+        let entries = vec![
+            ("face_high.fmdl".to_string(), b"face-model".to_vec()),
+            ("hair_high.fmdl".to_string(), b"hair-model".to_vec()),
+            ("face_diff.bin".to_string(), b"face-diff".to_vec()),
+        ];
+        assert!(super::extracted_folder_matches_archive_entries(&mirror, &entries).unwrap());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn keeps_an_extracted_face_folder_when_it_contains_extra_or_changed_assets() {
+        let root = std::env::temp_dir().join(format!("face-forge-fpk-mirror-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mirror = root.join("#Win/face_fpk");
+        std::fs::create_dir_all(&mirror).unwrap();
+        std::fs::write(mirror.join("face_high.fmdl"), b"changed-face-model").unwrap();
+        let entries = vec![("face_high.fmdl".to_string(), b"face-model".to_vec())];
+        assert!(!super::extracted_folder_matches_archive_entries(&mirror, &entries).unwrap());
+        std::fs::write(mirror.join("custom_component.fmdl"), b"custom").unwrap();
+        assert!(!super::extracted_folder_matches_archive_entries(&mirror, &entries).unwrap());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn accepts_fpk_fpkd_and_kpfd_archive_extensions() {
