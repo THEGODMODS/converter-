@@ -6,7 +6,10 @@ import {verifyPes2017FaceCpk} from "../engine/packaging/face-cpk-validation";
 const outputDirectory=process.env.FACE_FORGE_E2E_OUTPUT;
 const e2e=outputDirectory?describe:describe.skip;
 
-e2e("synthetic structural PES 2021 to PES 2017 package conversion fixture",()=>{
+// This fixture is synthetic: it exercises archive assembly and report plumbing only.
+// It is deliberately named a smoke test, not evidence that real head geometry,
+// skeletons, materials, or in-game face rendering convert correctly.
+e2e("synthetic PES 2021 to PES 2017 package smoke test",()=>{
   it("produces a nested face CPK for the requested PES player ID",()=>{
     const files=readdirSync(outputDirectory!).filter(name=>name.toLowerCase().endsWith(".cpk"));
     expect(files.length).toBeGreaterThan(0);
@@ -16,6 +19,9 @@ e2e("synthetic structural PES 2021 to PES 2017 package conversion fixture",()=>{
     }
     const report=JSON.parse(readFileSync(path.join(outputDirectory!,"face-forge-report.json"),"utf8"));
     expect(report.ok).toBe(true);
+    expect(report.compilerExitCode).toBe(0);
+    expect(report.compilerStatus).toBe("clean");
+    expect(report.complete.success).toBe(true);
     expect(report.targetPlayerId).toBe("79205");
     expect(report.complete.success).toBe(true);
     expect(report.sourceModels.some((name:string)=>name.toLowerCase().endsWith("face_high.fmdl"))).toBe(true);
