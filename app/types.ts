@@ -8,7 +8,11 @@ export type TextureColorSpace = "LINEAR"|"SRGB"|"NORMAL";
 export type FacePreviewMesh={name:string;materialIndex:number;positions:number[];normals:number[];uvs:number[];indices:number[]};
 export type FacePreviewMaterial={name:string;shader:string|null;textures:Record<string,string>;textureData?:Record<string,string>};
 export type FacePreviewData={source:string;generation:"pes2017"|"pes2021";meshes:FacePreviewMesh[];materials:FacePreviewMaterial[];warnings:string[]};
+export type UpdateStatus={state:"checking"|"available"|"downloading"|"downloaded"|"up-to-date"|"error"|"unsupported";version?:string;percent?:number;message?:string};
 export type FaceForgeApi = {
+ checkForUpdates:()=>Promise<UpdateStatus>;
+ downloadUpdate:()=>Promise<UpdateStatus>;
+ onUpdateStatus:(callback:(status:UpdateStatus)=>void)=>()=>void;
  chooseFolder:()=>Promise<string|null>;
  chooseFolders:()=>Promise<string[]>;
  inspectDatabase:(folder:string)=>Promise<FaceDatabase>;
