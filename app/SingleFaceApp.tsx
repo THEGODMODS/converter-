@@ -22,8 +22,13 @@ export default function SingleFaceApp(){
    if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
    setPreviewBusy(true);setPreviewError(null);
    try{
-    const highDetailModels=scanned.files.filter(file=>file.kind==="model-pes2021"&&file.path.toLowerCase().endsWith("_high.fmdl"));
-    const previewModels=(highDetailModels.length?highDetailModels:[head]).slice(0,24);
+    const otherFaceModels=scanned.files.filter(file=>{
+     if(file.kind!=="model-pes2021"||!file.path.toLowerCase().endsWith(".fmdl"))return false;
+     const name=file.path.split("/").pop()??file.path;
+     return !/(?:^|[_-])(?:low|lod[0-9]*)\.fmdl$/i.test(name);
+    }).sort((a,b)=>Number(!a.path.toLowerCase().endsWith("_high.fmdl"))-Number(!b.path.toLowerCase().endsWith("_high.fmdl")));
+    const candidates=[head,...otherFaceModels],seenModels=new Set<string>();
+    const previewModels=candidates.filter(file=>{if(seenModels.has(file.sha256))return false;seenModels.add(file.sha256);return true;}).slice(0,32);
     const settled=await Promise.allSettled(previewModels.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
     const materials:FacePreviewData["materials"]=[],meshes:FacePreviewData["meshes"]=[],warnings:string[]=[];
     let loaded=0;
@@ -33,7 +38,7 @@ export default function SingleFaceApp(){
      const scene=result.value,offset=materials.length;loaded++;materials.push(...scene.materials);meshes.push(...scene.meshes.map(mesh=>({...mesh,materialIndex:mesh.materialIndex+offset})));warnings.push(...scene.warnings);
     }
     if(!loaded||!meshes.length)throw new Error("No high-detail face component could be rendered.");
-    if(highDetailModels.length>previewModels.length)warnings.push("Preview limited to the first 24 high-detail face components.");
+    if(candidates.length>previewModels.length)warnings.push("Preview limited to the first 32 unique face components; low-detail LOD models are excluded.");
     setPreview({source:"PES 2021 face assembly ("+loaded+" models)",generation:"pes2021",meshes,materials,warnings});
    }catch(previewError){
     console.error("FACE FORGE 3D preview failed; conversion remains available",previewError);
