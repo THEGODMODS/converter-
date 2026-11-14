@@ -22,7 +22,7 @@ export default function SingleFaceApp(){
    if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
    setPreviewBusy(true);
    try{
-    const highDetailModels=scanned.files.filter(file=>file.kind==="model-pes2021"&&/(?:^|\\/) [^/]+_high\\.fmdl$/i.test(file.path.replace(/\\s/g,"")));
+    const highDetailModels=scanned.files.filter(file=>file.kind==="model-pes2021"&&file.path.toLowerCase().endsWith("_high.fmdl"));
     const previewModels=(highDetailModels.length?highDetailModels:[head]).slice(0,24);
     const settled=await Promise.allSettled(previewModels.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
     const materials:FacePreviewData["materials"]=[],meshes:FacePreviewData["meshes"]=[],warnings:string[]=[];
