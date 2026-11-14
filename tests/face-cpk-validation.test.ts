@@ -4,7 +4,7 @@ import {verifyPes2017FaceCpk} from "../engine/packaging/face-cpk-validation";
 
 function modelFixture():Buffer {
   const data=Buffer.alloc(36);
-  data.write("MODEL\\0\\0\\0",0,"binary");
+  data.write("MODEL\0\0\0",0,"binary");
   data.writeUInt32LE(24,8);
   data.writeUInt16LE(16,14);
   data.writeUInt32LE(12,24);
