@@ -253,6 +253,9 @@ function registerIpc(){
   if(generation==="pes2021"&&materials.length){
    const textureInventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
    const textureFiles=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
+   const hasScleraAsset=textureFiles.some(file=>/eye_sclera_bsm/i.test(path.posix.basename(file.path.split("!/").pop()??file.path)));
+   const hasScleraBinding=materials.some(material=>Object.values(material.textures).some(reference=>/eye_sclera_bsm/i.test(reference)));
+   if(hasScleraAsset&&!hasScleraBinding)warnings.push("An eye_sclera texture is present but is not referenced by the supplied FMDL materials; the preview will not invent an eye mesh or bind an unused texture.");
    for(const material of materials){
     const textureData:Record<string,string>={};
     for(const [slot,reference] of Object.entries(material.textures)){
