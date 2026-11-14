@@ -18,6 +18,17 @@ function makeFpk(entries:Array<{name:string;data:Buffer}>,isFpkd=false):Buffer{
 }
 
 describe("inspectFaceFolder",()=>{
+  it("indexes and hashes files with unrecognized extensions instead of silently skipping them",async()=>{
+    const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
+    try{
+      const payload=Buffer.from("custom face sidecar data");
+      await writeFile(path.join(root,"custom.faceasset"),payload);
+      const result=await inspectFaceFolder(root);
+      expect(result.fileCount).toBe(1);
+      expect(result.totalBytes).toBe(payload.length);
+      expect(result.files[0]).toMatchObject({path:"custom.faceasset",kind:"other",bytes:payload.length,sha256:createHash("sha256").update(payload).digest("hex")});
+    }finally{await rm(root,{recursive:true,force:true});}
+  });
   it("detects PES 2021 assets from model and texture companions",async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),"faceforge-"));
     try{

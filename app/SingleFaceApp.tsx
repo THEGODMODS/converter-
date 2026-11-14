@@ -28,7 +28,9 @@ export default function SingleFaceApp(){
      return !/(?:^|[_-])(?:low|lod[0-9]*)\.fmdl$/i.test(name);
     }).sort((a,b)=>Number(!a.path.toLowerCase().endsWith("_high.fmdl"))-Number(!b.path.toLowerCase().endsWith("_high.fmdl")));
     const candidates=[head,...otherFaceModels],seenModels=new Set<string>();
-    const previewModels=candidates.filter(file=>{if(seenModels.has(file.sha256))return false;seenModels.add(file.sha256);return true;}).slice(0,32);
+    const uniqueModels=candidates.filter(file=>{if(seenModels.has(file.sha256))return false;seenModels.add(file.sha256);return true;});
+    const previewPriority=(file:typeof head)=>{const name=file.path.split("/").pop()?.toLowerCase()??"";if(name.endsWith("face_high.fmdl"))return 0;if(/(eye|eyeline|eyeball|sclera|iris|pupil|eyelash|eyebrow)/.test(name))return 1;if(name.endsWith("hair_high.fmdl"))return 2;if(/(oral|teeth|tongue|lip)/.test(name))return 3;return 4;};
+    const previewModels=uniqueModels.sort((a,b)=>previewPriority(a)-previewPriority(b)).slice(0,4);
     const settled=await Promise.allSettled(previewModels.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
     const materials:FacePreviewData["materials"]=[],meshes:FacePreviewData["meshes"]=[],warnings:string[]=[];
     let loaded=0;
@@ -38,7 +40,7 @@ export default function SingleFaceApp(){
      const scene=result.value,offset=materials.length;loaded++;materials.push(...scene.materials);meshes.push(...scene.meshes.map(mesh=>({...mesh,materialIndex:mesh.materialIndex+offset})));warnings.push(...scene.warnings);
     }
     if(!loaded||!meshes.length)throw new Error("No high-detail face component could be rendered.");
-    if(candidates.length>previewModels.length)warnings.push("Preview limited to the first 32 unique face components; low-detail LOD models are excluded.");
+    if(uniqueModels.length>previewModels.length)warnings.push("Preview loaded the 4 highest-priority face components for responsiveness; "+(uniqueModels.length-previewModels.length)+" additional models remain indexed for conversion.");
     setPreview({source:"PES 2021 face assembly ("+loaded+" models)",generation:"pes2021",meshes,materials,warnings});
    }catch(previewError){
     console.error("FACE FORGE 3D preview failed; conversion remains available",previewError);
@@ -73,7 +75,7 @@ export default function SingleFaceApp(){
     </div>
     <div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">PREVIEW</span><h2>Review the actual face</h2></div><span className="step-number">02</span></div>
      {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE</span></div><FacePreview preview={preview}/>{preview.warnings.length>0&&<div className="error-line preview-diagnostics"><XCircle size={15}/><span>{preview.warnings.slice(0,5).join(" · ")}{preview.warnings.length>5?" · +"+(preview.warnings.length-5)+" more preview notes":""}</span></div>}</>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>{previewError??"Your face preview will appear here."}</p></div>}
-     <div className="convert-footer"><div><span className="eyebrow">OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">FACE PLAYER ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Player ID" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>The ID is detected from the face folder when possible.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a valid player ID.</small>}</div>}<p></p></div><button className="convert-btn" onClick={convert} disabled={!project||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
+     <div className="convert-footer"><div><span className="eyebrow">OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">FACE PLAYER ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Player ID" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>The ID is detected from the face folder when possible.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a valid player ID.</small>}</div>}<p></p></div><button className="convert-btn" onClick={convert} disabled={!project||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
      {result&&<div className="texture-toast">{result}</div>}
     </div>
    </section>
