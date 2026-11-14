@@ -1694,6 +1694,48 @@ mod nested_face_archive_selection_tests {
     use super::{choose_nested_face_cpk_index, has_face_archive_manifest};
 
     #[test]
+    fn identical_loose_and_fpk_face_members_are_deduplicated() {
+        use super::write_face_archive_member;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-duplicate-identical-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut seen = std::collections::HashSet::new();
+        let mut count = 0usize;
+        let mut total = 0u64;
+        write_face_archive_member(&root, "face_diff.bin", b"same-face-diff", &mut seen, &mut count, &mut total).unwrap();
+        write_face_archive_member(&root, "face_diff.bin", b"same-face-diff", &mut seen, &mut count, &mut total).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(total, b"same-face-diff".len() as u64);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn conflicting_loose_and_fpk_face_members_fail_without_choosing_one() {
+        use super::write_face_archive_member;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-duplicate-conflict-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut seen = std::collections::HashSet::new();
+        let mut count = 0usize;
+        let mut total = 0u64;
+        write_face_archive_member(&root, "face_diff.bin", b"loose-version", &mut seen, &mut count, &mut total).unwrap();
+        let error = write_face_archive_member(&root, "face_diff.bin", b"fpkd-version", &mut seen, &mut count, &mut total).unwrap_err();
+        assert!(error.contains("different data"));
+        assert_eq!(std::fs::read(root.join("face_diff.bin")).unwrap(), b"loose-version");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn ignores_windows_metadata_in_loose_and_archived_face_assets() {
         use super::is_windows_metadata_file_name;
         assert!(is_windows_metadata_file_name("desktop.ini"));
