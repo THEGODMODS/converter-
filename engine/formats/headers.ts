@@ -38,7 +38,7 @@ export function inspectModelHeader(data:Buffer):FormatInspection{
   if(version<16||version>19)return fail("MODEL",`Unrecognized MODEL version ${version}; known PES 2017 versions are 16–19.`);
   if(sectionOffset<24||sectionOffset+12>data.length)return fail("MODEL","Section array offset is outside the file.");
   const recordOffset=data.readUInt32LE(sectionOffset),recordCount=data.readUInt32LE(sectionOffset+4),recordSize=data.readUInt32LE(sectionOffset+8);
-  if(recordOffset<12||recordCount>4096||recordSize<4||sectionOffset+recordOffset+recordCount*recordSize>data.length)return fail("MODEL","Section array header or records are invalid.");
+  if(recordOffset<12||recordCount===0||recordCount>4096||recordSize<4||sectionOffset+recordOffset+recordCount*recordSize>data.length)return fail("MODEL","Section array header or records are invalid (a face model must contain at least one section record).");
   return {valid:true,format:"PES 2014–2017 MODEL",version,details:[`MODEL format version ${version}`,`${recordCount} section records`]};
 }
 
