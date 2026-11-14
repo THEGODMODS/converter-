@@ -128,6 +128,11 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm install
+      - name: Ensure release tag matches package version
+        shell: pwsh
+        run: |
+          $expected = "v" + (node -p "require('./package.json').version")
+          if ($env:GITHUB_REF_NAME -ne $expected) { throw "Release tag $env:GITHUB_REF_NAME does not match package version $expected." }
       - name: Build Windows installer and updater metadata
         run: npm run dist:win
       - name: Verify installer and updater metadata
