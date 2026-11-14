@@ -377,6 +377,15 @@ fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
 /// Select the compiler's nested player-face archive. The temporary filename is
 /// preferred when present; a sole independently identified face CPK is accepted
 /// even if a newer upstream compiler changes its naming convention.
+fn has_face_archive_manifest(names: &[String]) -> bool {
+    let has_face_xml = names.iter().any(|name| name.rsplit('/').next() == Some("face.xml"));
+    let has_head_model = names.iter().any(|name| {
+        let basename = name.rsplit('/').next().unwrap_or(name);
+        basename.ends_with("face_high_win32.model") || basename == "face_high.model"
+    });
+    has_face_xml && has_head_model
+}
+
 fn choose_nested_face_cpk_index(candidates: &[(usize, String)], compiler_player_id: &str) -> Result<usize, String> {
     let expected = format!("{compiler_player_id}.cpk");
     let exact: Vec<usize> = candidates.iter()
@@ -433,13 +442,7 @@ fn inject_preserved_sidecars(
         let names: Vec<String> = candidate.entries().iter()
             .map(|item| item.path.replace('\\', "/").to_ascii_lowercase())
             .collect();
-        let has_face_xml = names.iter().any(|name| name.rsplit('/').next() == Some("face.xml"));
-        let has_head_model = names.iter().any(|name| {
-            let basename = name.rsplit('/').next().unwrap_or(name);
-            basename.ends_with("face_high_win32.model")
-                || basename == "face_high.model"
-        });
-        if has_face_xml && has_head_model {
+        if has_face_archive_manifest(&names) {
             verified_face_candidates.push((index, entry.path.clone()));
         }
     }
@@ -1059,7 +1062,12 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         return Err("Upstream Team compiler reported success but produced no CPK archive.".into());
     }
     for archive_name in &cpk_files {
-        inject_preserved_sidecars(&output.join(archive_name), &player, compiler_player_id, target_player_id, &source_inventory.preserved_sidecars)?;
+        inject_preserved_sidecars(&output.join(archive_name), &player, compiler_player_id, target_player_id, &source_inventory.preserved_sidecars)
+            .map_err(|error| format!(
+                "Post-compile face archive assembly failed for {archive_name}. Team Compiler exit={exit_code}, completion={complete:?}, warnings={}. Recent compiler events={}. {error}",
+                warning_summaries.iter().take(12).cloned().collect::<Vec<_>>().join(" | "),
+                event_summaries.iter().take(24).cloned().collect::<Vec<_>>().join(" | ")
+            ))?;
     }
     let report = serde_json::json!({
         "ok": true,
@@ -1587,7 +1595,23 @@ mod pes2017_target_id_tests {
 
 #[cfg(test)]
 mod nested_face_archive_selection_tests {
-    use super::choose_nested_face_cpk_index;
+    use super::{choose_nested_face_cpk_index, has_face_archive_manifest};
+
+    #[test]
+    fn identifies_a_face_archive_from_its_manifest_not_its_outer_filename() {
+        let names = vec![
+            "face.xml".to_string(),
+            "face_high_win32.model".to_string(),
+            "face.mtl".to_string(),
+        ];
+        assert!(has_face_archive_manifest(&names));
+    }
+
+    #[test]
+    fn rejects_archives_without_both_manifest_and_head_model() {
+        assert!(!has_face_archive_manifest(&["face.xml".to_string(), "hair_high_win32.model".to_string()]));
+        assert!(!has_face_archive_manifest(&["face_high_win32.model".to_string()]));
+    }
 
     #[test]
     fn prefers_the_expected_temporary_compiler_filename() {
