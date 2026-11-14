@@ -64,6 +64,7 @@ function verifyFaceXmlReferences(
   if (!modelTags.length) throw new Error("face.xml contains no model entries.");
   const models: string[] = [];
   const materials: string[] = [];
+  let headMaterialPairFound = false;
   for (const tag of modelTags) {
     const attributes = new Map<string, string>();
     for (const match of tag[1].matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*(["'])(.*?)\2/gs)) {
@@ -74,8 +75,16 @@ function verifyFaceXmlReferences(
     const model = attributes.get("path");
     const material = attributes.get("material");
     if (!model || !material) throw new Error("Every face.xml model entry must declare both path and material.");
-    models.push(...resolve(model, "model"));
-    materials.push(...resolve(material, "material"));
+    const modelPaths = resolve(model, "model");
+    const materialPaths = resolve(material, "material");
+    models.push(...modelPaths);
+    materials.push(...materialPaths);
+    if (
+      modelPaths.some((name) => /(?:^|\\/)(?:oral_)?face_high_win32\\.model$/i.test(name)) &&
+      materialPaths.some((name) => /(?:^|\\/)(?:face_high|face)\\.mtl$/i.test(name))
+    ) {
+      headMaterialPairFound = true;
+    }
   }
 
   const unique = (values: string[]) => [...new Set(values)];
@@ -93,6 +102,7 @@ function verifyFaceXmlReferences(
   const headMaterial = resolvedMaterials.find((name) => /(?:^|\/)(?:face_high|face)\.mtl$/i.test(name));
   if (!head) throw new Error("face.xml does not resolve a face_high_win32.model head mesh.");
   if (!headMaterial) throw new Error("face.xml does not resolve the head material (face.mtl or face_high.mtl).");
+  if (!headMaterialPairFound) throw new Error("face.xml does not pair the face_high head mesh with its head material.");
 
   const textures: string[] = [];
   for (const materialPath of resolvedMaterials) {
