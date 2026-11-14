@@ -1016,12 +1016,9 @@ fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Team Compiler can report an unsuccessful batch completion after writing useful
-/// face archives. The native pipeline therefore judges the artifacts, not the
-/// summary flag alone. A non-empty completion plus at least one CPK is eligible
-/// for structural validation; an exit-zero CPK is also eligible when the event
-/// stream omitted Complete. The CPK must still pass archive parsing and
-/// player-path/sidecar assembly below before it can be returned to the UI.
+/// A CPK is not evidence of a successful compiler run. Require an explicit
+/// successful completion, a non-zero files-written count, and a zero process
+/// exit code before any output can enter structural validation.
 fn synthetic_player_folder_name(player_slot: &str, target_player_id: &str) -> String {
     format!("{player_slot} - FACE FORGE {target_player_id}")
 }
@@ -1031,13 +1028,9 @@ fn team_compiler_output_is_eligible(
     complete: Option<(bool, usize)>,
     cpk_count: usize,
 ) -> bool {
-    if cpk_count == 0 {
-        return false;
-    }
-    match complete {
-        Some((_, files_written)) => files_written > 0,
-        None => exit_code == 0,
-    }
+    exit_code == 0
+        && cpk_count > 0
+        && complete.is_some_and(|(success, files_written)| success && files_written > 0)
 }
 
 fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
@@ -1142,9 +1135,8 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
             other => event_summaries.push(format!("{other:?}")),
         }
     }
-    // Treat compiler status as diagnostic, not as the final conversion verdict.
-    // Partial/error completion is eligible only when it wrote files and produced
-    // a CPK; the archive parser and identity/sidecar checks below remain mandatory.
+    // Compiler success is a hard prerequisite. Structural archive checks below
+    // are an additional gate, not a way to recover from a failed compiler run.
     let mut output_files = Vec::new();
     for entry in fs::read_dir(output).map_err(|e| format!("Read converted output: {e}"))? {
         let entry = entry.map_err(|e| format!("Read converted output entry: {e}"))?;
@@ -1156,7 +1148,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     if !team_compiler_output_is_eligible(exit_code, complete, cpk_files.len()) {
         let details = event_summaries.iter().take(64).cloned().collect::<Vec<_>>().join(" | ");
         return Err(format!(
-            "Team Compiler produced no structurally eligible face output (exit {exit_code}, completion={complete:?}, CPK archives={}). A non-empty completion and at least one CPK are required. {details}",
+            "Team Compiler did not report a clean successful face conversion (exit {exit_code}, completion={complete:?}, CPK archives={}). A zero exit code, explicit successful completion with files written, and at least one CPK are required. {details}",
             cpk_files.len()
         ));
     }
@@ -1688,16 +1680,17 @@ mod pes2017_target_id_tests {
     }
 
     #[test]
-    fn accepts_nonempty_compiler_output_for_downstream_validation_even_with_findings() {
+    fn accepts_only_explicitly_successful_compiler_output() {
         use super::team_compiler_output_is_eligible;
         assert!(team_compiler_output_is_eligible(0, Some((true, 1)), 1));
-        assert!(team_compiler_output_is_eligible(1, Some((false, 9)), 1));
-        assert!(team_compiler_output_is_eligible(0, Some((false, 9)), 1));
-        assert!(team_compiler_output_is_eligible(1, Some((true, 9)), 1));
-        assert!(team_compiler_output_is_eligible(0, None, 1));
+        assert!(!team_compiler_output_is_eligible(1, Some((false, 9)), 1));
+        assert!(!team_compiler_output_is_eligible(0, Some((false, 9)), 1));
+        assert!(!team_compiler_output_is_eligible(1, Some((true, 9)), 1));
+        assert!(!team_compiler_output_is_eligible(0, None, 1));
         assert!(!team_compiler_output_is_eligible(1, None, 1));
         assert!(!team_compiler_output_is_eligible(0, Some((true, 0)), 1));
         assert!(!team_compiler_output_is_eligible(0, Some((false, 9)), 0));
+        assert!(!team_compiler_output_is_eligible(0, Some((true, 1)), 0));
     }
 
     #[test]
