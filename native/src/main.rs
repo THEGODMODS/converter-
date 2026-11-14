@@ -430,7 +430,7 @@ fn remap_compiler_face_archive_path(path: &str, compiler_face_dir: &str, target_
     let normalized = path.replace('\\', "/");
     let prefix = format!("{}/", compiler_face_dir.trim_end_matches('/'));
     if normalized.to_ascii_lowercase().starts_with(&prefix.to_ascii_lowercase()) {
-        format!("{}{}", target_face_dir.trim_end_matches('/'), &normalized[prefix.len()..])
+        format!("{}/{}", target_face_dir.trim_end_matches('/'), &normalized[prefix.len()..])
     } else {
         normalized
     }
