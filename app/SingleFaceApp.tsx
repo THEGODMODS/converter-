@@ -8,10 +8,10 @@ import UpdateNotice from "./UpdateNotice";
 const validTarget=/^[0-9]{1,6}$/;
 export default function SingleFaceApp(){
  const [project,setProject]=useState<FaceProject|null>(null),[targetId,setTargetId]=useState(""),[preview,setPreview]=useState<FacePreviewData|null>(null);
- const [busy,setBusy]=useState(false),[previewBusy,setPreviewBusy]=useState(false),[converting,setConverting]=useState(false),[dragging,setDragging]=useState(false);
+ const [busy,setBusy]=useState(false),[previewBusy,setPreviewBusy]=useState(false),[previewError,setPreviewError]=useState<string|null>(null),[converting,setConverting]=useState(false),[dragging,setDragging]=useState(false);
  const [error,setError]=useState(""),[result,setResult]=useState("");
  const loadFolder=async(folder:string)=>{
-  setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setTargetId("");
+  setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setPreviewError(previewError instanceof Error?previewError.message:String(previewError));setTargetId("");
   try{
    const scanned=await window.faceForge.inspectFolder(folder);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
@@ -20,7 +20,7 @@ export default function SingleFaceApp(){
    setProject(scanned);
    const sourceId=inferPesPlayerIdFromPath(scanned.root);
    if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
-   setPreviewBusy(true);
+   setPreviewBusy(true);setPreviewError(null);
    try{
     const highDetailModels=scanned.files.filter(file=>file.kind==="model-pes2021"&&file.path.toLowerCase().endsWith("_high.fmdl"));
     const previewModels=(highDetailModels.length?highDetailModels:[head]).slice(0,24);
@@ -68,7 +68,7 @@ export default function SingleFaceApp(){
       {project&&<div className="project-card"><div className="project-title"><CheckCircle2 size={17}/><strong>Face folder ready</strong></div></div>}
     </div>
     <div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">PREVIEW</span><h2>Review the actual face</h2></div><span className="step-number">02</span></div>
-     {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE</span></div><FacePreview preview={preview}/>{preview.warnings.length>0&&<div className="error-line preview-diagnostics"><XCircle size={15}/><span>{preview.warnings.slice(0,5).join(" · ")}{preview.warnings.length>5?" · +"+(preview.warnings.length-5)+" more preview notes":""}</span></div>}</>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>Your face preview will appear here.</p></div>}
+     {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE</span></div><FacePreview preview={preview}/>{preview.warnings.length>0&&<div className="error-line preview-diagnostics"><XCircle size={15}/><span>{preview.warnings.slice(0,5).join(" · ")}{preview.warnings.length>5?" · +"+(preview.warnings.length-5)+" more preview notes":""}</span></div>}</>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>{previewError??"Your face preview will appear here."}</p></div>}
      <div className="convert-footer"><div><span className="eyebrow">OUTPUT</span>{project&&<div className="target-player-id"><label htmlFor="target-player-id">FACE PLAYER ID</label><input id="target-player-id" type="text" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Player ID" value={targetId} onChange={event=>setTargetId(event.target.value.replace(/[^0-9]/g,"").slice(0,6))}/><small>The ID is detected from the face folder when possible.</small>{targetId.length>0&&!validTarget.test(targetId)&&<small className="target-id-error">Enter a valid player ID.</small>}</div>}<p></p></div><button className="convert-btn" onClick={convert} disabled={!project||previewBusy||converting||!validTarget.test(targetId)}><Sparkles size={16}/>{converting?"CONVERTING…":"CONVERT FACE"}</button></div>
      {result&&<div className="texture-toast">{result}</div>}
     </div>
