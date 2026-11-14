@@ -191,27 +191,33 @@ function registerIpc(){
   trusted(event);
   if(typeof folder!=="string"||!path.isAbsolute(folder)||target!==2017)throw new Error("This release supports PES 2021 → PES 2017 only.");
   const resolvedPlayerId=typeof playerId==="string"&&playerId.trim()?playerId:inferPesPlayerIdFromPath(folder);
-   if(typeof resolvedPlayerId!=="string"||!/^[0-9]{1,6}$/.test(resolvedPlayerId)||/^0+$/.test(resolvedPlayerId))throw new Error("Enter the numeric player ID belonging to this face.");
+  if(typeof resolvedPlayerId!=="string"||!/^[0-9]{1,6}$/.test(resolvedPlayerId)||/^0+$/.test(resolvedPlayerId))throw new Error("Enter the numeric player ID belonging to this face.");
+  
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
+  
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
   inspectedFaceProjects.set(root,inventory);
   preflightPes2021FaceProject(inventory);
+  
   const destination=await dialog.showOpenDialog(mainWindow!,{title:target===2017?"Choose an empty output folder for the converted PES 2017 face CPK":"Choose an empty output folder for the converted PES 2021 face FPK/FPKD",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
+  
   const output=path.resolve(destination.filePaths[0]),outputStat=await fs.promises.lstat(output);
   if(outputStat.isSymbolicLink()||!outputStat.isDirectory())throw new Error("Choose a real output directory, not a symbolic link.");
+  
   const realOutput=await fs.promises.realpath(output),rootPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep,outputPrefix=realOutput.endsWith(path.sep)?realOutput:realOutput+path.sep;
   if(realOutput===realRoot||realOutput.startsWith(rootPrefix)||realRoot.startsWith(outputPrefix))throw new Error("Source and output folders must be separate and cannot contain one another.");
-  if((await fs.promises.readdir(realOutput)).length)throw new Error("Choose an empty output folder; existing files will never be overwritten.");
+  
   const binary=app.isPackaged?path.join(process.resourcesPath,"face-forge-native.exe"):path.resolve(__dirname,"../../native/target/release/face-forge-native.exe");
   if(!fs.existsSync(binary))throw new Error("The native conversion engine is missing. Rebuild FACE FORGE with the upstream Team compiler enabled.");
+  
   const stageParent=await fs.promises.mkdtemp(path.join(path.dirname(realOutput),".face-forge-complete-stage-"));
   const stageOutput=path.join(stageParent,"output");
+  
   try{
-   await fs.promises.mkdir(stageOutput);
+   await fs.promises.mkdir(stageOutput,{recursive:true});
    
-   // Normalized path strings to protect windows spacing in process execution bridge
    const normalizedInput = path.normalize(realRoot);
    const normalizedOutput = path.normalize(stageOutput);
 
@@ -225,28 +231,34 @@ function registerIpc(){
 
    let parsedReport:unknown;try{parsedReport=JSON.parse(result.stdout.trim());}catch{throw new Error("The upstream face compiler returned an invalid conversion report.");}
    if(!parsedReport||typeof parsedReport!=="object"||(parsedReport as {ok?:unknown}).ok!==true||!Array.isArray((parsedReport as {cpkFiles?:unknown}).cpkFiles)||(parsedReport as {cpkFiles:string[]}).cpkFiles.length===0)throw new Error("The upstream compiler did not produce a conversion report with CPK outputs.");
+   
    const cpkNames=(parsedReport as {cpkFiles:string[]}).cpkFiles;
    const archiveVerification:Array<{archive:string;fileCount:number;entries:Array<{path:string;size:number;sha256:string}>;faceCpkPath:string;faceFileCount:number;faceEntries:Array<{path:string;size:number;sha256:string}>;preservedSidecars:string[]}> = [];
+   
    for(const archiveName of cpkNames){
     if(typeof archiveName!=="string"||!archiveName||path.basename(archiveName)!==archiveName||!archiveName.toLowerCase().endsWith(".cpk"))throw new Error("The native report contains an unsafe CPK output name.");
     const archivePath=path.join(stageOutput,archiveName),archiveStat=await fs.promises.lstat(archivePath);
     if(archiveStat.isSymbolicLink()||!archiveStat.isFile()||archiveStat.size<0x800)throw new Error("The compiler's CPK output is missing, unsafe or truncated: "+archiveName);
+    
     const archiveBytes=await readFile(archivePath),verification=verifyPes2017FaceCpk(archiveBytes,resolvedPlayerId),inspection=verification.outerInspection;
-     const reportRecord=parsedReport as Record<string,unknown>;
-     const preservedSidecars=Array.isArray(reportRecord.preservedSidecars)?reportRecord.preservedSidecars as string[]:[];
-     for(const sidecar of preservedSidecars){
-      if(typeof sidecar!=="string"||!sidecar.trim())throw new Error("The native report contains an invalid preserved face sidecar path.");
-      const basename=sidecar.split(/[\\/]/).pop()!.toLowerCase();
-      if(!basename||basename==="."||basename==="..")throw new Error("The native report contains an unsafe preserved face sidecar path.");
-      if(!verification.faceInspection.files.some(entry=>path.posix.basename(entry.path).toLowerCase()===basename))throw new Error("The generated PES 2017 face CPK is missing preserved source sidecar "+sidecar+".");
-     }
-     
-     const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
+    const reportRecord=parsedReport as Record<string,unknown>;
+    const preservedSidecars=Array.isArray(reportRecord.preservedSidecars)?reportRecord.preservedSidecars as string[]:[];
+    
+    for(const sidecar of preservedSidecars){
+     if(typeof sidecar!=="string"||!sidecar.trim())throw new Error("The native report contains an invalid preserved face sidecar path.");
+     const basename=sidecar.split(/[\\/]/).pop()!.toLowerCase();
+     if(!basename||basename==="."||basename==="..")throw new Error("The native report contains an unsafe preserved face sidecar path.");
+     if(!verification.faceInspection.files.some(entry=>path.posix.basename(entry.path).toLowerCase()===basename))throw new Error("The generated PES 2017 face CPK is missing preserved source sidecar "+sidecar+".");
+    }
+    
+    const entries=inspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(archiveBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
     const nestedEntry=inspection.files.find(entry=>entry.path===verification.faceCpkPath)!;
     const nestedBytes=archiveBytes.subarray(nestedEntry.offset,nestedEntry.offset+nestedEntry.size);
     const faceEntries=verification.faceInspection.files.map(entry=>({path:entry.path,size:entry.size,sha256:createHash("sha256").update(nestedBytes.subarray(entry.offset,entry.offset+entry.size)).digest("hex")}));
+    
     archiveVerification.push({archive:archiveName,fileCount:inspection.fileCount,entries,faceCpkPath:verification.faceCpkPath,faceFileCount:verification.faceInspection.fileCount,faceEntries,preservedSidecars});
    }
+   
    const report={...(parsedReport as Record<string,unknown>),archiveVerification:{method:"independent FACE FORGE CPK TOC/range read-back with per-entry SHA-256",archives:archiveVerification}};
    const published=await publishStagedOutput(stageOutput,realOutput);
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
@@ -254,7 +266,7 @@ function registerIpc(){
   }catch(error){
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
    const detail=describeProcessFailure(error);
-   throw new Error("Complete face conversion failed. The selected output folder was not intentionally cleared: "+detail);
+   throw new Error("Complete face conversion failed: "+detail);
   }
  });
  ipcMain.handle("face:build-fox-package",async(event,folder:unknown,virtualRoot:unknown)=>{
