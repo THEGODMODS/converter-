@@ -3,12 +3,12 @@ import {buildCpk} from "../engine/packaging/cpk";
 import {verifyPes2017FaceCpk} from "../engine/packaging/face-cpk-validation";
 
 function modelFixture():Buffer {
-  const data=Buffer.alloc(36);
+  const data=Buffer.alloc(40);
   data.write("MODEL\0\0\0",0,"binary");
   data.writeUInt32LE(24,8);
   data.writeUInt16LE(16,14);
   data.writeUInt32LE(12,24);
-  data.writeUInt32LE(0,28);
+  data.writeUInt32LE(1,28);
   data.writeUInt32LE(4,32);
   return data;
 }
@@ -76,6 +76,17 @@ describe("PES 2017 nested face CPK verification",()=>{
   });
   it("rejects a referenced model with an invalid PES 2017 MODEL header",()=>{
     const invalidFiles=faceFiles.map(file=>file.path==="face_high_win32.model"?{...file,data:Buffer.from("not-a-model")}:file);
+    expect(()=>verifyPes2017FaceCpk(teamArchive(invalidFiles),"71405")).toThrow(/referenced PES 2017 model is invalid/i);
+  });
+  it("rejects a head model with an empty section table",()=>{
+    const emptySections=Buffer.alloc(36);
+    emptySections.write("MODEL\\0\\0\\0",0,"binary");
+    emptySections.writeUInt32LE(24,8);
+    emptySections.writeUInt16LE(16,14);
+    emptySections.writeUInt32LE(12,24);
+    emptySections.writeUInt32LE(0,28);
+    emptySections.writeUInt32LE(4,32);
+    const invalidFiles=faceFiles.map(file=>file.path==="face_high_win32.model"?{...file,data:emptySections}:file);
     expect(()=>verifyPes2017FaceCpk(teamArchive(invalidFiles),"71405")).toThrow(/referenced PES 2017 model is invalid/i);
   });
   it("rejects a corrupt local DDS stored inside the nested face CPK",()=>{
