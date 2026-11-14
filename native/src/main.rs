@@ -496,15 +496,17 @@ fn inject_preserved_sidecars(
         .map(|(parent, _)| parent.to_string())
         .ok_or_else(|| "Generated face.xml is missing its player directory path.".to_string())?;
     let compiler_folder_id = compiler_face_dir.rsplit('/').next().unwrap_or("");
-    if !compiler_folder_id.eq_ignore_ascii_case(compiler_player_id) {
-        return Err(format!(
-            "Generated face.xml directory ends in {compiler_folder_id}, expected temporary compiler player ID {compiler_player_id}."
-        ));
+    let compiler_face_parent = compiler_face_dir.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("");
+    if !compiler_face_parent.eq_ignore_ascii_case("common/character0/model/character/face/real") {
+        return Err(format!("Generated face.xml is outside the PES 2017 face real directory: {compiler_face_dir}."));
     }
-    let target_face_dir = match compiler_face_dir.rsplit_once('/') {
-        Some((parent, _)) => format!("{parent}/{target_player_id}"),
-        None => target_player_id.to_string(),
-    };
+    if validate_target_player_id(compiler_folder_id).is_err() {
+        return Err(format!("Generated face.xml directory has an invalid temporary player folder ID: {compiler_folder_id}."));
+    }
+    // The compiler slot ID is a hint, not an identity guarantee. If upstream
+    // changes its synthetic team/slot numbering, a unique verified face CPK is
+    // still safe to remap from its own numeric directory to the requested ID.
+    let target_face_dir = format!("{compiler_face_parent}/{target_player_id}");
     let mut nested_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "FACE FORGE PLAYER FACE")
         .map_err(|e| format!("Create rebuilt nested face CPK: {e}"))?;
     let mut existing = std::collections::HashSet::new();
@@ -1703,7 +1705,7 @@ mod nested_face_archive_selection_tests {
         assert_eq!(
             remap_compiler_face_archive_path(
                 "common/character0/model/character/face/real/70101/face.xml",
-                "common/character0/model/character/face/real/70101",
+                "common/character0/model/character/face/real/71405",
                 "common/character0/model/character/face/real/176104"
             ),
             "common/character0/model/character/face/real/176104/face.xml"
