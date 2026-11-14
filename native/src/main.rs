@@ -1698,6 +1698,64 @@ mod nested_face_archive_selection_tests {
     }
 
     #[test]
+    fn rebuilds_both_face_id_paths_and_places_sidecars_under_the_real_player_folder() {
+        use super::inject_preserved_sidecars;
+        use std::io::Cursor;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-cpk-remap-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let player_root = root.join("player");
+        std::fs::create_dir_all(&player_root).unwrap();
+        std::fs::write(player_root.join("fcl_hair_sim.fclo"), b"sidecar-bytes").unwrap();
+
+        let mut nested_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "TEST FACE")
+            .unwrap();
+        let compiler_dir = "common/character0/model/character/face/real/70101";
+        nested_writer.add(&format!("{compiler_dir}/face.xml"), b"<config/>", None).unwrap();
+        nested_writer.add(&format!("{compiler_dir}/oral_face_high_win32.model"), b"head-model", None).unwrap();
+        let nested_bytes = nested_writer.finish().unwrap().into_inner();
+
+        let mut outer_writer = cpk::CpkWriter::new(Cursor::new(Vec::new()), "TEST TEAM")
+            .unwrap();
+        outer_writer.add(
+            "common/character0/model/character/face/real/70101.cpk",
+            &nested_bytes,
+            None,
+        ).unwrap();
+        let outer_bytes = outer_writer.finish().unwrap().into_inner();
+        let outer_path = root.join("team.cpk");
+        std::fs::write(&outer_path, outer_bytes).unwrap();
+
+        inject_preserved_sidecars(
+            &outer_path,
+            &player_root,
+            "70101",
+            "176104",
+            &["fcl_hair_sim.fclo".to_string()],
+        ).unwrap();
+
+        let outer_bytes = std::fs::read(&outer_path).unwrap();
+        let mut outer = cpk::CpkArchive::open(Cursor::new(outer_bytes)).unwrap();
+        let face_entry = outer.entries().iter()
+            .find(|entry| entry.path.ends_with("176104.cpk"))
+            .unwrap().clone();
+        let nested_bytes = outer.read(&face_entry).unwrap();
+        let nested = cpk::CpkArchive::open(Cursor::new(nested_bytes)).unwrap();
+        let paths: Vec<String> = nested.entries().iter().map(|entry| entry.path.clone()).collect();
+        assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/face.xml"));
+        assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/oral_face_high_win32.model"));
+        assert!(paths.iter().any(|path| path == "common/character0/model/character/face/real/176104/fcl_hair_sim.fclo"));
+        assert!(paths.iter().all(|path| !path.contains("/70101/")));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn prefers_the_expected_temporary_compiler_filename() {
         let candidates = vec![
             (2, "Players/70102.cpk".to_string()),
