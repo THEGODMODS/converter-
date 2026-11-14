@@ -1,6 +1,6 @@
 {
   "name": "thegodmods-face-forge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "PES 2021 to PES 2017 face converter with interactive 3D preview by KFC GODMODS",
   "main": "dist-electron/electron/main.js",
@@ -14,13 +14,15 @@
     "predev": "npm run build:electron && npm run build:native",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:icon": "node scripts/build-icon.mjs",
-    "build:native": "cargo build --release --manifest-path native/Cargo.toml"
+    "build:native": "cargo build --release --manifest-path native/Cargo.toml",
+    "dist:win:publish": "npm run build && npm run build:icon && npm run build:native && electron-builder --win nsis --publish always"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
@@ -77,7 +79,14 @@
         "to": "face-forge-native.exe"
       }
     ],
-    "copyright": "Copyright © 2026 KFC GODMODS"
+    "copyright": "Copyright © 2026 KFC GODMODS",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "THEGODMODS",
+        "repo": "converter-"
+      }
+    ]
   },
   "author": "KFC GODMODS"
 }
