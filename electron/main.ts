@@ -277,7 +277,7 @@ function registerIpc(){
    if(!source.startsWith(prefix))throw new Error("Preview path escapes the selected face folder.");
    const realSource=await fs.promises.realpath(source),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
    if(!realSource.startsWith(realPrefix))throw new Error("Preview source resolves outside the selected face folder.");
-   const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview source is not a safe supported file.");
+   const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("Preview source is not a safe supported file.");
    data=await readFile(source);extension=path.extname(source).toLowerCase();
    if(extension===".model"){const mtlPath=path.join(path.dirname(source),path.basename(source,path.extname(source))+".mtl");if(fs.existsSync(mtlPath)){const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile()||mtlStat.size>32*1024*1024)throw new Error("Companion PES 2017 MTL is not a safe regular file.");companionMtl=await readFile(mtlPath);}}
   }
