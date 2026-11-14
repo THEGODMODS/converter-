@@ -106,7 +106,7 @@ function verifyFaceXmlReferences(
       // Team Compiler emits player-owned PES 2017 textures into the outer team
       // CPK under common/character1/, while the nested face MTL keeps the game
       // virtual path without that prefix. These are not arbitrary external files.
-      const virtualPath = texturePath.trim().replaceAll("\\", "/").replace(/^\\/+/, "").toLowerCase();
+      const virtualPath = texturePath.trim().replaceAll("\\", "/").replace(/^\/+/, "").toLowerCase();
       if (virtualPath.startsWith("model/character/uniform/common/")) {
         const outerPath = "common/character1/" + virtualPath;
         if (!outerFiles.some((file) => file.path.replaceAll("\\", "/").toLowerCase() === outerPath)) {
