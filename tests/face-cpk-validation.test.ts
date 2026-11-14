@@ -30,9 +30,9 @@ describe("PES 2017 nested face CPK verification",()=>{
   });
   it("accepts the exact upstream Team Compiler oral_face_high_win32.model output",()=>{
     const upstreamFiles=[
-      {path:"common/character0/model/character/face/real/71405/face.xml",data:Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\\r\\n<config>\\r\\n   <model level="0" type="face_neck" path="./oral_face_high_*.model" material="./face_high.mtl" />\\r\\n</config>')},
-      {path:"common/character0/model/character/face/real/71405/oral_face_high_win32.model",data:Buffer.from("upstream-model")},
-      {path:"common/character0/model/character/face/real/71405/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
+      {path:"common/character0/model/character/face/real/176104/face.xml",data:Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\\r\\n<config>\\r\\n   <model level="0" type="face_neck" path="./oral_face_high_*.model" material="./face_high.mtl" />\\r\\n</config>')},
+      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:Buffer.from("upstream-model")},
+      {path:"common/character0/model/character/face/real/176104/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
     ];
     const outer=buildCpk([{path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)}]);
     const result=verifyPes2017FaceCpk(outer,"176104");
@@ -42,6 +42,14 @@ describe("PES 2017 nested face CPK verification",()=>{
   it("accepts a six-digit real PES player ID",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(faceFiles,"176104"),"176104");
     expect(result.faceCpkPath).toMatch(/176104\.cpk$/i);
+  });
+  it("rejects a nested face CPK whose internal folder still uses the temporary compiler ID",()=>{
+    const wrongFolderFiles=faceFiles.map(file=>({...file,path:"common/character0/model/character/face/real/70101/"+file.path}));
+    const wrongOuter=buildCpk([{
+      path:"common/character0/model/character/face/real/176104.cpk",
+      data:buildCpk(wrongFolderFiles),
+    }]);
+    expect(()=>verifyPes2017FaceCpk(wrongOuter,"176104")).toThrow(/internal player folder 70101, expected 176104/i);
   });
   it("rejects an outer CPK that contains no nested face CPK",()=>{
     expect(()=>verifyPes2017FaceCpk(buildCpk([{path:"readme.txt",data:Buffer.from("not a face")}]),"71405")).toThrow(/nested player-face CPK/i);
