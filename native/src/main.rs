@@ -451,9 +451,15 @@ fn inject_preserved_sidecars(
     let mut verified_face_candidates: Vec<(usize, String)> = Vec::new();
     let mut cpk_entry_names: Vec<String> = Vec::new();
     for (index, entry) in outer_entries.iter().enumerate() {
-        // Do not trust the outer member's filename extension. Some Team Compiler
-        // builds/exports may wrap a nested CPK under a non-.cpk member name.
-        // The archive signature and its internal face manifest are authoritative.
+        // A PES player-face archive belongs under the face/real directory and is
+        // at least a CPK header/table in size. Keep unrelated large textures out
+        // of the probe, but do not trust the member's filename extension.
+        let outer_path = entry.path.replace('\\\\', "/").to_ascii_lowercase();
+        if !outer_path.contains("/character/face/real/") || entry.size < 0x800 {
+            continue;
+        }
+        // Some compiler builds may omit or change the .cpk extension. The archive
+        // signature and its internal face manifest are authoritative.
         let Ok(candidate_bytes) = outer.read(entry) else { continue };
         let Ok(candidate) = cpk::CpkArchive::open(Cursor::new(candidate_bytes)) else { continue };
         cpk_entry_names.push(entry.path.clone());
