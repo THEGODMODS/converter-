@@ -15,12 +15,12 @@ export function createConversionPlan(direction:ConversionDirection,detected:"pes
  if(detected!==from)blockers.push(detected==="mixed"?"The project contains both PES generations. Select a clean source face folder.":detected==="unknown"?"Source generation could not be detected from valid binary signatures.":"Selected conversion direction does not match the detected source generation.");
  if(!hasModel)blockers.push("A valid source face model is required.");
  if(!hasTextures)warnings.push("No valid texture assets were detected; face appearance may be incomplete.");
- blockers.push("Whole-face package assembly, dependency relinking, generation-specific model adapters and target-game validation are not yet implemented.");
+ blockers.push("This generic model-adapter planner does not execute complete-face packaging. For PES 2021 → PES 2017, use the dedicated native convert-face-folder route; this plan alone is inspection-only and cannot produce a game-ready face.");
  return {direction,source,target,steps:[
   {id:"intake",label:"Project inventory and source detection",status:detected===from?"ready":"blocked",detail:"Validated file signatures and project inventory."},
   {id:"texture",label:"Texture format conversion",status:"ready",detail:"DDS ↔ FTEX container conversion is available for supported formats."},
   {id:"geometry",label:"Single-model semantic conversion",status:"ready",detail:"Pinned native model_convert engine handles supported FMDL ↔ MODEL/MTL translation and version-specific skeleton retargeting; losses are reported."},
   {id:"preview",label:"3D preview and target validation",status:"planned",detail:"Requires a validated target-format model."},
-  {id:"package",label:"Complete face package assembly",status:"blocked",detail:"Multi-model conversion, texture/material relinking, face_diff mapping and target-game validation must pass before packaging."}
+  {id:"package",label:"Complete face package assembly",status:"blocked",detail:"Not executed by this generic adapter plan. The supported PES 2021 → PES 2017 folder route is the dedicated native Team Compiler pipeline; target-game validation remains a separate requirement."}
  ],blockers,warnings,executable:false};
 }
