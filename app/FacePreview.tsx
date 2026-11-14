@@ -15,7 +15,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   const grid=new THREE.GridHelper(4,20,0x354657,0x1b2936);grid.position.y=-1.15;scene.add(grid);
   const group=new THREE.Group();scene.add(group);let min=new THREE.Vector3(Infinity,Infinity,Infinity),max=new THREE.Vector3(-Infinity,-Infinity,-Infinity);
   const ddsLoader=new DDSLoader(),textureCache=new Map<string,THREE.Texture>(),builtMaterials=preview.materials.map(source=>{
-   const isHair=/hair/i.test(source.name),isEyeOcclusion=/eye.?occlusion/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:isEyeOcclusion?0x72584f:0x9ca3af,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
+   const materialRole=source.name+" "+(source.shader??"");const isHair=/hair/i.test(materialRole),isEyeOcclusion=/eye.?occlusion/i.test(materialRole)||Object.values(source.textures).some(reference=>/eye_occlusion_alp/i.test(reference)),isEyeDetail=!isEyeOcclusion&&/(eye|eyeline|eyelash|eyebrow|iris|pupil)/i.test(materialRole),isAmbientOcclusion=/(^|[_\\W])(?:ao|ambient.?occlusion)([_\\W]|$)/i.test(materialRole);const fallbackColor=isHair?0x39302b:isEyeDetail?0x261712:isEyeOcclusion?0x72584f:isAmbientOcclusion?0x80685c:0x9ca3af;const material=new THREE.MeshStandardMaterial({color:fallbackColor,roughness:isEyeDetail?.52:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
 
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
     const semantic=slot+" "+(source.textures[slot]??"");
