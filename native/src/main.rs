@@ -1133,7 +1133,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         return Err("Upstream Team compiler reported success but produced no CPK archive.".into());
     }
     for archive_name in &cpk_files {
-        inject_preserved_sidecars(&output.join(archive_name), &player, compiler_player_id, target_player_id, &source_inventory.preserved_sidecars)
+        inject_preserved_sidecars(&output.join(archive_name), &player, &compiler_player_id, target_player_id, &source_inventory.preserved_sidecars)
             .map_err(|error| format!(
                 "Post-compile face archive assembly failed for {archive_name}. Team Compiler exit={exit_code}, completion={complete:?}, warnings={}. Recent compiler events={}. {error}",
                 warning_summaries.iter().take(12).cloned().collect::<Vec<_>>().join(" | "),
