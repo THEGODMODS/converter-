@@ -43,8 +43,8 @@ async function readProjectFile(root:string,relative:string):Promise<Buffer>{
 export async function convertFaceTextureDependencies(project:FaceProject,sourceRoot:string,outputRoot:string,target:TargetGeneration){
  const sourceKind=target==="2017"?"model-pes2021":"material-pes2017";
  const fromExtension=target==="2017"?"ftex":"dds",toExtension=target==="2017"?"dds":"ftex";
- const relevantDependencies=project.dependencies.filter(dep=>project.files.some(file=>file.path===dep.source&&file.kind===sourceKind));
- const unresolved=relevantDependencies.filter(dep=>dep.status!=="resolved");
+ const relevantDependencies=project.dependencies.filter(dep=>dep.status!=="external"&&project.files.some(file=>file.path===dep.source&&file.kind===sourceKind));
+ const unresolved=relevantDependencies.filter(dep=>dep.status==="missing"||dep.status==="ambiguous");
  if(unresolved.length)throw new Error("Face texture dependency closure is incomplete; missing or ambiguous sampler references: "+unresolved.map(dep=>dep.source+" -> "+dep.reference+" ("+dep.status+")").join("; "));
  const dependencies=relevantDependencies;
  const plans:PlannedTexture[]=[],destinations=new Map<string,string>();
