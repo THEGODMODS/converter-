@@ -274,6 +274,63 @@ fn normalize_fox_texture_reference(directory: &mut String, file_name: &mut Strin
     }
 }
 
+/// Converts a Fox face FMDL's absolute game sourceimages path into the matching
+/// relative export path. Team Compiler resolves a relative path below the model folder;
+/// it does not descend into sourceimages when the FMDL keeps its absolute game path.
+fn relative_directory(from: &Path, to: &Path) -> Option<PathBuf> {
+    let from_components: Vec<_> = from.components().collect();
+    let to_components: Vec<_> = to.components().collect();
+    let common = from_components.iter().zip(&to_components)
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut relative = PathBuf::new();
+    for component in &from_components[common..] {
+        if matches!(component, std::path::Component::Normal(_)) {
+            relative.push("..");
+        }
+    }
+    for component in &to_components[common..] {
+        relative.push(component.as_os_str());
+    }
+    Some(relative)
+}
+
+/// Converts a Fox face FMDL's absolute game sourceimages path into the matching relative
+/// export path. The texture folder is commonly a sibling of #Win, not a child of face_fpk.
+fn normalize_fox_face_texture_directory(
+    model_directory: &Path,
+    directory: &mut String,
+    file_name: &str,
+) -> bool {
+    if file_name.is_empty()
+        || file_name == "."
+        || file_name == ".."
+        || file_name.contains('/')
+        || file_name.contains('\\')
+    {
+        return false;
+    }
+    let folded = directory.replace('\\', "/").to_ascii_lowercase();
+    if !folded.contains("/model/character/face/real/") || !folded.contains("/sourceimages/") {
+        return false;
+    }
+    for ancestor in model_directory.ancestors() {
+        for relative in ["sourceimages/#windx11", "sourceimages"] {
+            let texture_directory = ancestor.join(relative);
+            if !texture_directory.join(file_name).is_file() {
+                continue;
+            }
+            let Some(relative_directory) = relative_directory(model_directory, &texture_directory) else {
+                continue;
+            };
+            let relative = relative_directory.to_string_lossy().replace('\\', "/");
+            *directory = format!("{relative}/");
+            return true;
+        }
+    }
+    false
+}
+
 fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
     fn walk(root: &Path, changed_total: &mut usize) -> Result<(), String> {
         for entry in fs::read_dir(root).map_err(|e| format!("Read staged face folder {}: {e}", root.display()))? {
@@ -294,6 +351,7 @@ fn normalize_fox_face_model_paths(root: &Path) -> Result<usize, String> {
             let mut model = FmdlFile::read(&bytes).map_err(|e| format!("Parse FMDL {} before texture-path normalization: {e}", path.display()))?;
             let changed = rewrite_texture_paths(&mut model, |texture| {
                 normalize_fox_texture_reference(&mut texture.directory, &mut texture.file_name);
+                normalize_fox_face_texture_directory(path.parent().unwrap_or(root), &mut texture.directory, &texture.file_name);
             }).map_err(|e| format!("Normalize FMDL texture paths {}: {e}", path.display()))?;
             if changed == 0 { continue; }
             let encoded = model.write();
@@ -396,7 +454,7 @@ fn inject_preserved_sidecars(
     let check_entry = check_outer.entries().iter().find(|entry| entry.path.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case(&format!("{target_player_id}.cpk"))))
         .ok_or_else(|| "Rebuilt Team CPK lost its nested player archive.".to_string())?.clone();
     let check_nested_bytes = check_outer.read(&check_entry).map_err(|e| format!("Read back rebuilt nested face CPK: {e}"))?;
-    let mut check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
+    let check_nested = cpk::CpkArchive::open(Cursor::new(check_nested_bytes))
         .map_err(|e| format!("Validate rebuilt nested face CPK: {e}"))?;
     for sidecar in sidecars {
         let basename = Path::new(sidecar).file_name().and_then(|v| v.to_str()).unwrap_or(sidecar);
@@ -594,6 +652,142 @@ fn write_face_archive_member(
     Ok(())
 }
 
+/// Whether an extracted mirror folder contains only byte-identical members of its FPK.
+/// Such mirrors are common in unpacked face distributions (for example #Win/face_fpk beside
+/// #Win/face.fpk); retaining both copies makes Team Compiler treat the same face models as
+/// separate subfolder components.
+fn redundant_mirror_members(
+    folder: &Path,
+    archive_entries: &[(String, Vec<u8>)],
+) -> Result<Vec<PathBuf>, String> {
+    fn walk(
+        root: &Path,
+        current: &Path,
+        archive_entries: &[(String, Vec<u8>)],
+        members: &mut Vec<PathBuf>,
+    ) -> Result<(), String> {
+        for entry in fs::read_dir(current)
+            .map_err(|e| format!("Read extracted FPK mirror {}: {e}", current.display()))?
+        {
+            let entry = entry.map_err(|e| format!("Read extracted FPK mirror entry: {e}"))?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|e| format!("Inspect extracted FPK mirror {}: {e}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!("Symbolic link in extracted FPK mirror: {}", path.display()));
+            }
+            if metadata.is_dir() {
+                walk(root, &path, archive_entries, members)?;
+                continue;
+            }
+            if !metadata.is_file() {
+                continue;
+            }
+            let relative = path.strip_prefix(root)
+                .map_err(|_| "Extracted FPK mirror path escaped its root.")?
+                .to_string_lossy().replace('\\', "/");
+            let normalized = normalize_fox_virtual_path(&relative)?;
+            let Some((_, expected)) = archive_entries
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(&normalized))
+            else {
+                continue;
+            };
+            let actual = fs::read(&path)
+                .map_err(|e| format!("Read extracted FPK mirror member {}: {e}", path.display()))?;
+            if actual.as_slice() != expected.as_slice() {
+                return Err(format!(
+                    "Extracted FPK mirror member {} conflicts with the adjacent archive member; conversion stopped rather than choosing one copy.",
+                    path.display()
+                ));
+            }
+            members.push(path);
+        }
+        Ok(())
+    }
+
+    let mut members = Vec::new();
+    walk(folder, folder, archive_entries, &mut members)?;
+    if !members.iter().any(|path| path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fmdl"))) {
+        return Ok(Vec::new());
+    }
+    Ok(members)
+}
+
+fn remove_empty_directories(folder: &Path) -> Result<bool, String> {
+    for entry in fs::read_dir(folder)
+        .map_err(|e| format!("Read extracted FPK mirror folder {}: {e}", folder.display()))?
+    {
+        let entry = entry.map_err(|e| format!("Read extracted FPK mirror folder entry: {e}"))?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|e| format!("Inspect extracted FPK mirror folder {}: {e}", path.display()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!("Symbolic link in extracted FPK mirror: {}", path.display()));
+        }
+        if metadata.is_dir() && remove_empty_directories(&path)? {
+            fs::remove_dir(&path)
+                .map_err(|e| format!("Remove empty extracted FPK mirror folder {}: {e}", path.display()))?;
+        }
+    }
+    Ok(fs::read_dir(folder)
+        .map_err(|e| format!("Recheck extracted FPK mirror folder {}: {e}", folder.display()))?
+        .next()
+        .is_none())
+}
+
+/// Removes byte-identical files from the conventional <archive-stem>_fpk mirror only after
+/// verifying them against the adjacent FPK. Extra files are retained; conflicting same-path
+/// files fail closed instead of leaving duplicate models for the compiler.
+fn remove_redundant_extracted_fpk_mirrors(
+    source_root: &Path,
+    staged_root: &Path,
+    archive_paths: &[PathBuf],
+) -> Result<Vec<String>, String> {
+    let mut removed = Vec::new();
+    for archive_path in archive_paths {
+        if !archive_path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("fpk")) {
+            continue;
+        }
+        let relative = archive_path.strip_prefix(source_root)
+            .map_err(|_| "Face FPK path escaped the source root.")?;
+        let stem = archive_path.file_stem().and_then(|value| value.to_str())
+            .ok_or("Face FPK has no valid UTF-8 file stem.")?;
+        let mirror_name = format!("{stem}_fpk");
+        let mirror = staged_root.join(relative.parent().unwrap_or_else(|| Path::new(""))).join(&mirror_name);
+        let metadata = match fs::symlink_metadata(&mirror) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("Inspect extracted FPK mirror {}: {error}", mirror.display())),
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            continue;
+        }
+        let bytes = fs::read(archive_path)
+            .map_err(|e| format!("Read FPK for mirror verification {}: {e}", archive_path.display()))?;
+        let archive = FpkFile::read(&bytes)
+            .map_err(|e| format!("Decode FPK for mirror verification {}: {e}", archive_path.display()))?;
+        let entries: Vec<(String, Vec<u8>)> = archive.entries().into_iter()
+            .map(|(name, data)| Ok((normalize_fox_virtual_path(name)?, data.to_vec())))
+            .collect::<Result<_, String>>()?;
+        let members = redundant_mirror_members(&mirror, &entries)?;
+        for member in members {
+            let relative_member = member.strip_prefix(&mirror)
+                .map_err(|_| "Extracted FPK mirror member escaped its root.")?;
+            fs::remove_file(&member)
+                .map_err(|e| format!("Remove verified duplicate FPK mirror member {}: {e}", member.display()))?;
+            removed.push(relative.parent().unwrap_or_else(|| Path::new(""))
+                .join(&mirror_name).join(relative_member).to_string_lossy().replace('\\', "/"));
+        }
+        if remove_empty_directories(&mirror)? {
+            fs::remove_dir(&mirror)
+                .map_err(|e| format!("Remove empty extracted FPK mirror {}: {e}", mirror.display()))?;
+        }
+    }
+    Ok(removed)
+}
+
+
 fn extract_face_archives(
     archive_paths: &[PathBuf],
     destination: &Path,
@@ -674,6 +868,8 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let mut total_bytes = 0u64;
     copy_face_source_tree(&input, &input, &player, &mut archive_paths, &mut seen, &mut file_count, &mut total_bytes)?;
     extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
+    let redundant_extracted_mirrors_removed =
+        remove_redundant_extracted_fpk_mirrors(&input, &player, &archive_paths)?;
     let normalized_texture_references = normalize_fox_face_model_paths(&player)?;
     let source_inventory = inspect_pes2021_face_source(&player)?;
     let has_model = {
@@ -761,6 +957,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "sourceModels": source_inventory.models,
         "sourceTextureCount": source_inventory.texture_count,
         "normalizedTextureReferences": normalized_texture_references,
+        "redundantExtractedMirrorFilesRemoved": redundant_extracted_mirrors_removed,
         "sourceFaceDiff": source_inventory.face_diff,
         "preservedSidecars": source_inventory.preserved_sidecars,
         "outputFiles": output_files,
@@ -1088,6 +1285,107 @@ mod face_diff_xml_tests {
 #[cfg(test)]
 mod face_source_path_tests {
     use super::{companion_fmdl_for_skeleton, is_face_archive_extension};
+
+    #[test]
+    fn removes_only_byte_identical_members_from_the_face_fpk_mirror() {
+        let root = std::env::temp_dir().join(format!("face-forge-fpk-mirror-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mirror = root.join("#Win/face_fpk");
+        std::fs::create_dir_all(&mirror).unwrap();
+        std::fs::write(mirror.join("face_high.fmdl"), b"face-model").unwrap();
+        std::fs::write(mirror.join("hair_high.fmdl"), b"hair-model").unwrap();
+        std::fs::write(mirror.join("face_diff.bin"), b"face-diff").unwrap();
+        std::fs::write(mirror.join("extra_texture.dds"), b"custom").unwrap();
+        let entries = vec![
+            ("face_high.fmdl".to_string(), b"face-model".to_vec()),
+            ("hair_high.fmdl".to_string(), b"hair-model".to_vec()),
+            ("face_diff.bin".to_string(), b"face-diff".to_vec()),
+        ];
+        let members = super::redundant_mirror_members(&mirror, &entries).unwrap();
+        assert_eq!(members.len(), 3);
+        for member in members {
+            std::fs::remove_file(member).unwrap();
+        }
+        assert!(mirror.join("extra_texture.dds").is_file());
+        assert!(!mirror.join("face_high.fmdl").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn rejects_a_changed_duplicate_instead_of_choosing_between_two_models() {
+        let root = std::env::temp_dir().join(format!("face-forge-fpk-mirror-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mirror = root.join("#Win/face_fpk");
+        std::fs::create_dir_all(&mirror).unwrap();
+        std::fs::write(mirror.join("face_high.fmdl"), b"changed-face-model").unwrap();
+        let entries = vec![("face_high.fmdl".to_string(), b"face-model".to_vec())];
+        let error = super::redundant_mirror_members(&mirror, &entries).unwrap_err();
+        assert!(error.contains("conflicts with the adjacent archive member"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn rewrites_face_texture_paths_to_the_actual_windx11_sourceimages_folder() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let sourceimages = root.join("sourceimages/#windx11");
+        std::fs::create_dir_all(&sourceimages).unwrap();
+        std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
+        let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
+        assert_eq!(directory, "sourceimages/#windx11/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn resolves_the_real_sibling_sourceimages_folder_from_inside_win_face_fpk() {
+        let root = std::env::temp_dir().join(format!("face-forge-real-face-layout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let model_directory = root.join("Asset/model/character/face/real/176104/#Win/face_fpk");
+        let sourceimages = root.join("Asset/model/character/face/real/176104/sourceimages/#windx11");
+        std::fs::create_dir_all(&model_directory).unwrap();
+        std::fs::create_dir_all(&sourceimages).unwrap();
+        std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
+        let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(super::normalize_fox_face_texture_directory(&model_directory, &mut directory, "face_bsm_alp.dds"));
+        assert_eq!(directory, "../../sourceimages/#windx11/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn falls_back_to_a_direct_sourceimages_folder_when_no_windx11_folder_exists() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-direct-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let sourceimages = root.join("sourceimages");
+        std::fs::create_dir_all(&sourceimages).unwrap();
+        std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
+        let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
+        assert_eq!(directory, "sourceimages/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn refuses_texture_file_names_that_could_escape_the_sourceimages_folder() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-traversal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sourceimages/#windx11")).unwrap();
+        let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(!super::normalize_fox_face_texture_directory(&root, &mut directory, "../outside.dds"));
+        assert_eq!(directory, "/Assets/pes16/model/character/face/real/176104/sourceimages/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn leaves_shared_common_texture_directories_untouched() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-common-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut directory = "/Assets/pes16/model/character/common/sourceimages/".to_string();
+        assert!(!super::normalize_fox_face_texture_directory(&root, &mut directory, "head_wet_cbm.dds"));
+        assert_eq!(directory, "/Assets/pes16/model/character/common/sourceimages/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn accepts_fpk_fpkd_and_kpfd_archive_extensions() {

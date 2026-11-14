@@ -11,7 +11,7 @@ import { parseFmdlContainer } from "./formats/fmdl-container";
 import { decodePes2021Fmdl } from "./formats/fmdl-geometry";
 import { resolveFaceDependencies } from "./dependencies";
 export type FaceFile = { path:string;bytes:number;kind:string;sha256:string;formatValid?:boolean;formatDetails?:string[];assetReferences?:string[];packageReferences?:string[] };
-export type FaceDependency={source:string;reference:string;status:"resolved"|"missing"|"ambiguous";candidates:string[]};
+export type FaceDependency={source:string;reference:string;status:"resolved"|"missing"|"ambiguous"|"external";candidates:string[]};
 export type FaceProject = { root:string;detectedGame:"pes2017"|"pes2021"|"mixed"|"unknown";fileCount:number;totalBytes:number;models:number;textures:number;files:FaceFile[];warnings:string[];missing:string[];coverage:FacePartCoverage[];dependencies:FaceDependency[] };
 const MAX_FILES=5000,MAX_TOTAL_BYTES=1024*1024*1024,MAX_FILE_BYTES=256*1024*1024;
 const RELEVANT=new Set([".fmdl",".model",".ftex",".dds",".xml",".mtl",".bin",".fpk",".fpkd",".kpfd",".cpk",".fclo",".png",".jpg",".jpeg"]);
@@ -35,6 +35,8 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  const dependencies=resolveFaceDependencies(files);
  if(dependencies.some(item=>item.status==="missing"))warnings.push(dependencies.filter(item=>item.status==="missing").length+" model texture/package reference(s) have no matching asset in this folder. Conversion must not silently drop these dependencies.");
  if(dependencies.some(item=>item.status==="ambiguous"))warnings.push(dependencies.filter(item=>item.status==="ambiguous").length+" FMDL texture reference(s) match multiple files. Resolve duplicate texture names before package conversion.");
+ const externalCount=dependencies.filter(item=>item.status==="external").length;
+ if(externalCount)warnings.push(externalCount+" shared PES common texture reference(s) are external game assets and are not required inside this individual face folder.");
  const models=files.filter(f=>f.kind.startsWith("model-pes")).length,textures=files.filter(f=>f.kind.startsWith("texture-pes")).length;
  const fpkFiles=files.filter(f=>f.kind==="container-fpk");
  const extractedFpkModels=files.filter(f=>f.path.includes("!/")&&f.kind.startsWith("model-pes2021"));
@@ -42,7 +44,7 @@ export async function inspectFaceFolder(folder:string):Promise<FaceProject>{
  if(fpkFiles.length&&!extractedFpkModels.length){warnings.push(`${fpkFiles.length} FPK face package(s) detected, but no supported FMDL model was decoded from their contents. Check the archive entries and extraction diagnostics.`);}else if(extractedFpkModels.length){warnings.push(`Parsed ${extractedFpkModels.length} PES 2021 model candidate(s) from FPK package contents in memory. Header recognition is not full geometry/material/rig validation. Original archives were not modified.`);}
  if(fpkdFiles.length)warnings.push(`${fpkdFiles.length} FPKD/KPFD companion file(s) detected. FPKD is a Fox package variant; a .kpfd extension is not assumed to be FPKD unless its binary signature validates.`);
  if(!models&&!fpkFiles.length)warnings.push("No valid supported face model was found. A file extension alone is not enough.");if(!textures)warnings.push("No valid DDS or FTEX texture was found.");if(detectedGame==="mixed")warnings.push("Both generation formats are present. Check whether this is a hybrid or previously converted project.");
- if(has21Model&&has17Texture||has17Model&&has21Texture)warnings.push("Model and texture generations do not match. Verify companion textures before conversion.");if(detectedGame==="unknown")warnings.push("The source game could not be identified from validated model and texture signatures.");
+ if(detectedGame==="unknown")warnings.push("The source game could not be identified from validated model and texture signatures.");
  for(const f of files.filter(f=>f.kind.startsWith("invalid-")))warnings.push(`Invalid ${f.kind.replace("invalid-","").toUpperCase()} header: ${f.path}`);
  return {root,detectedGame,fileCount:files.length,totalBytes,models,textures,files,warnings,missing:[],coverage:analyzeFacePackage(files),dependencies};
 }

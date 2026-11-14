@@ -120,7 +120,7 @@ export async function convertPes2017FaceFolderTo2021(input:{root:string;realRoot
   if(missingMaterials.length)throw new Error("The upstream MTL selection rules found no material file for these PES 2017 models: "+missingMaterials.map(item=>item.model.path).join(", "));
   const selectedMaterialPaths=new Set(selectedMaterials.map(item=>item.materialPath!.toLowerCase()));
   const relevantDependencies=project.dependencies.filter(dep=>selectedMaterialPaths.has(dep.source.toLowerCase()));
-  const unresolved=relevantDependencies.filter(dep=>dep.status!=="resolved");
+  const unresolved=relevantDependencies.filter(dep=>dep.status==="missing"||dep.status==="ambiguous");
   if(unresolved.length)throw new Error("The source face has unresolved texture references; conversion would lose textures: "+unresolved.map(dep=>dep.source+" -> "+dep.reference+" ("+dep.status+")").join("; "));
   const conversionProject={...project,dependencies:relevantDependencies};
   if(project.files.some(file=>(file.packageReferences??[]).length))throw new Error("The source folder contains cross-package references that cannot be resolved safely.");

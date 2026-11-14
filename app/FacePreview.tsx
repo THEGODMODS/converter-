@@ -1,12 +1,12 @@
-import {useEffect,useRef} from "react";
+import {useEffect,useRef,useState} from "react";
 import * as THREE from "three";
 import {OrbitControls} from "three/examples/jsm/controls/OrbitControls.js";
 import {DDSLoader} from "three/examples/jsm/loaders/DDSLoader.js";
 import type {FacePreviewData} from "./types";
 export default function FacePreview({preview}:{preview:FacePreviewData}){
- const host=useRef<HTMLDivElement>(null);
+ const host=useRef<HTMLDivElement>(null);const [textureWarnings,setTextureWarnings]=useState<string[]>([]);
  useEffect(()=>{
-  const element=host.current;if(!element)return;
+  const element=host.current;if(!element)return;const textureDiagnostics:string[]=[];
   const scene=new THREE.Scene();scene.background=new THREE.Color("#0b111a");
   const camera=new THREE.PerspectiveCamera(42,1,0.01,1000);camera.position.set(2.6,1.8,3.2);
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.82;element.appendChild(renderer.domElement);
@@ -15,10 +15,14 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   const grid=new THREE.GridHelper(4,20,0x354657,0x1b2936);grid.position.y=-1.15;scene.add(grid);
   const group=new THREE.Group();scene.add(group);let min=new THREE.Vector3(Infinity,Infinity,Infinity),max=new THREE.Vector3(-Infinity,-Infinity,-Infinity);
   const ddsLoader=new DDSLoader(),builtMaterials=preview.materials.map(source=>{
-   const isHair=/hair/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:0xc7a18e,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
-   let fallbackColorTexture:THREE.Texture|null=null;
+   const isHair=/hair/i.test(source.name),isEyeOcclusion=/eye.?occlusion/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:isEyeOcclusion?0x72584f:0x9ca3af,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
+
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
     const semantic=slot+" "+(source.textures[slot]??"");
+    if(isEyeOcclusion||/eye_occlusion_alp/i.test(semantic)){
+     textureDiagnostics.push("Eye-occlusion mask for "+source.name+" uses a PES-specific shader; it is not treated as a black diffuse texture in the preview.");
+     continue;
+    }
     try{
      const binary=atob(encoded),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
      const view=new DataView(bytes.buffer),fourCC=String.fromCharCode(bytes[84]??0,bytes[85]??0,bytes[86]??0,bytes[87]??0);let texture:THREE.Texture;
@@ -33,18 +37,21 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
        const compressed=new THREE.CompressedTexture(parsed.mipmaps,parsed.width,parsed.height,parsed.format as THREE.CompressedPixelFormat);compressed.generateMipmaps=false;compressed.minFilter=parsed.mipmapCount>1?THREE.LinearMipmapLinearFilter:THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
       }
      }
-     texture.colorSpace=/base|diff|albedo|color/i.test(semantic)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
+     texture.colorSpace=/base|diff|albedo|color|bsm_alp|_srgb/i.test(semantic)?THREE.SRGBColorSpace:THREE.NoColorSpace;texture.needsUpdate=true;
      if(/normal|nrm/i.test(semantic))material.normalMap=texture;
-     else if(/base|diff|albedo|color/i.test(semantic)&&!material.map)material.map=texture;
+     else if(/base|diff|albedo|color|bsm_alp|_srgb/i.test(semantic)&&!material.map)material.map=texture;
      else if(/roughness|specular|srm/i.test(semantic)){material.roughnessMap=texture;material.roughness=1;}
      else if(/metallic|metalness/i.test(semantic)){material.metalnessMap=texture;material.metalness=1;}
      else if(/opacity|alpha/i.test(semantic)){material.alphaMap=texture;material.transparent=true;}
-     else if(!fallbackColorTexture)fallbackColorTexture=texture;
-    }catch(error){console.warn("FACE FORGE could not decode preview texture",source.name,slot,error);}
+
+    }catch(error){textureDiagnostics.push("Could not decode "+slot+" for "+source.name+": "+(error instanceof Error?error.message:String(error)));}
    }
-   if(!material.map&&fallbackColorTexture)material.map=fallbackColorTexture;
-   if(material.map)material.color.set(0xffffff);return material;
+   if(!material.map&&Object.keys(source.textures).length&&!isEyeOcclusion)textureDiagnostics.push("No recognised diffuse/base-colour texture was assigned to "+source.name+"; the mesh is shown with a neutral fallback.");
+   if(!Object.keys(source.textureData??{}).length&&Object.keys(source.textures).length)textureDiagnostics.push("No referenced texture image was loaded for "+source.name+".");
+   if(material.map){material.color.set(0xffffff);if(isHair){material.transparent=true;material.alphaTest=.35;material.depthWrite=true;}}
+   return material;
   });
+  setTextureWarnings([...new Set(textureDiagnostics)].slice(0,12));
   for(const item of preview.meshes){
    const geometry=new THREE.BufferGeometry();const positions=new Float32Array(item.positions);geometry.setAttribute("position",new THREE.BufferAttribute(positions,3));if(item.normals.length===item.positions.length)geometry.setAttribute("normal",new THREE.BufferAttribute(new Float32Array(item.normals),3));else geometry.computeVertexNormals();if(item.uvs.length===item.positions.length/3*2)geometry.setAttribute("uv",new THREE.BufferAttribute(new Float32Array(item.uvs),2));geometry.setIndex(item.indices);geometry.computeBoundingBox();geometry.computeBoundingSphere();if(geometry.boundingBox){min.min(geometry.boundingBox.min);max.max(geometry.boundingBox.max);}
    const material=builtMaterials[item.materialIndex]??new THREE.MeshStandardMaterial({color:0x8b929c,roughness:.76,side:THREE.DoubleSide});const mesh=new THREE.Mesh(geometry,material);mesh.name=item.name;mesh.userData.materialIndex=item.materialIndex;group.add(mesh);
@@ -54,5 +61,5 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   let frame=0;const render=()=>{if(frame)return;frame=requestAnimationFrame(()=>{frame=0;controls.update();renderer.render(scene,camera);});};controls.addEventListener("change",render);render();
   return()=>{if(frame)cancelAnimationFrame(frame);controls.removeEventListener("change",render);observer.disconnect();controls.dispose();group.traverse(object=>{if(object instanceof THREE.Mesh){object.geometry.dispose();const materials=Array.isArray(object.material)?object.material:[object.material];materials.forEach(material=>{for(const value of Object.values(material))if(value instanceof THREE.Texture)value.dispose();material.dispose();});}});renderer.dispose();renderer.domElement.remove();};
  },[preview]);
- return <div className="face-preview-canvas" ref={host} aria-label="Interactive 3D face geometry preview"/>;
+ return <><div className="face-preview-canvas" ref={host} aria-label="Interactive 3D face geometry preview"/>{textureWarnings.length>0&&<div className="error-line preview-diagnostics" role="status">{textureWarnings.join(" · ")}</div>}</>;
 }
