@@ -979,9 +979,15 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
             other => event_summaries.push(format!("{other:?}")),
         }
     }
-    if exit_code != 0 || !complete.is_some_and(|(success, _)| success) {
-        let details = event_summaries.iter().take(24).cloned().collect::<Vec<_>>().join(" | ");
-        return Err(format!("Upstream Team compiler did not complete cleanly (exit {exit_code}). {details}"));
+    // Team Compiler uses exit 1 for a completed run that reported Error-level
+    // findings on one or more exports. It can still have committed usable CPKs.
+    // Do not discard those outputs blindly: accept only a completed run that wrote
+    // files, then independently require and verify the generated face CPK below.
+    // Exit 2/3, a missing Complete event, or zero committed files remain fatal.
+    let completed_with_output = complete.is_some_and(|(_, files_written)| files_written > 0);
+    if exit_code > 1 || !completed_with_output {
+        let details = event_summaries.iter().take(48).cloned().collect::<Vec<_>>().join(" | ");
+        return Err(format!("Upstream Team compiler did not produce a completed output (exit {exit_code}). {details}"));
     }
     let mut output_files = Vec::new();
     for entry in fs::read_dir(output).map_err(|e| format!("Read converted output: {e}"))? {

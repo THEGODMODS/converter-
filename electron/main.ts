@@ -10,11 +10,16 @@ import { promisify } from "node:util";
 const execFileAsync=promisify(execFile);
 function describeProcessFailure(error:unknown):string{
  const processError=error as NodeJS.ErrnoException&{stderr?:string;stdout?:string;signal?:string};
- const details=[error instanceof Error?error.message:String(error)];
+ // execFile's message begins with the full executable and command line. Put the
+ // compiler's actual stderr/stdout first so a concise renderer message never
+ // truncates the actionable failure before the user can see it.
+ const details:string[]=[];
+ if(typeof processError.stderr==="string"&&processError.stderr.trim())details.push("Native error: "+processError.stderr.trim().slice(0,12000));
+ if(typeof processError.stdout==="string"&&processError.stdout.trim())details.push("Native output: "+processError.stdout.trim().slice(0,12000));
  if(processError.code!==undefined)details.push("Process exit code: "+processError.code);
  if(processError.signal)details.push("Process signal: "+processError.signal);
- if(typeof processError.stderr==="string"&&processError.stderr.trim())details.push("Native stderr: "+processError.stderr.trim().slice(0,12000));
- if(typeof processError.stdout==="string"&&processError.stdout.trim())details.push("Native stdout: "+processError.stdout.trim().slice(0,12000));
+ const message=error instanceof Error?error.message:String(error);
+ if(message)details.push("Process: "+message.slice(0,2000));
  return details.join("\n");
 }
 import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
