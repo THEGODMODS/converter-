@@ -27,10 +27,10 @@ function statusFor(candidates:DependencyFile[]):FaceDependency["status"]{
  const hashes=candidates.map(file=>file.sha256);
  return hashes.every(Boolean)&&new Set(hashes).size===1?"resolved":"ambiguous";
 }
-/** Resolve semantic FMDL texture names and explicit FPK/FPKD package references without guessing between duplicate basenames. */
+/** Resolve semantic FMDL texture names and explicit FPK/FPKD package references without guessing between duplicate basenames. Invalid texture headers remain candidates so preflight can distinguish a missing dependency from a present-but-corrupt required texture. */
 export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]{
  const dependencies:FaceDependency[]=[];
- const textures=files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
+ const textures=files.filter(file=>["texture-pes2021","texture-pes2017","invalid-ftex","invalid-dds"].includes(file.kind));
  for(const model of files.filter(file=>(file.kind==="model-pes2021"||file.kind==="material-pes2017")&&file.assetReferences?.length)){
   for(const reference of model.assetReferences??[]){
    if(isExternalFoxCommonTexture(reference)){
