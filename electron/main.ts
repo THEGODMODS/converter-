@@ -15,7 +15,7 @@ function describeProcessFailure(error:unknown):string{
  if(processError.signal)details.push("Process signal: "+processError.signal);
  if(typeof processError.stderr==="string"&&processError.stderr.trim())details.push("Native stderr: "+processError.stderr.trim().slice(0,12000));
  if(typeof processError.stdout==="string"&&processError.stdout.trim())details.push("Native stdout: "+processError.stdout.trim().slice(0,12000));
- return details.join("\\n");
+ return details.join("\n");
 }
 import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
 import { isExternalFoxCommonTexture, matchTextureFiles } from "../engine/dependencies";
