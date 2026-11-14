@@ -419,7 +419,7 @@ fn choose_nested_face_cpk_index(candidates: &[(usize, String)], compiler_player_
 /// Rewrite only the compiler-generated player-face directory, leaving shared texture
 /// paths (which may contain team/slot names) untouched.
 fn remap_compiler_face_archive_path(path: &str, compiler_face_dir: &str, target_face_dir: &str) -> String {
-    let normalized = path.replace('\\\\', "/");
+    let normalized = path.replace('\\', "/");
     let prefix = format!("{}/", compiler_face_dir.trim_end_matches('/'));
     if normalized.to_ascii_lowercase().starts_with(&prefix.to_ascii_lowercase()) {
         format!("{}{}", target_face_dir.trim_end_matches('/'), &normalized[prefix.len()..])
@@ -454,7 +454,7 @@ fn inject_preserved_sidecars(
         // A PES player-face archive belongs under the face/real directory and is
         // at least a CPK header/table in size. Keep unrelated large textures out
         // of the probe, but do not trust the member's filename extension.
-        let outer_path = entry.path.replace('\\\\', "/").to_ascii_lowercase();
+        let outer_path = entry.path.replace('\\', "/").to_ascii_lowercase();
         if !outer_path.contains("/character/face/real/") || entry.size < 0x800 {
             continue;
         }
