@@ -72,6 +72,7 @@ jobs:
           Copy-Item (Join-Path $fixture 'fcl_hair.fmdl') (Join-Path $input 'face_high.fmdl')
           Copy-Item (Join-Path $fixture 'fcl_hair.fmdl') (Join-Path $input 'fcl_hair.fmdl')
           foreach ($name in @('fcl_hair_sim.skl','fcl_hair_sim.fclo','face_diff.bin','shirt.dds','portrait.dds')) { Copy-Item (Join-Path $fixture $name) $input }
+          Set-Content -Path (Join-Path $input 'custom.faceforge') -Value 'preserve this unknown face sidecar'
           cargo run --quiet --manifest-path native/Cargo.toml -- convert-face-folder --input $input --target 2017 --player-id 79205 --out $output
           if ($LASTEXITCODE -ne 0) { throw 'FACE FORGE failed its synthetic hair-geometry package smoke test.' }
           $reportPath = Join-Path $output 'face-forge-report.json'
@@ -80,7 +81,8 @@ jobs:
           $hasHead = @($report.sourceModels | Where-Object { $_.ToLower().EndsWith('face_high.fmdl') }).Count -gt 0
           $hasHair = @($report.sourceModels | Where-Object { $_.ToLower().EndsWith('fcl_hair.fmdl') }).Count -gt 0
           $hasHairPhysics = @($report.preservedSidecars | Where-Object { $_.ToLower().EndsWith('fcl_hair_sim.fclo') }).Count -gt 0
-          if ($report.ok -ne $true -or $report.targetPlayerId -ne '79205' -or $report.complete.success -ne $true -or $report.cpkFiles.Count -lt 1 -or !$hasHead -or !$hasHair -or !$hasHairPhysics) { throw 'FACE FORGE synthetic package smoke-test report failed. The aliased hair mesh is not a real face-head fixture.' }
+          $hasUnknownSidecar = @($report.preservedSidecars | Where-Object { $_.ToLower().EndsWith('custom.faceforge') }).Count -gt 0
+          if ($report.ok -ne $true -or $report.targetPlayerId -ne '79205' -or $report.complete.success -ne $true -or $report.cpkFiles.Count -lt 1 -or !$hasHead -or !$hasHair -or !$hasHairPhysics -or !$hasUnknownSidecar) { throw 'FACE FORGE synthetic package smoke-test report failed. The aliased hair mesh is not a real face-head fixture.' }
           "FACE_FORGE_SYNTHETIC_SMOKE_OUTPUT=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "PASS: synthetic hair geometry exercises package plumbing only; this is NOT evidence of real-face conversion or visual/game compatibility."
       - run: npm run typecheck
