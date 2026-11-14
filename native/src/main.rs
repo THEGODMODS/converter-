@@ -430,7 +430,7 @@ fn inject_preserved_sidecars(
         cpk_entry_names.push(entry.path.clone());
         let Ok(candidate_bytes) = outer.read(entry) else { continue };
         let Ok(mut candidate) = cpk::CpkArchive::open(Cursor::new(candidate_bytes)) else { continue };
-        let names: Vec<String> = candidate.entries().iter().map(|item| item.path.replace('\\\\', "/").to_ascii_lowercase()).collect();
+        let names: Vec<String> = candidate.entries().iter().map(|item| item.path.replace('\\', "/").to_ascii_lowercase()).collect();
         let has_face_xml = names.iter().any(|name| name.rsplit('/').next() == Some("face.xml"));
         let has_head_model = names.iter().any(|name| name.rsplit('/').next().is_some_and(|name| name.ends_with("face_high_win32.model")));
         if has_face_xml && has_head_model {
