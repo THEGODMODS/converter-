@@ -282,6 +282,14 @@ fn normalize_fox_face_texture_directory(
     directory: &mut String,
     file_name: &str,
 ) -> bool {
+    if file_name.is_empty()
+        || file_name == "."
+        || file_name == ".."
+        || file_name.contains('/')
+        || file_name.contains('\\')
+    {
+        return false;
+    }
     let folded = directory.replace('\\', "/").to_ascii_lowercase();
     if !folded.contains("/model/character/face/real/") || !folded.contains("/sourceimages/") {
         return false;
@@ -1312,6 +1320,17 @@ mod face_source_path_tests {
         let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
         assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
         assert_eq!(directory, "./sourceimages/");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn refuses_texture_file_names_that_could_escape_the_sourceimages_folder() {
+        let root = std::env::temp_dir().join(format!("face-forge-sourceimages-traversal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sourceimages/#windx11")).unwrap();
+        let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(!super::normalize_fox_face_texture_directory(&root, &mut directory, "../outside.dds"));
+        assert_eq!(directory, "/Assets/pes16/model/character/face/real/176104/sourceimages/");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
