@@ -424,21 +424,31 @@ fn inject_preserved_sidecars(
     let mut verified_face_candidates: Vec<(usize, String)> = Vec::new();
     let mut cpk_entry_names: Vec<String> = Vec::new();
     for (index, entry) in outer_entries.iter().enumerate() {
-        if !entry.path.to_ascii_lowercase().ends_with(".cpk") {
-            continue;
-        }
-        cpk_entry_names.push(entry.path.clone());
+        // Do not trust the outer member's filename extension. Some Team Compiler
+        // builds/exports may wrap a nested CPK under a non-.cpk member name.
+        // The archive signature and its internal face manifest are authoritative.
         let Ok(candidate_bytes) = outer.read(entry) else { continue };
-        let Ok(mut candidate) = cpk::CpkArchive::open(Cursor::new(candidate_bytes)) else { continue };
-        let names: Vec<String> = candidate.entries().iter().map(|item| item.path.replace('\\', "/").to_ascii_lowercase()).collect();
+        let Ok(candidate) = cpk::CpkArchive::open(Cursor::new(candidate_bytes)) else { continue };
+        cpk_entry_names.push(entry.path.clone());
+        let names: Vec<String> = candidate.entries().iter()
+            .map(|item| item.path.replace('\\', "/").to_ascii_lowercase())
+            .collect();
         let has_face_xml = names.iter().any(|name| name.rsplit('/').next() == Some("face.xml"));
-        let has_head_model = names.iter().any(|name| name.rsplit('/').next().is_some_and(|name| name.ends_with("face_high_win32.model")));
+        let has_head_model = names.iter().any(|name| {
+            let basename = name.rsplit('/').next().unwrap_or(name);
+            basename.ends_with("face_high_win32.model")
+                || basename == "face_high.model"
+        });
         if has_face_xml && has_head_model {
             verified_face_candidates.push((index, entry.path.clone()));
         }
     }
     let nested_index = choose_nested_face_cpk_index(&verified_face_candidates, compiler_player_id)
-        .map_err(|reason| format!("{reason} CPK entries: {}", cpk_entry_names.join(" | ")))?;
+        .map_err(|reason| format!(
+            "{reason} Verified nested CPK candidates: {}. Outer archive members that parsed as CPK: {}",
+            verified_face_candidates.iter().map(|(_, path)| path.as_str()).collect::<Vec<_>>().join(" | "),
+            if cpk_entry_names.is_empty() { "<none>".to_string() } else { cpk_entry_names.join(" | ") }
+        ))?;
     let nested_entry = &outer_entries[nested_index];
     let nested_bytes = outer.read(nested_entry)
         .map_err(|e| format!("Read nested player CPK before sidecar preservation: {e}"))?;
