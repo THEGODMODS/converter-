@@ -1056,6 +1056,7 @@ fn run()->Result<(),String>{
  if source_format=="fpk"&&(model_paths.is_empty()||model_paths.len()>2){return Err("Supply one face FPK and optionally its paired FPKD archive.".into());}
  let textures_managed_externally=args.iter().any(|arg|arg=="--textures-managed-externally");
  let mut package_textures:Vec<(String,Vec<u8>)>=Vec::new();
+ let mut referenced_package_textures:std::collections::HashSet<String>=std::collections::HashSet::new();
  let mut package_face_diff:Option<Vec<u8>>=None;
  let mut source_face_diff:Option<Vec<u8>>=None;
  let bundles:Vec<(String,NativeModelBundle)>=match source_format.as_str(){
@@ -1089,6 +1090,7 @@ fn run()->Result<(),String>{
     let skl_name=format!("{}.skl",&name[..name.len()-5]);
     let file=FmdlFile::read(data).map_err(|e|format!("Decode packaged FMDL {name}: {e}"))?;
     let model=FoxModel::from_file(&file).map_err(|e|format!("Resolve packaged FMDL references {name}: {e}"))?;
+    for material in &model.materials { for (_, texture) in &material.textures { if texture.file_name.to_ascii_lowercase().ends_with(".ftex") { referenced_package_textures.insert(texture.file_name.to_ascii_lowercase()); } } }
     let skl_bytes=archive_entries.iter().find(|(candidate,_)|candidate.eq_ignore_ascii_case(&skl_name)).map(|(_,bytes)|bytes);
     let skl=skl_bytes.map(|bytes|SklFile::read(bytes).map_err(|e|format!("Decode companion SKL {skl_name}: {e}"))).transpose()?;
     converted.push((stem.to_owned(),NativeModelBundle::Fox{model,skl}));
@@ -1181,7 +1183,11 @@ fn run()->Result<(),String>{
    // Unreferenced malformed platform variants are not conversion inputs. Required
    // malformed references are rejected by the folder dependency preflight before
    // this native conversion path is invoked.
-   if ftex_info(source_bytes).is_err() { continue; }
+   if ftex_info(source_bytes).is_err() {
+    let basename = source_path.rsplit('/').next().unwrap_or(source_path).to_ascii_lowercase();
+    if referenced_package_textures.contains(&basename) { return Err(format!("Required packaged FTEX is malformed: {source_path}. An FMDL references this texture.")); }
+    continue;
+   }
    let target_path=ftex_target_path(source_path)?;
    if !output_paths.insert(target_path.to_ascii_lowercase()) {
     return Err(format!("Package conversion produces a duplicate target path: {target_path}"));
