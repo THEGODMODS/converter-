@@ -31,11 +31,14 @@ function readFrame(data:Buffer,offset:number,chunks:number,rawSize:number,compre
   return decoded;
  }
  if(chunks*8>data.length-offset)throw new TextureFormatError("FTEX chunk table points outside the file.");
- const table=range(offset,chunks*8),parts:Buffer[]=[];let total=0;
- for(let i=0;i<chunks&&total<expectedSize;i++){
+ const table=range(offset,chunks*8),parts:Buffer[]=[];let total=0,totalCompressed=0;
+ for(let i=0;i<chunks;i++){
   const p=i*8,cs=table.readUInt16LE(p),us=table.readUInt16LE(p+2),encodedOffset=table.readUInt32LE(p+4),relative=encodedOffset&0x7fffffff;
   if(relative<chunks*8)throw new TextureFormatError("FTEX chunk payload overlaps its descriptor table.");
-  const bytes=range(offset+relative,cs),remaining=expectedSize-total;
+  totalCompressed+=cs;
+  const bytes=range(offset+relative,cs);
+  if(total>=expectedSize)continue;
+  const remaining=expectedSize-total;
   let decoded:Buffer;
   try{
    // Fox's chunked FTEX may store uncompressed_size=0 as an unknown-size
@@ -45,6 +48,7 @@ function readFrame(data:Buffer,offset:number,chunks:number,rawSize:number,compre
   if(decoded.length>remaining)decoded=decoded.subarray(0,remaining);
   parts.push(decoded);total+=decoded.length;
  }
+ if(totalCompressed!==compressedSize)throw new TextureFormatError("FTEX frame has incorrect aggregate chunk sizes.");
  if(total!==expectedSize)throw new TextureFormatError("FTEX chunks do not fill the declared mip dimensions.");
  return Buffer.concat(parts,expectedSize);
 }
