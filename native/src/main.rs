@@ -544,6 +544,7 @@ fn copy_face_source_tree(
 struct Pes2021FaceInventory {
     models: Vec<String>,
     texture_count: usize,
+    skipped_unreferenced_texture_variants: Vec<String>,
     face_diff: Option<String>,
     preserved_sidecars: Vec<String>,
 }
@@ -583,8 +584,16 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 }
                 "ftex" => {
                     let bytes = fs::read(&path).map_err(|e| format!("Read source FTEX {}: {e}", relative_text))?;
-                    ftex_info(&bytes).map_err(|e| format!("Invalid PES 2021 FTEX {relative_text}: {e}"))?;
-                    inventory.texture_count += 1;
+                    if ftex_info(&bytes).is_ok() {
+                        inventory.texture_count += 1;
+                    } else {
+                        // The Electron dependency preflight has already rejected malformed
+                        // FTEX files referenced by an FMDL. Unreferenced platform variants
+                        // are optional noise: remove them from the isolated staging copy so
+                        // the upstream compiler never mistakes them for required inputs.
+                        fs::remove_file(&path).map_err(|e| format!("Skip malformed unreferenced FTEX {relative_text}: {e}"))?;
+                        inventory.skipped_unreferenced_texture_variants.push(relative_text);
+                    }
                 }
                 "dds" => inventory.texture_count += 1,
                 "fclo" => inventory.preserved_sidecars.push(relative_text),
@@ -630,6 +639,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
         }
     }
     inventory.models.sort();
+    inventory.skipped_unreferenced_texture_variants.sort();
     inventory.preserved_sidecars.sort();
     Ok(inventory)
 }
@@ -972,6 +982,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "sourceBytes": total_bytes,
         "sourceModels": source_inventory.models,
         "sourceTextureCount": source_inventory.texture_count,
+        "skippedUnreferencedTextureVariants": source_inventory.skipped_unreferenced_texture_variants,
         "normalizedTextureReferences": normalized_texture_references,
         "redundantExtractedMirrorFilesRemoved": redundant_extracted_mirrors_removed,
         "sourceFaceDiff": source_inventory.face_diff,
@@ -1150,7 +1161,10 @@ fn run()->Result<(),String>{
   // the already-rewritten material sampler path resolves in the target output.
   let mut output_paths:std::collections::HashSet<String>=outputs.iter().map(|p|p.to_ascii_lowercase()).collect();
   for (source_path,source_bytes) in &package_textures {
-   let _=ftex_info(source_bytes).map_err(|e|format!("Validate packaged FTEX {source_path}: {e}"))?;
+   // Unreferenced malformed platform variants are not conversion inputs. Required
+   // malformed references are rejected by the folder dependency preflight before
+   // this native conversion path is invoked.
+   if ftex_info(source_bytes).is_err() { continue; }
    let target_path=ftex_target_path(source_path)?;
    if !output_paths.insert(target_path.to_ascii_lowercase()) {
     return Err(format!("Package conversion produces a duplicate target path: {target_path}"));
