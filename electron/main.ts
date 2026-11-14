@@ -41,8 +41,9 @@ function trusted(event:Electron.IpcMainInvokeEvent){
  else {const parsed=new URL(url);if(parsed.origin!=="http://127.0.0.1:5173"||(parsed.pathname!=="/"&&parsed.pathname!=="/index.html"))throw new Error("Untrusted renderer.");}
 }
 
-/** Validate a complete PES 2021 face project before the UI reports it as ready.
- * Called on folder selection and again immediately before conversion to catch source changes.
+/** Strict PES 2021 → PES 2017 conversion preflight.
+ * Deliberately runs only when conversion is requested: preview inspection must remain
+ * available when a texture is missing, malformed, or unsupported by the preview renderer.
  */
 function preflightPes2021FaceProject(inventory:FaceProject):void{
  if(inventory.detectedGame!=="pes2021")throw new Error("The selected route requires PES2021 source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
