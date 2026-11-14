@@ -4,6 +4,7 @@ import {CheckCircle2,FolderOpen,LoaderCircle,ShieldCheck,Sparkles,UploadCloud,XC
 import type {FaceProject,FacePreviewData} from "./types";
 import {inferPesPlayerIdFromPath} from "../engine/player-id";
 import FacePreview from "./FacePreview";
+import UpdateNotice from "./UpdateNotice";
 const validTarget=/^[0-9]{1,6}$/;
 export default function SingleFaceApp(){
  const [project,setProject]=useState<FaceProject|null>(null),[targetId,setTargetId]=useState(""),[preview,setPreview]=useState<FacePreviewData|null>(null);
