@@ -5,7 +5,9 @@ function normalizeAsset(value:string):string{
  return value.split(String.fromCharCode(92)).join("/").replace(/\/+/g,"/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\/#windx11(?=\/)/ig,"").toLowerCase();
 }
 function normalizeAssetPreservingPlatform(value:string):string{
- return value.split(String.fromCharCode(92)).join("/").replace(/\\/+/g,"/").replace(/^\\/+/, "").replace(/^Assets\\//i,"").toLowerCase();
+ const normalized=value.split(String.fromCharCode(92)).join("/").split("/").filter(Boolean).join("/");
+ const lower=normalized.toLowerCase();
+ return lower.startsWith("assets/")?lower.slice(7):lower;
 }
 function suffixScore(candidate:string,requested:string):number{
  const a=candidate.split("/"),b=requested.split("/");let score=0;
