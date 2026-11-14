@@ -68,7 +68,8 @@ export function inspectDdsHeader(data:Buffer):FormatInspection{
   if(data.readUInt32LE(4)!==124||data.readUInt32LE(76)!==32)return fail("DDS","Invalid DDS header or pixel-format structure size.");
   const height=data.readUInt32LE(12),width=data.readUInt32LE(16),mipCount=Math.max(1,data.readUInt32LE(28));
   if(!width||!height||width>32768||height>32768||mipCount>32)return fail("DDS","Invalid or unreasonable DDS dimensions/mip count.");
-  const fourCC=data.toString("ascii",84,88);
+  const pixelFlags=data.readUInt32LE(80);
+  const fourCC=(pixelFlags&0x4)!==0?data.toString("ascii",84,88):"";
   let pixelFormat=fourCC||"RGBA8";
   if(fourCC==="DX10"){
     if(data.length<148)return fail("DDS","DDS DX10 extension header is truncated.");
