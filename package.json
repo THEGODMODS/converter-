@@ -84,7 +84,8 @@
       {
         "provider": "github",
         "owner": "THEGODMODS",
-        "repo": "converter-"
+        "repo": "converter-",
+        "releaseType": "release"
       }
     ]
   },
