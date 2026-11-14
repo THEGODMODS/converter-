@@ -29,9 +29,21 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
      if(!texture){
       const binary=atob(encoded),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
       const view=new DataView(bytes.buffer),fourCC=String.fromCharCode(bytes[84]??0,bytes[85]??0,bytes[86]??0,bytes[87]??0);
-      if(fourCC==="DX10"&&(view.getUint32(128,true)===28||view.getUint32(128,true)===29)){
+      const dxgi=fourCC==="DX10"&&bytes.length>=148?view.getUint32(128,true):0;
+      if(dxgi===28||dxgi===29){
        const width=view.getUint32(16,true),height=view.getUint32(12,true),offset=148,length=width*height*4;if(!width||!height||offset+length>bytes.length)throw new Error("Invalid RGBA8 DDS payload.");
        texture=new THREE.DataTexture(new Uint8Array(bytes.buffer,offset,length),width,height,THREE.RGBAFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.flipY=false;
+      }else if(dxgi===98||dxgi===99){
+       const width=view.getUint32(16,true),height=view.getUint32(12,true),offset=148,length=Math.max(1,Math.ceil(width/4))*Math.max(1,Math.ceil(height/4))*16;
+       if(!width||!height||offset+length>bytes.length)throw new Error("Invalid BC7 DDS payload.");
+       if(!renderer.extensions.has("EXT_texture_compression_bptc"))throw new Error("BC7 texture needs GPU BPTC support; geometry preview remains available.");
+       const compressed=new THREE.CompressedTexture([{data:new Uint8Array(bytes.buffer,offset,length),width,height}],width,height,THREE.RGBA_BPTC_Format);compressed.generateMipmaps=false;compressed.minFilter=THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
+      }else if(dxgi===80||dxgi===81){
+       const width=view.getUint32(16,true),height=view.getUint32(12,true),offset=148,length=Math.max(1,Math.ceil(width/4))*Math.max(1,Math.ceil(height/4))*8;
+       if(!width||!height||offset+length>bytes.length)throw new Error("Invalid BC4 DDS payload.");
+       if(!renderer.extensions.has("EXT_texture_compression_rgtc"))throw new Error("BC4 texture needs GPU RGTC support; geometry preview remains available.");
+       const format=dxgi===80?THREE.RED_RGTC1_Format:THREE.SIGNED_RED_RGTC1_Format;
+       const compressed=new THREE.CompressedTexture([{data:new Uint8Array(bytes.buffer,offset,length),width,height}],width,height,format);compressed.generateMipmaps=false;compressed.minFilter=THREE.LinearFilter;compressed.magFilter=THREE.LinearFilter;texture=compressed;
       }else{
        const parsed=ddsLoader.parse(bytes.buffer,true);if(!parsed.format||!parsed.mipmaps.length)throw new Error("Unsupported DDS preview format.");
        if(parsed.format===THREE.RGBAFormat){
@@ -58,7 +70,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   setTextureWarnings([...new Set(textureDiagnostics)].slice(0,12));
   for(const item of preview.meshes){
    const geometry=new THREE.BufferGeometry();const positions=new Float32Array(item.positions);geometry.setAttribute("position",new THREE.BufferAttribute(positions,3));if(item.normals.length===item.positions.length)geometry.setAttribute("normal",new THREE.BufferAttribute(new Float32Array(item.normals),3));else geometry.computeVertexNormals();if(item.uvs.length===item.positions.length/3*2)geometry.setAttribute("uv",new THREE.BufferAttribute(new Float32Array(item.uvs),2));geometry.setIndex(item.indices);geometry.computeBoundingBox();geometry.computeBoundingSphere();if(geometry.boundingBox){min.min(geometry.boundingBox.min);max.max(geometry.boundingBox.max);}
-   const material=builtMaterials[item.materialIndex]??new THREE.MeshStandardMaterial({color:0x8b929c,roughness:.76,side:THREE.DoubleSide});const mesh=new THREE.Mesh(geometry,material);mesh.name=item.name;mesh.userData.materialIndex=item.materialIndex;group.add(mesh);
+   const hasVertexColors=!!item.colors&&item.colors.length===positions.length;if(hasVertexColors){geometry.setAttribute("color",new THREE.BufferAttribute(new Float32Array(item.colors!),3));}const uvSets=item.uvSets??[item.uvs];uvSets.forEach((values,index)=>{if(values.length===positions.length/3*2){geometry.setAttribute(index===0?"uv":"uv"+index,new THREE.BufferAttribute(new Float32Array(values),2));}});const baseMaterial=builtMaterials[item.materialIndex]??new THREE.MeshStandardMaterial({color:0x8b929c,roughness:.76,side:THREE.DoubleSide});const material=hasVertexColors?baseMaterial.clone():baseMaterial;if(hasVertexColors)material.vertexColors=true;const mesh=new THREE.Mesh(geometry,material);mesh.name=item.name;mesh.userData.materialIndex=item.materialIndex;group.add(mesh);
   }
   const center=min.clone().add(max).multiplyScalar(.5),extent=max.clone().sub(min),largest=Math.max(extent.x,extent.y,extent.z,0.001),fitScale=2.1/largest;group.position.copy(center).multiplyScalar(-fitScale);group.scale.setScalar(fitScale);camera.position.set(2.7,1.65,3.2);controls.target.set(0,0,0);controls.update();
   const resize=()=>{const width=Math.max(1,element.clientWidth),height=Math.max(1,element.clientHeight);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();};const observer=new ResizeObserver(resize);observer.observe(element);resize();

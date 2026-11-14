@@ -30,8 +30,9 @@ export default function SingleFaceApp(){
     const candidates=[head,...otherFaceModels],seenModels=new Set<string>();
     const uniqueModels=candidates.filter(file=>{if(seenModels.has(file.sha256))return false;seenModels.add(file.sha256);return true;});
     const previewPriority=(file:typeof head)=>{const name=file.path.split("/").pop()?.toLowerCase()??"";if(name.endsWith("face_high.fmdl"))return 0;if(/(eye|eyeline|eyeball|sclera|iris|pupil|eyelash|eyebrow)/.test(name))return 1;if(name.endsWith("hair_high.fmdl"))return 2;if(/(oral|teeth|tongue|lip)/.test(name))return 3;return 4;};
-    const previewModels=uniqueModels.sort((a,b)=>previewPriority(a)-previewPriority(b)).slice(0,4);
-    const settled=await Promise.allSettled(previewModels.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
+    const previewModels=uniqueModels.sort((a,b)=>previewPriority(a)-previewPriority(b));
+    const settled:PromiseSettledResult<FacePreviewData>[]=[];
+    for(const file of previewModels){try{settled.push({status:"fulfilled",value:await window.faceForge.previewModel(scanned.root,file.path)});}catch(reason){settled.push({status:"rejected",reason});}}
     const materials:FacePreviewData["materials"]=[],meshes:FacePreviewData["meshes"]=[],warnings:string[]=[];
     let loaded=0;
     for(let i=0;i<settled.length;i++){
@@ -40,7 +41,6 @@ export default function SingleFaceApp(){
      const scene=result.value,offset=materials.length;loaded++;materials.push(...scene.materials);meshes.push(...scene.meshes.map(mesh=>({...mesh,materialIndex:mesh.materialIndex+offset})));warnings.push(...scene.warnings);
     }
     if(!loaded||!meshes.length)throw new Error("No high-detail face component could be rendered.");
-    if(uniqueModels.length>previewModels.length)warnings.push("Preview loaded the 4 highest-priority face components for responsiveness; "+(uniqueModels.length-previewModels.length)+" additional models remain indexed for conversion.");
     setPreview({source:"PES 2021 face assembly ("+loaded+" models)",generation:"pes2021",meshes,materials,warnings});
    }catch(previewError){
     console.error("FACE FORGE 3D preview failed; conversion remains available",previewError);
@@ -71,7 +71,7 @@ export default function SingleFaceApp(){
     <div className="import-panel"><div className="section-head"><div><span className="eyebrow">SOURCE</span><h2>Choose your PES 2021 face folder</h2></div><span className="step-number">01</span></div>
      <div className={"dropzone "+(dragging?"dragging":"")} onDragOver={event=>{event.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}><div className="upload-icon"><UploadCloud size={25}/></div><h3>Drop your face folder here</h3><p>Choose the face folder you want to convert</p><div className="or-line"><span/> OR <span/></div><button className="primary-btn" onClick={browse} disabled={busy}><FolderOpen size={16}/>{busy?"Inspecting face…":"Browse face folder"}</button><div className="drop-hint"><ShieldCheck size={13}/> Your original files stay untouched</div></div>
      {error&&<div className="error-line"><XCircle size={15}/>{error}</div>}
-      {project&&<div className="project-card"><div className="project-title"><CheckCircle2 size={17}/><strong>Face folder ready</strong></div></div>}
+      {project&&<div className="project-card"><div className="project-title"><CheckCircle2 size={17}/><strong>Face folder loaded</strong></div><div className="project-summary">{project.models} model files · {project.textures} valid textures · {project.fileCount} indexed files</div></div>}
     </div>
     <div className="analysis-panel"><div className="section-head"><div><span className="eyebrow">PREVIEW</span><h2>Review the actual face</h2></div><span className="step-number">02</span></div>
      {preview?<><div className="preview-meta"><span>3D HEAD PREVIEW</span><span>DRAG TO ROTATE</span></div><FacePreview preview={preview}/>{preview.warnings.length>0&&<div className="error-line preview-diagnostics"><XCircle size={15}/><span>{preview.warnings.slice(0,5).join(" · ")}{preview.warnings.length>5?" · +"+(preview.warnings.length-5)+" more preview notes":""}</span></div>}</>:<div className="analysis-empty"><div className="radar"><LoaderCircle size={28}/></div><h3>{previewBusy?"Building 3D preview…":"Waiting for a face model"}</h3><p>{previewError??"Your face preview will appear here."}</p></div>}

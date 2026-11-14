@@ -40,6 +40,54 @@ function trusted(event:Electron.IpcMainInvokeEvent){
  if(app.isPackaged){const expected=pathToFileURL(path.join(__dirname,"../../dist/index.html")).href;if(url!==expected)throw new Error("Untrusted renderer.");}
  else {const parsed=new URL(url);if(parsed.origin!=="http://127.0.0.1:5173"||(parsed.pathname!=="/"&&parsed.pathname!=="/index.html"))throw new Error("Untrusted renderer.");}
 }
+
+/** Strict PES 2021 → PES 2017 conversion preflight.
+ * Deliberately runs only when conversion is requested: preview inspection must remain
+ * available when a texture is missing, malformed, or unsupported by the preview renderer.
+ */
+function preflightPes2021FaceProject(inventory:FaceProject):void{
+ if(inventory.detectedGame!=="pes2021")throw new Error("The selected route requires PES2021 source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
+ const unsafeEntries=inventory.warnings.filter(warning=>warning.startsWith("Skipped symbolic link:")||warning.startsWith("Skipped unsupported filesystem entry:")||warning.startsWith("Could not extract "));
+ if(unsafeEntries.length)throw new Error("Face inspection found filesystem or archive entries that the native converter cannot safely stage: "+unsafeEntries.slice(0,8).join(" | ")+(unsafeEntries.length>8?" | and "+(unsafeEntries.length-8)+" more.":""));
+ const archives=inventory.files.filter(file=>["container-fpk","container-fpkd"].includes(file.kind));
+ const fpk=archives.filter(file=>file.path.toLowerCase().endsWith(".fpk"));
+ const fpkd=archives.filter(file=>file.path.toLowerCase().endsWith(".fpkd")||file.path.toLowerCase().endsWith(".kpfd"));
+ if(fpk.length>1||fpkd.length>1)throw new Error("This single-face conversion expects one Windows face.fpk and at most one paired face.fpkd/.kpfd archive. Select the #Win face folder rather than a multi-platform parent folder.");
+ if(fpkd.length&&!fpk.length)throw new Error("A face.fpkd/.kpfd archive was found without its face.fpk companion: "+fpkd[0].path);
+ if(fpkd.length&&fpk.length){const stem=(value:string)=>value.slice(0,value.lastIndexOf("/")+1)+value.split("/").pop()!.replace(/\.(?:fpkd?|kpfd)$/i,"").toLowerCase();if(stem(fpkd[0].path)!==stem(fpk[0].path))throw new Error("The face.fpkd/.kpfd archive does not match the face.fpk in the same folder.");}
+ if(archives.some(file=>file.bytes>1024*1024*1024))throw new Error("A Fox face archive exceeds the native 1 GiB per-archive safety limit.");
+ const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
+ // This route converts PES 2021 FMDLs. Legacy PES 2017 MTL sidecars are not
+ // inputs to this route and must not make their own stale texture links fatal.
+ const fmdlDependencies=inventory.dependencies.filter(dep=>inventory.files.some(file=>file.path===dep.source&&file.kind==="model-pes2021"));
+ const referencedTexturePaths=new Set(fmdlDependencies.filter(dep=>dep.status==="resolved"||dep.status==="ambiguous").flatMap(dep=>dep.candidates));
+ const criticalMalformed=inventory.files.filter(file=>{
+  if(!file.kind.startsWith("invalid-")&&file.kind!=="container-kpfd-unknown")return false;
+  if(criticalInvalidKinds.has(file.kind))return true;
+  if(file.kind==="invalid-ftex"||file.kind==="invalid-dds")return referencedTexturePaths.has(file.path);
+  return false;
+ });
+ if(criticalMalformed.length)throw new Error("Face preflight found "+criticalMalformed.length+" critical malformed or unsupported file(s): "+criticalMalformed.slice(0,8).map(file=>file.path+" ("+(file.formatDetails?.[0]??file.kind)+")").join(" | ")+(criticalMalformed.length>8?" | and "+(criticalMalformed.length-8)+" more.":""));
+ const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
+ if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
+ const unresolvedDependencies=inventory.dependencies.filter(dependency=>{
+  const source=inventory.files.find(file=>file.path===dependency.source);
+  const requiredSource=source?.kind==="model-pes2021"||source?.kind==="container-fpk"||source?.kind==="container-fpkd";
+  return requiredSource&&(dependency.status==="missing"||dependency.status==="ambiguous");
+ });
+ if(unresolvedDependencies.length){
+  const describe=(dependency:typeof unresolvedDependencies[number])=>{
+   const source=inventory.files.find(file=>file.path===dependency.source);
+   const kind=source?.kind==="model-pes2021"?"FMDL texture":source?.kind==="container-fpk"||source?.kind==="container-fpkd"?"FPK package":source?.kind??"unknown source";
+   const matches=dependency.candidates.length?" (matches: "+dependency.candidates.slice(0,4).join(", ")+(dependency.candidates.length>4?", …":"")+")":" (no matching file)";
+   return dependency.status.toUpperCase()+" "+kind+": "+dependency.source+" → "+dependency.reference+matches;
+  };
+  const textureCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021")).length;
+  const packageCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd"))).length;
+  const unknownCount=unresolvedDependencies.length-textureCount-packageCount;
+  throw new Error("Face preflight found "+unresolvedDependencies.length+" unresolved dependency reference(s) ("+textureCount+" texture, "+packageCount+" package, "+unknownCount+" other). "+unresolvedDependencies.slice(0,8).map(describe).join(" | ")+(unresolvedDependencies.length>8?" | and "+(unresolvedDependencies.length-8)+" more.":""));
+ }
+}
 function registerIpc(){
  ipcMain.handle("face:choose-folder",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose PES face project folder",properties:["openDirectory"]});return result.canceled?null:result.filePaths[0]??null;});
  ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose face folders for batch or project",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
@@ -145,55 +193,7 @@ function registerIpc(){
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
   inspectedFaceProjects.set(root,inventory);
-  const expected=target===2017?"pes2021":"pes2017";
-  if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
-  // Critical malformed assets always block conversion (models, materials, archives, face-diff).
-// Unreferenced invalid FTEX/DDS are common in community face packs (extra platform variants,
-// placeholder stubs under sourceimages/#Win/dx11, etc.) and must not abort the whole job.
-const criticalInvalidKinds = new Set([
-  "invalid-fmdl",
-  "invalid-model",
-  "invalid-mtl",
-  "invalid-fpk",
-  "invalid-face-diff",
-  "container-kpfd-unknown",
-]);
-const referencedTexturePaths = new Set(
-  inventory.dependencies
-    .filter(dep => dep.status === "resolved" || dep.status === "ambiguous")
-    .flatMap(dep => dep.candidates)
-);
-const criticalMalformed = inventory.files.filter(file => {
-  if (!file.kind.startsWith("invalid-") && file.kind !== "container-kpfd-unknown") return false;
-  if (criticalInvalidKinds.has(file.kind)) return true;
-  // invalid-ftex / invalid-dds only critical when actually referenced by a model
-  if (file.kind === "invalid-ftex" || file.kind === "invalid-dds") {
-    return referencedTexturePaths.has(file.path);
-  }
-  return true;
-});
-if (criticalMalformed.length) {
-  throw new Error(
-    "Face preflight found " + criticalMalformed.length + " critical malformed or unsupported file(s): " +
-    criticalMalformed.slice(0, 8).map(file => file.path + " (" + (file.formatDetails?.[0] ?? file.kind) + ")").join(" | ") +
-    (criticalMalformed.length > 8 ? " | and " + (criticalMalformed.length - 8) + " more." : "")
-  );
-}
-  const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
-  if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
-  const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
-  if(unresolvedDependencies.length){
-   const describe=(dependency:typeof unresolvedDependencies[number])=>{
-    const source=inventory.files.find(file=>file.path===dependency.source);
-    const kind=source?.kind==="model-pes2021"?"FMDL texture":source?.kind==="container-fpk"||source?.kind==="container-fpkd"?"FPK package":source?.kind??"unknown source";
-    const matches=dependency.candidates.length?" (matches: "+dependency.candidates.slice(0,4).join(", ")+(dependency.candidates.length>4?", …":"")+")":" (no matching file)";
-    return dependency.status.toUpperCase()+" "+kind+": "+dependency.source+" → "+dependency.reference+matches;
-   };
-   const textureCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021")).length;
-   const packageCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd"))).length;
-   const unknownCount=unresolvedDependencies.length-textureCount-packageCount;
-   throw new Error("Face preflight found "+unresolvedDependencies.length+" unresolved dependency reference(s) ("+textureCount+" texture, "+packageCount+" package, "+unknownCount+" other). "+unresolvedDependencies.slice(0,8).map(describe).join(" | ")+(unresolvedDependencies.length>8?" | and "+(unresolvedDependencies.length-8)+" more.":""));
-  }
+  preflightPes2021FaceProject(inventory);
   const destination=await dialog.showOpenDialog(mainWindow!,{title:target===2017?"Choose an empty output folder for the converted PES 2017 face CPK":"Choose an empty output folder for the converted PES 2021 face FPK/FPKD",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
   const output=path.resolve(destination.filePaths[0]),outputStat=await fs.promises.lstat(output);
@@ -267,30 +267,30 @@ if (criticalMalformed.length) {
    if(!archivePath.startsWith(prefix))throw new Error("Preview archive escapes the selected face folder.");
    const realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
    if(!realArchive.startsWith(realPrefix))throw new Error("Preview archive resolves outside the selected face folder.");
-   const stat=await fs.promises.lstat(archivePath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview archive is not a safe file.");
+   const stat=await fs.promises.lstat(archivePath);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("Preview archive is not a safe file.");
    const archive=await readArchiveCached(archivePath);
    const member=archive.entries.find(entry=>entry.name.toLowerCase()===memberName.toLowerCase());
    if(!member)throw new Error("The requested model was not found inside the FPK archive. Re-scan the face folder.");
-   if(member.size>256*1024*1024)throw new Error("Embedded model exceeds the preview size limit.");
+   if(member.size>512*1024*1024)throw new Error("Embedded model exceeds the preview size limit.");
    data=member.data;extension=path.extname(member.name).toLowerCase();
   }else{
    const source=path.resolve(root,relativePath),prefix=root.endsWith(path.sep)?root:root+path.sep;
    if(!source.startsWith(prefix))throw new Error("Preview path escapes the selected face folder.");
    const realSource=await fs.promises.realpath(source),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
    if(!realSource.startsWith(realPrefix))throw new Error("Preview source resolves outside the selected face folder.");
-   const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>256*1024*1024)throw new Error("Preview source is not a safe supported file.");
+   const stat=await fs.promises.lstat(source);if(stat.isSymbolicLink()||!stat.isFile()||stat.size>512*1024*1024)throw new Error("Preview source is not a safe supported file.");
    data=await readFile(source);extension=path.extname(source).toLowerCase();
    if(extension===".model"){const mtlPath=path.join(path.dirname(source),path.basename(source,path.extname(source))+".mtl");if(fs.existsSync(mtlPath)){const mtlStat=await fs.promises.lstat(mtlPath);if(mtlStat.isSymbolicLink()||!mtlStat.isFile()||mtlStat.size>32*1024*1024)throw new Error("Companion PES 2017 MTL is not a safe regular file.");companionMtl=await readFile(mtlPath);}}
   }
-  let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];indices:number[]}>=[],materials:Array<{name:string;shader:string|null;textures:Record<string,string>;textureData?:Record<string,string>}>=[],warnings:string[]=[];
+  let generation:"pes2017"|"pes2021",meshes:Array<{name:string;positions:number[];normals:number[];uvs:number[];uvSets?:number[][];colors?:number[];indices:number[]}>=[],materials:Array<{name:string;shader:string|null;textures:Record<string,string>;textureData?:Record<string,string>}>=[],warnings:string[]=[];
   if(extension===".fmdl"){
    const scene=decodePes2021Fmdl(parseFmdlContainer(data));generation="pes2021";materials=scene.materials.map(material=>({name:material.name,shader:material.shader,textures:material.textures}));
-   meshes=scene.meshes.map(mesh=>({name:mesh.name,materialIndex:mesh.materialIndex,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
+   meshes=scene.meshes.map(mesh=>({name:mesh.name,materialIndex:mesh.materialIndex,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],uvSets:Array.from({length:4},(_,uv)=>mesh.vertices.every(v=>v.uvs.length>uv)?mesh.vertices.flatMap(v=>v.uvs[uv]):[]),colors:mesh.vertices.every(v=>v.color)?mesh.vertices.flatMap(v=>v.color!.slice(0,3)):[],indices:mesh.indices}));
    if(scene.bones.length)warnings.push(scene.bones.length+" source bones detected; preview is static and does not play facial animation.");
    if(scene.metadata.additionalLodLevels)warnings.push("Additional LOD levels are not shown in this preview.");
   }else if(extension===".model"){
    const scene=decodePes2017Model(parseModelContainer(data),companionMtl);generation="pes2017";materials=scene.materials.map(material=>({name:material.name,shader:material.shader,textures:material.textures}));
-   meshes=scene.meshes.map(mesh=>({name:mesh.name,materialIndex:mesh.materialIndex,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],indices:mesh.indices}));
+   meshes=scene.meshes.map(mesh=>({name:mesh.name,materialIndex:mesh.materialIndex,positions:mesh.vertices.flatMap(v=>v.position),normals:mesh.vertices.every(v=>v.normal)?mesh.vertices.flatMap(v=>v.normal!):[],uvs:mesh.vertices.every(v=>v.uvs.length>0)?mesh.vertices.flatMap(v=>v.uvs[0]):[],uvSets:Array.from({length:4},(_,uv)=>mesh.vertices.every(v=>v.uvs.length>uv)?mesh.vertices.flatMap(v=>v.uvs[uv]):[]),colors:mesh.vertices.every(v=>v.color)?mesh.vertices.flatMap(v=>v.color!.slice(0,3)):[],indices:mesh.indices}));
    if(typeof scene.metadata.modelWarnings==="string"&&scene.metadata.modelWarnings)warnings.push(scene.metadata.modelWarnings);
    warnings.push("PES 2017 preview is static. External MTL shader/texture bindings and facial animation are not yet rendered.");
   }else throw new Error("Choose a .fmdl or .model file for 3D preview.");
@@ -317,16 +317,24 @@ if (criticalMalformed.length) {
       const archivePath=path.resolve(root,...archiveRelative.split("/")),realArchive=await fs.promises.realpath(archivePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
       if(!realArchive.startsWith(realPrefix))throw new Error("Preview texture archive resolves outside the selected face folder.");
       const archive=await readArchiveCached(realArchive);
-      const entry=archive.entries.find(item=>item.name.toLowerCase()===memberName.toLowerCase());if(!entry)throw new Error("Preview texture "+reference+" is missing from its FPK archive.");textureBytes=entry.data;
+      const entry=archive.entries.find(item=>item.name.toLowerCase()===memberName.toLowerCase());
+      if(!entry){warnings.push("Texture "+reference+" is missing from its FPK archive; geometry preview continues without that map.");continue;}
+      if(entry.size>256*1024*1024){warnings.push("Texture "+reference+" exceeds the 256 MiB preview decode budget; geometry preview continues without that map.");continue;}
+      textureBytes=entry.data;
      }else{
       const texturePath=path.resolve(root,...asset.path.split("/")),realTexture=await fs.promises.realpath(texturePath),realPrefix=realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep;
       if(!realTexture.startsWith(realPrefix))throw new Error("Preview texture resolves outside the selected face folder.");
-      const textureStat=await fs.promises.lstat(texturePath);if(textureStat.isSymbolicLink()||!textureStat.isFile()||textureStat.size>128*1024*1024)throw new Error("Preview texture is not a safe regular file.");
+      const textureStat=await fs.promises.lstat(texturePath);if(textureStat.isSymbolicLink()||!textureStat.isFile())throw new Error("Preview texture is not a safe regular file.");
+      if(textureStat.size>256*1024*1024){warnings.push("Texture "+reference+" exceeds the 256 MiB preview decode budget; geometry preview continues without that map.");continue;}
       textureBytes=await readFile(texturePath);
      }
-     const dds=asset.kind==="texture-pes2021"?ftexToDds(textureBytes).data:textureBytes;
-     if(dds.length<128||dds.toString("ascii",0,4)!=="DDS ")throw new Error("Decoded preview texture is not a valid DDS payload: "+reference);
-     textureData[slot]=dds.toString("base64");
+     try{
+      const dds=asset.kind==="texture-pes2021"?ftexToDds(textureBytes).data:textureBytes;
+      if(dds.length<128||dds.toString("ascii",0,4)!=="DDS ")throw new Error("Decoded preview texture is not a valid DDS payload.");
+      textureData[slot]=dds.toString("base64");
+     }catch(error){
+      warnings.push("Texture "+reference+" for "+material.name+" could not be decoded for preview: "+(error instanceof Error?error.message:String(error))+". The 3D geometry will still be shown.");
+     }
     }
     material.textureData=textureData;
    }
@@ -334,7 +342,7 @@ if (criticalMalformed.length) {
   if(!meshes.length)throw new Error("No renderable mesh geometry was found in this model.");
   const malformed=meshes.find(mesh=>mesh.positions.length<9||mesh.positions.length%3!==0||mesh.indices.length<3||mesh.indices.length%3!==0||mesh.indices.some(index=>!Number.isInteger(index)||index<0||index>=mesh.positions.length/3));
   if(malformed)throw new Error("The selected model contains no valid triangle surface for preview ("+malformed.name+"). The file header and material bindings alone are not a 3D face preview.");
-  const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>500000)throw new Error("Preview exceeds the 500,000-vertex safety limit.");
+  const totalVertices=meshes.reduce((sum,mesh)=>sum+mesh.positions.length/3,0);if(totalVertices>2000000)throw new Error("Preview exceeds the 2,000,000-vertex geometry safety limit.");
   const triangleCount=meshes.reduce((sum,mesh)=>sum+mesh.indices.length/3,0);
   const hasVisibleSurface=meshes.some(mesh=>{for(let i=0;i<mesh.indices.length;i+=3){const a=mesh.indices[i]*3,b=mesh.indices[i+1]*3,c=mesh.indices[i+2]*3;const abx=mesh.positions[b]-mesh.positions[a],aby=mesh.positions[b+1]-mesh.positions[a+1],abz=mesh.positions[b+2]-mesh.positions[a+2],acx=mesh.positions[c]-mesh.positions[a],acy=mesh.positions[c+1]-mesh.positions[a+1],acz=mesh.positions[c+2]-mesh.positions[a+2];const x=aby*acz-abz*acy,y=abz*acx-abx*acz,z=abx*acy-aby*acx;if(x*x+y*y+z*z>1e-16)return true;}return false;});
   if(!triangleCount||!hasVisibleSurface)throw new Error("The selected model contains no non-degenerate triangle surface to display.");

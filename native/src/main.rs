@@ -544,12 +544,13 @@ fn copy_face_source_tree(
 struct Pes2021FaceInventory {
     models: Vec<String>,
     texture_count: usize,
+    skipped_unreferenced_texture_variants: Vec<String>,
     face_diff: Option<String>,
     preserved_sidecars: Vec<String>,
 }
 
 fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, String> {
-    fn walk(root: &Path, current: &Path, inventory: &mut Pes2021FaceInventory, model_paths: &mut std::collections::HashSet<String>, skeleton_paths: &mut Vec<PathBuf>) -> Result<(), String> {
+    fn walk(root: &Path, current: &Path, inventory: &mut Pes2021FaceInventory, model_paths: &mut std::collections::HashSet<String>, skeleton_paths: &mut Vec<PathBuf>, referenced_texture_paths: &mut std::collections::HashSet<PathBuf>, invalid_texture_paths: &mut Vec<(PathBuf, String)>) -> Result<(), String> {
         for entry in fs::read_dir(current).map_err(|e| format!("Inspect PES 2021 face source {}: {e}", current.display()))? {
             let entry = entry.map_err(|e| format!("Read PES 2021 face source entry: {e}"))?;
             let path = entry.path();
@@ -558,7 +559,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 return Err(format!("Symbolic links are not accepted in a PES 2021 face source: {}", path.display()));
             }
             if metadata.is_dir() {
-                walk(root, &path, inventory, model_paths, skeleton_paths)?;
+                walk(root, &path, inventory, model_paths, skeleton_paths, referenced_texture_paths, invalid_texture_paths)?;
                 continue;
             }
             if !metadata.is_file() { return Err(format!("Unsupported filesystem entry: {}", path.display())); }
@@ -571,11 +572,21 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 "fmdl" => {
                     let bytes = fs::read(&path).map_err(|e| format!("Read source FMDL {}: {e}", relative_text))?;
                     let file = FmdlFile::read(&bytes).map_err(|e| format!("Invalid PES 2021 FMDL {relative_text}: {e}"))?;
-                    FoxModel::from_file(&file).map_err(|e| format!("Unresolved PES 2021 FMDL references in {relative_text}: {e}"))?;
+                    let model = FoxModel::from_file(&file).map_err(|e| format!("Unresolved PES 2021 FMDL references in {relative_text}: {e}"))?;
+                    for material in &model.materials {
+                        for (_, texture) in &material.textures {
+                            if texture.file_name.to_ascii_lowercase().ends_with(".ftex") {
+                                let candidate = path.parent().unwrap_or(root).join(&texture.directory).join(&texture.file_name);
+                                let resolved = fs::canonicalize(&candidate).unwrap_or(candidate);
+                                referenced_texture_paths.insert(resolved);
+                            }
+                        }
+                    }
                     model_paths.insert(relative_text.to_ascii_lowercase());
                     inventory.models.push(relative_text);
                 }
-                "model" | "mtl" => return Err(format!("This first-release route accepts PES 2021 Fox assets only; legacy .{extension} source detected at {relative_text}.")),
+                "model" => return Err(format!("This first-release route accepts PES 2021 Fox assets only; legacy .{extension} source detected at {relative_text}.")),
+                "mtl" => inventory.preserved_sidecars.push(relative_text),
                 "skl" => {
                     let bytes = fs::read(&path).map_err(|e| format!("Read source SKL {}: {e}", relative_text))?;
                     SklFile::read(&bytes).map_err(|e| format!("Invalid PES 2021 SKL {relative_text}: {e}"))?;
@@ -583,8 +594,13 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 }
                 "ftex" => {
                     let bytes = fs::read(&path).map_err(|e| format!("Read source FTEX {}: {e}", relative_text))?;
-                    ftex_info(&bytes).map_err(|e| format!("Invalid PES 2021 FTEX {relative_text}: {e}"))?;
-                    inventory.texture_count += 1;
+                    if ftex_info(&bytes).is_ok() {
+                        inventory.texture_count += 1;
+                    } else {
+                        // Defer this decision until every FMDL has been read: directory
+                        // enumeration order must never decide whether a texture is required.
+                        invalid_texture_paths.push((path.clone(), relative_text));
+                    }
                 }
                 "dds" => inventory.texture_count += 1,
                 "fclo" => inventory.preserved_sidecars.push(relative_text),
@@ -618,7 +634,17 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
     let mut inventory = Pes2021FaceInventory::default();
     let mut model_paths = std::collections::HashSet::new();
     let mut skeleton_paths = Vec::new();
-    walk(root, root, &mut inventory, &mut model_paths, &mut skeleton_paths)?;
+    let mut referenced_texture_paths = std::collections::HashSet::new();
+    let mut invalid_texture_paths = Vec::new();
+    walk(root, root, &mut inventory, &mut model_paths, &mut skeleton_paths, &mut referenced_texture_paths, &mut invalid_texture_paths)?;
+    for (path, relative_text) in invalid_texture_paths {
+        let resolved = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        if referenced_texture_paths.contains(&resolved) {
+            return Err(format!("Required PES 2021 FTEX is malformed: {relative_text}. This texture is referenced by an FMDL and cannot be skipped."));
+        }
+        fs::remove_file(&path).map_err(|e| format!("Skip malformed unreferenced FTEX {relative_text}: {e}"))?;
+        inventory.skipped_unreferenced_texture_variants.push(relative_text);
+    }
     if !inventory.models.iter().any(|value| value.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("face_high.fmdl"))) {
         return Err("A PES 2021 face source must contain face_high.fmdl; no head model was found.".into());
     }
@@ -630,6 +656,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
         }
     }
     inventory.models.sort();
+    inventory.skipped_unreferenced_texture_variants.sort();
     inventory.preserved_sidecars.sort();
     Ok(inventory)
 }
@@ -817,7 +844,15 @@ fn extract_face_archives(
         return Err("A face folder must contain at most one face.fpk and one paired face.fpkd/.kpfd archive.".into());
     }
     if fpk.is_empty() && !fpkd.is_empty() {
-        return Err("A face.fpkd/.kpfd archive was found without its face.fpk companion.".into());    }
+        return Err("A face.fpkd/.kpfd archive was found without its face.fpk companion.".into());
+    }
+    if let (Some(archive), Some(data)) = (fpk.first(), fpkd.first()) {
+        let archive_stem = archive.file_stem().and_then(|value| value.to_str()).unwrap_or("");
+        let data_stem = data.file_stem().and_then(|value| value.to_str()).unwrap_or("");
+        if archive.parent() != data.parent() || !archive_stem.eq_ignore_ascii_case(data_stem) {
+            return Err(format!("The face data archive {} is not paired with {} in the same folder.", data.display(), archive.display()));
+        }
+    }
     for path in fpk.iter().chain(fpkd.iter()) {
         let metadata = fs::symlink_metadata(path).map_err(|e| format!("Inspect Fox archive {}: {e}", path.display()))?;
         if !metadata.is_file() || metadata.len() > 1024 * 1024 * 1024 {
@@ -972,6 +1007,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         "sourceBytes": total_bytes,
         "sourceModels": source_inventory.models,
         "sourceTextureCount": source_inventory.texture_count,
+        "skippedUnreferencedTextureVariants": source_inventory.skipped_unreferenced_texture_variants,
         "normalizedTextureReferences": normalized_texture_references,
         "redundantExtractedMirrorFilesRemoved": redundant_extracted_mirrors_removed,
         "sourceFaceDiff": source_inventory.face_diff,
@@ -1028,6 +1064,7 @@ fn run()->Result<(),String>{
  if source_format=="fpk"&&(model_paths.is_empty()||model_paths.len()>2){return Err("Supply one face FPK and optionally its paired FPKD archive.".into());}
  let textures_managed_externally=args.iter().any(|arg|arg=="--textures-managed-externally");
  let mut package_textures:Vec<(String,Vec<u8>)>=Vec::new();
+ let mut referenced_package_textures:std::collections::HashSet<String>=std::collections::HashSet::new();
  let mut package_face_diff:Option<Vec<u8>>=None;
  let mut source_face_diff:Option<Vec<u8>>=None;
  let bundles:Vec<(String,NativeModelBundle)>=match source_format.as_str(){
@@ -1061,6 +1098,7 @@ fn run()->Result<(),String>{
     let skl_name=format!("{}.skl",&name[..name.len()-5]);
     let file=FmdlFile::read(data).map_err(|e|format!("Decode packaged FMDL {name}: {e}"))?;
     let model=FoxModel::from_file(&file).map_err(|e|format!("Resolve packaged FMDL references {name}: {e}"))?;
+    for material in &model.materials { for (_, texture) in &material.textures { if texture.file_name.to_ascii_lowercase().ends_with(".ftex") { referenced_package_textures.insert(texture.file_name.to_ascii_lowercase()); } } }
     let skl_bytes=archive_entries.iter().find(|(candidate,_)|candidate.eq_ignore_ascii_case(&skl_name)).map(|(_,bytes)|bytes);
     let skl=skl_bytes.map(|bytes|SklFile::read(bytes).map_err(|e|format!("Decode companion SKL {skl_name}: {e}"))).transpose()?;
     converted.push((stem.to_owned(),NativeModelBundle::Fox{model,skl}));
@@ -1150,7 +1188,14 @@ fn run()->Result<(),String>{
   // the already-rewritten material sampler path resolves in the target output.
   let mut output_paths:std::collections::HashSet<String>=outputs.iter().map(|p|p.to_ascii_lowercase()).collect();
   for (source_path,source_bytes) in &package_textures {
-   let _=ftex_info(source_bytes).map_err(|e|format!("Validate packaged FTEX {source_path}: {e}"))?;
+   // Unreferenced malformed platform variants are not conversion inputs. Required
+   // malformed references are rejected by the folder dependency preflight before
+   // this native conversion path is invoked.
+   if ftex_info(source_bytes).is_err() {
+    let basename = source_path.rsplit('/').next().unwrap_or(source_path).to_ascii_lowercase();
+    if referenced_package_textures.contains(&basename) { return Err(format!("Required packaged FTEX is malformed: {source_path}. An FMDL references this texture.")); }
+    continue;
+   }
    let target_path=ftex_target_path(source_path)?;
    if !output_paths.insert(target_path.to_ascii_lowercase()) {
     return Err(format!("Package conversion produces a duplicate target path: {target_path}"));
