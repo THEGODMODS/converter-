@@ -8,6 +8,15 @@ import { pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync=promisify(execFile);
+function describeProcessFailure(error:unknown):string{
+ const processError=error as NodeJS.ErrnoException&{stderr?:string;stdout?:string;signal?:string};
+ const details=[error instanceof Error?error.message:String(error)];
+ if(processError.code!==undefined)details.push("Process exit code: "+processError.code);
+ if(processError.signal)details.push("Process signal: "+processError.signal);
+ if(typeof processError.stderr==="string"&&processError.stderr.trim())details.push("Native stderr: "+processError.stderr.trim().slice(0,12000));
+ if(typeof processError.stdout==="string"&&processError.stdout.trim())details.push("Native stdout: "+processError.stdout.trim().slice(0,12000));
+ return details.join("\\n");
+}
 import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
 import { isExternalFoxCommonTexture, matchTextureFiles } from "../engine/dependencies";
 import { inferPesPlayerIdFromPath } from "../engine/player-id";
@@ -123,7 +132,7 @@ function registerIpc(){
    return {destination:published,report,textures};
   }catch(error){
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
-   const detail=error instanceof Error?error.message:String(error);
+   const detail=describeProcessFailure(error);
    throw new Error("Native PES conversion failed; the selected output folder was not intentionally cleared: "+detail);
   }
  });
@@ -194,7 +203,7 @@ function registerIpc(){
    return {destination:published,outputFormat:"cpk",report};
   }catch(error){
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
-   const detail=error instanceof Error?error.message:String(error);
+   const detail=describeProcessFailure(error);
    throw new Error("Complete face conversion failed. The selected output folder was not intentionally cleared: "+detail);
   }
  });
