@@ -47,6 +47,7 @@ export default function SingleFaceApp(){
  return <div className="shell">
   <aside className="sidebar"><div className="brand"><div className="brand-mark"><img src="/face-forge.svg" alt=""/></div><div><strong>KFC GODMODS</strong><span>FACE FORGE</span></div></div><div className="side-label">SINGLE FACE CONVERTER</div><div className="sidebar-bottom"><div className="version">PES 2021 → PES 2017</div></div></aside>
   <main className="main">
+   <UpdateNotice/>
    <header className="topbar"><div><div className="eyebrow">KFC GODMODS · FACE FORGE</div><h1>PES 2021 → PES 2017</h1><p>Convert a PES 2021 face for PES 2017.</p></div><div className="top-status"><span className="status-led"/> READY</div></header>
    
    <section className="workspace-grid">
