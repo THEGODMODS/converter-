@@ -34,10 +34,23 @@ describe("PES 2017 nested face CPK verification",()=>{
       {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:Buffer.from("upstream-model")},
       {path:"common/character0/model/character/face/real/176104/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
     ];
-    const outer=buildCpk([{path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)}]);
+    const outer=buildCpk([
+      {path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)},
+      {path:"common/character1/model/character/uniform/common/714/05 - A/skin.dds",data:Buffer.from("team-skin")},
+    ]);
     const result=verifyPes2017FaceCpk(outer,"176104");
     expect(result.faceModelPath).toMatch(/oral_face_high_win32\.model$/i);
     expect(result.faceMaterialPath).toMatch(/face_high\.mtl$/i);
+    expect(result.referencedTextures).toContain("common/character1/model/character/uniform/common/714/05 - A/skin.dds");
+  });
+  it("rejects a missing player-owned texture referenced by the nested face MTL",()=>{
+    const upstreamFiles=[
+      {path:"common/character0/model/character/face/real/176104/face.xml",data:Buffer.from('<?xml version="1.0"?><config><model path="./oral_face_high_*.model" material="./face_high.mtl"/></config>')},
+      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:Buffer.from("head")},
+      {path:"common/character0/model/character/face/real/176104/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
+    ];
+    const outer=buildCpk([{path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)}]);
+    expect(()=>verifyPes2017FaceCpk(outer,"176104")).toThrow(/player texture reference does not resolve in the outer team CPK/i);
   });
   it("accepts a six-digit real PES player ID",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(faceFiles,"176104"),"176104");
