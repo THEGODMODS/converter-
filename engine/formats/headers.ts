@@ -33,7 +33,7 @@ export function inspectFmdlHeader(data:Buffer):FormatInspection{
 
 export function inspectModelHeader(data:Buffer):FormatInspection{
   if(data.length<24)return fail("MODEL","Header is shorter than 24 bytes.");
-  if(data.subarray(0,8).toString("binary")!=="MODEL\0\0\0")return fail("MODEL","Missing MODEL signature (compressed WESYS files need a decompression adapter).");
+  if(data.subarray(0,8).toString("binary")!=="MODEL\\0\\0\\0")return fail("MODEL","Missing MODEL signature (compressed WESYS files need a decompression adapter).");
   const sectionOffset=data.readUInt32LE(8),version=data.readUInt16LE(14);
   if(version<16||version>19)return fail("MODEL",`Unrecognized MODEL version ${version}; known PES 2017 versions are 16–19.`);
   if(sectionOffset<24||sectionOffset+12>data.length)return fail("MODEL","Section array offset is outside the file.");
@@ -50,7 +50,10 @@ export function inspectFtexHeader(data:Buffer):FormatInspection{
   const mipCount=data.readUInt8(16),textureType=data.readUInt32LE(28),variantCount=data.readUInt8(32);
   if(version<2.025||version>2.045)return fail("FTEX",`Unsupported FTEX version ${version.toFixed(3)}.`);
   if(!supportedFtexFormats.has(pixelFormat))return fail("FTEX",`Unsupported FTEX pixel format ${pixelFormat}.`);
-  if(!width||!height||!depth||!mipCount)return fail("FTEX","Width, height, depth and mip count must be non-zero.");
+  // Fox's FTEX stores ordinary 2D textures with depth=0. The pinned native
+  // converter treats that sentinel as an effective depth of 1; only zero
+  // width, height or mip count makes this part of the header invalid.
+  if(!width||!height||!mipCount)return fail("FTEX","Width, height and mip count must be non-zero.");
   if(variantCount!==0)return fail("FTEX","Multi-variant FTEX files are not supported by this reader yet.");
   const imageCount=(textureType&4)!==0?6:1;
   const frameCount=imageCount*mipCount,tableEnd=64+frameCount*16;
@@ -59,7 +62,8 @@ export function inspectFtexHeader(data:Buffer):FormatInspection{
     const p=64+i*16,offset=data.readUInt32LE(p),rawSize=data.readUInt32LE(p+4),compressedSize=data.readUInt32LE(p+8),mipIndex=data.readUInt8(p+12),chunks=data.readUInt16LE(p+14);
     if(mipIndex>=mipCount||offset<tableEnd||offset>=data.length||rawSize>512*1024*1024||compressedSize>512*1024*1024||chunks>0&&offset+chunks*8>data.length)return fail("FTEX",`Invalid mipmap descriptor at index ${i}.`);
   }
-  return {valid:true,format:"PES 2018–2021 FTEX",version,width,height,mipCount,pixelFormat,details:[`FTEX ${version.toFixed(3)}`,`${width} × ${height} × ${depth}`,`${mipCount} mip levels`,`Pixel format ${pixelFormat}`]};
+  const dimensions=depth>1?`${width} × ${height} × ${depth}`:`${width} × ${height}`;
+  return {valid:true,format:"PES 2018–2021 FTEX",version,width,height,mipCount,pixelFormat,details:[`FTEX ${version.toFixed(3)}`,dimensions,`${mipCount} mip levels`,`Pixel format ${pixelFormat}`]};
 }
 
 export function inspectDdsHeader(data:Buffer):FormatInspection{
