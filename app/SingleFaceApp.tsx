@@ -20,7 +20,7 @@ export default function SingleFaceApp(){
    setProject(scanned);
    const sourceId=inferPesPlayerIdFromPath(scanned.root);
    if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
-   setPreviewBusy(true);setPreviewError(null);
+   setPreviewBusy(true);
    try{
     const otherFaceModels=scanned.files.filter(file=>{
      if(file.kind!=="model-pes2021"||!file.path.toLowerCase().endsWith(".fmdl"))return false;
