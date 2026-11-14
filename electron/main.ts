@@ -136,7 +136,17 @@ function registerIpc(){
   const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
-  if(inventory.dependencies.some(dependency=>dependency.status!=="resolved"))throw new Error("This face is missing required texture files or contains duplicate texture matches. Add the missing face textures or remove duplicate copies, then try again.");
+  const unresolvedTextureDependencies=inventory.dependencies.filter(dependency=>dependency.status!=="resolved"&&inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021"));
+  if(unresolvedTextureDependencies.length){
+   const details=unresolvedTextureDependencies.slice(0,8).map(dependency=>dependency.status.toUpperCase()+": "+dependency.source+" → "+dependency.reference+(dependency.candidates.length?" (matches: "+dependency.candidates.join(", ")+")":" (no matching texture file)"));
+   const remaining=unresolvedTextureDependencies.length-details.length;
+   throw new Error("Face texture preflight found "+unresolvedTextureDependencies.length+" unresolved texture reference(s). "+details.join(" | ")+(remaining>0?" | and "+remaining+" more.":""));
+  }
+  const unresolvedPackageDependencies=inventory.dependencies.filter(dependency=>dependency.status!=="resolved"&&inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd")));
+  if(unresolvedPackageDependencies.length){
+   const details=unresolvedPackageDependencies.slice(0,6).map(dependency=>dependency.status.toUpperCase()+": "+dependency.source+" → "+dependency.reference);
+   throw new Error("Face package preflight found unresolved FPK/FPKD references: "+details.join(" | "));
+  }
   const destination=await dialog.showOpenDialog(mainWindow!,{title:target===2017?"Choose an empty output folder for the converted PES 2017 face CPK":"Choose an empty output folder for the converted PES 2021 face FPK/FPKD",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
   const output=path.resolve(destination.filePaths[0]),outputStat=await fs.promises.lstat(output);
