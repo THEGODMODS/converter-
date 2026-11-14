@@ -2,6 +2,7 @@ name: Windows quality
 on:
   push:
     branches: [main, "feature/**", "fix/**"]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -111,3 +112,40 @@ jobs:
             release/KFC-GODMODS-FACE-FORGE-*-Setup.exe.sha256
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish updater-enabled Windows release
+    needs: quality
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm install
+      - name: Build Windows installer and updater metadata
+        run: npm run dist:win
+      - name: Verify installer and updater metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/verify-release-installer.mjs
+          if (!(Test-Path 'release/latest.yml')) { throw 'electron-builder did not generate latest.yml; automatic updates cannot work.' }
+          if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'electron-builder did not generate the NSIS blockmap required for update downloads.' }
+      - name: Publish GitHub release for in-app updates
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: FACE FORGE ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe
+            release/KFC-GODMODS-FACE-FORGE-*-Setup.exe.sha256
+            release/latest.yml
+            release/*.blockmap
+          fail_on_unmatched_files: true
