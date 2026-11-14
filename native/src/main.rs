@@ -550,7 +550,7 @@ struct Pes2021FaceInventory {
 }
 
 fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, String> {
-    fn walk(root: &Path, current: &Path, inventory: &mut Pes2021FaceInventory, model_paths: &mut std::collections::HashSet<String>, skeleton_paths: &mut Vec<PathBuf>) -> Result<(), String> {
+    fn walk(root: &Path, current: &Path, inventory: &mut Pes2021FaceInventory, model_paths: &mut std::collections::HashSet<String>, skeleton_paths: &mut Vec<PathBuf>, referenced_texture_paths: &mut std::collections::HashSet<PathBuf>, invalid_texture_paths: &mut Vec<(PathBuf, String)>) -> Result<(), String> {
         for entry in fs::read_dir(current).map_err(|e| format!("Inspect PES 2021 face source {}: {e}", current.display()))? {
             let entry = entry.map_err(|e| format!("Read PES 2021 face source entry: {e}"))?;
             let path = entry.path();
@@ -559,7 +559,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 return Err(format!("Symbolic links are not accepted in a PES 2021 face source: {}", path.display()));
             }
             if metadata.is_dir() {
-                walk(root, &path, inventory, model_paths, skeleton_paths)?;
+                walk(root, &path, inventory, model_paths, skeleton_paths, referenced_texture_paths, invalid_texture_paths)?;
                 continue;
             }
             if !metadata.is_file() { return Err(format!("Unsupported filesystem entry: {}", path.display())); }
@@ -572,7 +572,16 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                 "fmdl" => {
                     let bytes = fs::read(&path).map_err(|e| format!("Read source FMDL {}: {e}", relative_text))?;
                     let file = FmdlFile::read(&bytes).map_err(|e| format!("Invalid PES 2021 FMDL {relative_text}: {e}"))?;
-                    FoxModel::from_file(&file).map_err(|e| format!("Unresolved PES 2021 FMDL references in {relative_text}: {e}"))?;
+                    let model = FoxModel::from_file(&file).map_err(|e| format!("Unresolved PES 2021 FMDL references in {relative_text}: {e}"))?;
+                    for material in &model.materials {
+                        for (_, texture) in &material.textures {
+                            if texture.file_name.to_ascii_lowercase().ends_with(".ftex") {
+                                let candidate = path.parent().unwrap_or(root).join(&texture.directory).join(&texture.file_name);
+                                let resolved = fs::canonicalize(&candidate).unwrap_or(candidate);
+                                referenced_texture_paths.insert(resolved);
+                            }
+                        }
+                    }
                     model_paths.insert(relative_text.to_ascii_lowercase());
                     inventory.models.push(relative_text);
                 }
@@ -588,12 +597,9 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                     if ftex_info(&bytes).is_ok() {
                         inventory.texture_count += 1;
                     } else {
-                        // The Electron dependency preflight has already rejected malformed
-                        // FTEX files referenced by an FMDL. Unreferenced platform variants
-                        // are optional noise: remove them from the isolated staging copy so
-                        // the upstream compiler never mistakes them for required inputs.
-                        fs::remove_file(&path).map_err(|e| format!("Skip malformed unreferenced FTEX {relative_text}: {e}"))?;
-                        inventory.skipped_unreferenced_texture_variants.push(relative_text);
+                        // Defer this decision until every FMDL has been read: directory
+                        // enumeration order must never decide whether a texture is required.
+                        invalid_texture_paths.push((path.clone(), relative_text));
                     }
                 }
                 "dds" => inventory.texture_count += 1,
@@ -628,7 +634,17 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
     let mut inventory = Pes2021FaceInventory::default();
     let mut model_paths = std::collections::HashSet::new();
     let mut skeleton_paths = Vec::new();
-    walk(root, root, &mut inventory, &mut model_paths, &mut skeleton_paths)?;
+    let mut referenced_texture_paths = std::collections::HashSet::new();
+    let mut invalid_texture_paths = Vec::new();
+    walk(root, root, &mut inventory, &mut model_paths, &mut skeleton_paths, &mut referenced_texture_paths, &mut invalid_texture_paths)?;
+    for (path, relative_text) in invalid_texture_paths {
+        let resolved = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        if referenced_texture_paths.contains(&resolved) {
+            return Err(format!("Required PES 2021 FTEX is malformed: {relative_text}. This texture is referenced by an FMDL and cannot be skipped."));
+        }
+        fs::remove_file(&path).map_err(|e| format!("Skip malformed unreferenced FTEX {relative_text}: {e}"))?;
+        inventory.skipped_unreferenced_texture_variants.push(relative_text);
+    }
     if !inventory.models.iter().any(|value| value.rsplit('/').next().is_some_and(|name| name.eq_ignore_ascii_case("face_high.fmdl"))) {
         return Err("A PES 2021 face source must contain face_high.fmdl; no head model was found.".into());
     }
