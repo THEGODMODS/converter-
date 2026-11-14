@@ -47,8 +47,9 @@ export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]
     dependencies.push({source:model.path,reference,status:"external",candidates:[]});
     continue;
    }
-   const normalized=normalizeAsset(reference);
-   const relative=model.kind==="material-pes2017"?normalizeAsset(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference)):normalized;
+   const relative=model.kind==="material-pes2017"
+    ?normalizeAssetPreservingPlatform(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference))
+    :normalizeAssetPreservingPlatform(reference);
    const escapesRoot=model.kind==="material-pes2017"&&(relative===".."||relative.startsWith("../"));
    const candidates=escapesRoot?[]:matchTextureFiles(textures,relative);
    dependencies.push({source:model.path,reference,status:statusFor(candidates),candidates:candidates.map(file=>file.path)});
