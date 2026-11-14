@@ -2,6 +2,16 @@ import {describe,expect,it} from "vitest";
 import {buildCpk} from "../engine/packaging/cpk";
 import {verifyPes2017FaceCpk} from "../engine/packaging/face-cpk-validation";
 
+function ddsFixture():Buffer {
+  const data=Buffer.alloc(128);
+  data.write("DDS ",0,"ascii");
+  data.writeUInt32LE(124,4);
+  data.writeUInt32LE(1,12);
+  data.writeUInt32LE(1,16);
+  data.writeUInt32LE(32,76);
+  return data;
+}
+
 describe("PES 2017 nested face CPK verification",()=>{
   const xml=(model="./face_high_*.model",material="./face.mtl")=>Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n  <model level="0" type="face_neck" path="'+model+'" material="'+material+'"/>\n</config>');
   const mtl=(texture="./face.dds")=>Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="'+texture+'"/></material></materialset>');
@@ -36,12 +46,24 @@ describe("PES 2017 nested face CPK verification",()=>{
     ];
     const outer=buildCpk([
       {path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)},
-      {path:"common/character1/model/character/uniform/common/714/05 - A/skin.dds",data:Buffer.from("team-skin")},
+      {path:"common/character1/model/character/uniform/common/714/05 - A/skin.dds",data:ddsFixture()},
     ]);
     const result=verifyPes2017FaceCpk(outer,"176104");
     expect(result.faceModelPath).toMatch(/oral_face_high_win32\.model$/i);
     expect(result.faceMaterialPath).toMatch(/face_high\.mtl$/i);
     expect(result.referencedTextures).toContain("common/character1/model/character/uniform/common/714/05 - A/skin.dds");
+  });
+  it("rejects a corrupt DDS stored at a player-owned outer texture path",()=>{
+    const upstreamFiles=[
+      {path:"common/character0/model/character/face/real/176104/face.xml",data:Buffer.from('<?xml version="1.0"?><config><model path="./oral_face_high_*.model" material="./face_high.mtl"/></config>')},
+      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:Buffer.from("head")},
+      {path:"common/character0/model/character/face/real/176104/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
+    ];
+    const outer=buildCpk([
+      {path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)},
+      {path:"common/character1/model/character/uniform/common/714/05 - A/skin.dds",data:Buffer.from("not-a-dds")},
+    ]);
+    expect(()=>verifyPes2017FaceCpk(outer,"176104")).toThrow(/not a valid DDS/i);
   });
   it("rejects a missing player-owned texture referenced by the nested face MTL",()=>{
     const upstreamFiles=[
