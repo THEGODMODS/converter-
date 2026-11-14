@@ -601,6 +601,12 @@ fn companion_fmdl_for_skeleton(skeleton: &Path) -> PathBuf {
     }
 }
 
+fn is_windows_metadata_file_name(name: &str) -> bool {
+    ["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
+        .iter()
+        .any(|ignored| name.eq_ignore_ascii_case(ignored))
+}
+
 fn copy_face_source_tree(
     source_root: &Path,
     source_dir: &Path,
@@ -630,9 +636,7 @@ fn copy_face_source_tree(
         // Windows Explorer metadata is not part of a PES face. Ignore it before
         // inventory and path-collision checks, including copies in nested folders.
         let file_name = from.file_name().and_then(|name| name.to_str()).unwrap_or("");
-        if ["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
-            .iter().any(|ignored| file_name.eq_ignore_ascii_case(ignored))
-        {
+        if is_windows_metadata_file_name(file_name) {
             continue;
         }
         let extension = from.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
@@ -741,9 +745,7 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                     // Keep every non-metadata auxiliary asset for lossless reinjection into the
                     // generated player CPK. The upstream compiler is configured permissively
                     // below so unknown sidecars do not abort geometry conversion.
-                    if !["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
-                        .iter().any(|ignored| name.eq_ignore_ascii_case(ignored))
-                    {
+                    if !is_windows_metadata_file_name(name) {
                         inventory.preserved_sidecars.push(relative_text);
                     }
                 }
@@ -982,6 +984,12 @@ fn extract_face_archives(
         let archive = FpkFile::read(&bytes).map_err(|e| format!("Decode Fox archive {}: {e}", path.display()))?;
         for (name, data) in archive.entries() {
             let normalized = normalize_fox_virtual_path(name)?;
+            let basename = normalized.rsplit('/').next().unwrap_or("");
+            // Windows Explorer metadata can also be embedded inside FPK/FPKD;
+            // ignore it at extraction time, not only in loose source folders.
+            if is_windows_metadata_file_name(basename) {
+                continue;
+            }
             write_face_archive_member(destination, &normalized, data, seen, file_count, total_bytes)?;
         }
     }
@@ -1684,6 +1692,15 @@ mod pes2017_target_id_tests {
 #[cfg(test)]
 mod nested_face_archive_selection_tests {
     use super::{choose_nested_face_cpk_index, has_face_archive_manifest};
+
+    #[test]
+    fn ignores_windows_metadata_in_loose_and_archived_face_assets() {
+        use super::is_windows_metadata_file_name;
+        assert!(is_windows_metadata_file_name("desktop.ini"));
+        assert!(is_windows_metadata_file_name("Thumbs.db"));
+        assert!(is_windows_metadata_file_name(".DS_Store"));
+        assert!(!is_windows_metadata_file_name("face_diff.bin"));
+    }
 
     #[test]
     fn identifies_a_face_archive_from_its_manifest_not_its_outer_filename() {
