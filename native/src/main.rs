@@ -594,7 +594,16 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                     validate_face_diff_payload(&bytes).map_err(|e| format!("Invalid PES 2021 FACE diff {relative_text}: {e}"))?;
                     inventory.face_diff = Some(relative_text);
                 }
-                _ => {}
+                _ => {
+                    // Keep every non-metadata auxiliary asset for lossless reinjection into the
+                    // generated player CPK. The upstream compiler is configured permissively
+                    // below so unknown sidecars do not abort geometry conversion.
+                    if !["desktop.ini", "thumbs.db", "ehthumbs.db", ".ds_store"]
+                        .iter().any(|ignored| name.eq_ignore_ascii_case(ignored))
+                    {
+                        inventory.preserved_sidecars.push(relative_text);
+                    }
+                }
             }
         }
         Ok(())
@@ -892,7 +901,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
         .map_err(|e| format!("Write isolated Team compiler team list: {e}"))?;
     let pes_version = if target == 2017 { 17 } else { 21 };
     let settings_text = format!(
-        "[common]\npes_version = {pes_version}\npes_folder_path = {:?}\n\n[team-compiler]\ncpk_name = \"face-forge-{target_player_id}\"\noutput_folder_path = {:?}\nteams_list_path = \"teams_list.txt\"\nstrict_file_type_check = true\npass_through = false\n",
+        "[common]\npes_version = {pes_version}\npes_folder_path = {:?}\n\n[team-compiler]\ncpk_name = \"face-forge-{target_player_id}\"\noutput_folder_path = {:?}\nteams_list_path = \"teams_list.txt\"\nstrict_file_type_check = false\npass_through = false\n",
         pes.to_string_lossy().to_string(),
         output.to_string_lossy().to_string()
     );
