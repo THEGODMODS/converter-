@@ -158,3 +158,11 @@ jobs:
           if (!(Test-Path 'release/latest.yml')) { throw 'electron-builder did not generate latest.yml; automatic updates cannot work.' }
           if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'electron-builder did not generate the NSIS blockmap required for update downloads.' }
           if (!(Test-Path 'release/win-unpacked/resources/app-update.yml')) { throw 'The packaged app is missing its GitHub update feed configuration.' }
+      - name: Publish verified release publicly
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $expected = "v" + (node -p "require('./package.json').version")
+          gh release edit $expected --draft=false --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Could not publish verified release $expected." }
