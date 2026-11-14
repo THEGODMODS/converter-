@@ -47,17 +47,24 @@ function trusted(event:Electron.IpcMainInvokeEvent){
 function preflightPes2021FaceProject(inventory:FaceProject):void{
  if(inventory.detectedGame!=="pes2021")throw new Error("The selected route requires PES2021 source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
  const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
- const referencedTexturePaths=new Set(inventory.dependencies.filter(dep=>dep.status==="resolved"||dep.status==="ambiguous").flatMap(dep=>dep.candidates));
+ // This route converts PES 2021 FMDLs. Legacy PES 2017 MTL sidecars are not
+ // inputs to this route and must not make their own stale texture links fatal.
+ const fmdlDependencies=inventory.dependencies.filter(dep=>inventory.files.some(file=>file.path===dep.source&&file.kind==="model-pes2021"));
+ const referencedTexturePaths=new Set(fmdlDependencies.filter(dep=>dep.status==="resolved"||dep.status==="ambiguous").flatMap(dep=>dep.candidates));
  const criticalMalformed=inventory.files.filter(file=>{
   if(!file.kind.startsWith("invalid-")&&file.kind!=="container-kpfd-unknown")return false;
   if(criticalInvalidKinds.has(file.kind))return true;
   if(file.kind==="invalid-ftex"||file.kind==="invalid-dds")return referencedTexturePaths.has(file.path);
-  return true;
+  return false;
  });
  if(criticalMalformed.length)throw new Error("Face preflight found "+criticalMalformed.length+" critical malformed or unsupported file(s): "+criticalMalformed.slice(0,8).map(file=>file.path+" ("+(file.formatDetails?.[0]??file.kind)+")").join(" | ")+(criticalMalformed.length>8?" | and "+(criticalMalformed.length-8)+" more.":""));
  const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
  if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
- const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
+ const unresolvedDependencies=inventory.dependencies.filter(dependency=>{
+  const source=inventory.files.find(file=>file.path===dependency.source);
+  const requiredSource=source?.kind==="model-pes2021"||source?.kind==="container-fpk"||source?.kind==="container-fpkd";
+  return requiredSource&&(dependency.status==="missing"||dependency.status==="ambiguous");
+ });
  if(unresolvedDependencies.length){
   const describe=(dependency:typeof unresolvedDependencies[number])=>{
    const source=inventory.files.find(file=>file.path===dependency.source);
