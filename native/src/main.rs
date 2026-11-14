@@ -1653,7 +1653,7 @@ mod pes2017_target_id_tests {
     fn synthetic_player_texture_namespace_is_unique_per_real_player_id() {
         use super::synthetic_player_folder_name;
         assert_eq!(synthetic_player_folder_name("01", "176104"), "01 - FACE FORGE 176104");
-        assert_ne!(synthetic_player_folder_name("176104"), synthetic_player_folder_name("01", "3997"));
+        assert_ne!(synthetic_player_folder_name("01", "176104"), synthetic_player_folder_name("01", "3997"));
     }
 
     #[test]
