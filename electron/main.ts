@@ -9,6 +9,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync=promisify(execFile);
 import { inspectFaceFolder, type FaceProject } from "../engine/inventory";
+import { matchTextureFiles } from "../engine/dependencies";
 import { inferPesPlayerIdFromPath } from "../engine/player-id";
 import { inspectFaceDatabase } from "../engine/database";
 import { buildFaceProjectManifest } from "../engine/manifest";
@@ -252,20 +253,14 @@ function registerIpc(){
   if(generation==="pes2021"&&materials.length){
    const textureInventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
    const textureFiles=textureInventory.files.filter(file=>file.kind==="texture-pes2021"||file.kind==="texture-pes2017");
-   const normalize=(value:string)=>value.replaceAll("\\","/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
    for(const material of materials){
     const textureData:Record<string,string>={};
     for(const [slot,reference] of Object.entries(material.textures)){
-     const wanted=normalize(reference);
-     const scorePath=(candidate:string,requested:string)=>{const a=candidate.split("/"),b=requested.split("/");let score=0;while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;return score;};
-     // FMDL paths may be absolute game virtual paths while extracted folders
-     // and FPK members may start at different roots. Match the longest suffix.
-     const ranked=textureFiles.map(file=>({file,score:scorePath(normalize(file.path.split("!/").pop()??file.path),wanted)})).filter(item=>item.score>0);
-     const bestScore=ranked.length?Math.max(...ranked.map(item=>item.score)):0;
-     const best=ranked.filter(item=>item.score===bestScore).map(item=>item.file);
+     // Preserve .ftex/.dds identity: same-stem companions are different formats.
+     const best=matchTextureFiles(textureFiles,reference);
      const uniqueHashes=new Set(best.map(file=>file.sha256));
      const resolved=uniqueHashes.size===1&&best.length?[best[0]]:best.length===1?best:[];
-     if(!resolved.length){warnings.push("Texture "+reference+" for "+material.name+" could not be matched uniquely; it is not shown in the preview.");continue;}
+     if(!resolved.length){warnings.push("Texture "+reference+" for "+material.name+" could not be matched uniquely by full path and extension; it is not shown in the preview.");continue;}
      const asset=resolved[0];let textureBytes:Buffer;
      if(asset.path.includes("!/")){
       const marker=asset.path.indexOf("!/"),archiveRelative=asset.path.slice(0,marker),memberName=asset.path.slice(marker+2);
