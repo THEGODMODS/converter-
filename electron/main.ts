@@ -387,7 +387,7 @@ function registerAutoUpdater(){
  autoUpdater.on("download-progress",progress=>publishUpdateStatus({state:"downloading",percent:Math.max(0,Math.min(100,Math.round(progress.percent)))}));
  autoUpdater.on("update-downloaded",info=>{
   publishUpdateStatus({state:"downloaded",version:info.version,percent:100});
-  setTimeout(()=>autoUpdater.quitAndInstall(false,true),1200);
+  setTimeout(()=>autoUpdater.quitAndInstall(true,true),1200);
  });
  autoUpdater.on("error",error=>publishUpdateStatus({state:"error",message:error.message}));
  setTimeout(()=>{if(app.isReady())void autoUpdater.checkForUpdates().catch(error=>publishUpdateStatus({state:"error",message:error instanceof Error?error.message:String(error)}));},12000);
