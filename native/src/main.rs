@@ -1087,6 +1087,10 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     extract_face_archives(&archive_paths, &player, &mut seen, &mut file_count, &mut total_bytes)?;
     let redundant_extracted_mirrors_removed =
         remove_redundant_extracted_fpk_mirrors(&input, &player, &archive_paths)?;
+    // Removing the archive mirrors can leave their parent platform folder empty
+    // (for example #Win after face.fpk.xml is filtered). Do not present empty
+    // source folders to Team Compiler as additional player model folders.
+    let _ = remove_empty_directories(&player)?;
     let normalized_texture_references = normalize_fox_face_model_paths(&player)?;
     let source_inventory = inspect_pes2021_face_source(&player)?;
     let has_model = {
