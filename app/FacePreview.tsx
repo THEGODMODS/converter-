@@ -15,7 +15,7 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
   const grid=new THREE.GridHelper(4,20,0x354657,0x1b2936);grid.position.y=-1.15;scene.add(grid);
   const group=new THREE.Group();scene.add(group);let min=new THREE.Vector3(Infinity,Infinity,Infinity),max=new THREE.Vector3(-Infinity,-Infinity,-Infinity);
   const ddsLoader=new DDSLoader(),builtMaterials=preview.materials.map(source=>{
-   const isHair=/hair/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:0xc7a18e,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
+   const isHair=/hair/i.test(source.name),material=new THREE.MeshStandardMaterial({color:isHair?0x39302b:0x9ca3af,roughness:.86,metalness:0,side:THREE.DoubleSide});material.name=source.name;
 
    for(const [slot,encoded] of Object.entries(source.textureData??{})){
     const semantic=slot+" "+(source.textures[slot]??"");
