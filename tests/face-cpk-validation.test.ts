@@ -80,7 +80,7 @@ describe("PES 2017 nested face CPK verification",()=>{
   });
   it("rejects a head model with an empty section table",()=>{
     const emptySections=Buffer.alloc(36);
-    emptySections.write("MODEL\\0\\0\\0",0,"binary");
+    emptySections.write("MODEL\0\0\0",0,"binary");
     emptySections.writeUInt32LE(24,8);
     emptySections.writeUInt16LE(16,14);
     emptySections.writeUInt32LE(12,24);
