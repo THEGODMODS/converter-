@@ -40,11 +40,42 @@ function trusted(event:Electron.IpcMainInvokeEvent){
  if(app.isPackaged){const expected=pathToFileURL(path.join(__dirname,"../../dist/index.html")).href;if(url!==expected)throw new Error("Untrusted renderer.");}
  else {const parsed=new URL(url);if(parsed.origin!=="http://127.0.0.1:5173"||(parsed.pathname!=="/"&&parsed.pathname!=="/index.html"))throw new Error("Untrusted renderer.");}
 }
+
+/** Validate a complete PES 2021 face project before the UI reports it as ready.
+ * Called on folder selection and again immediately before conversion to catch source changes.
+ */
+function preflightPes2021FaceProject(inventory:FaceProject):void{
+ if(inventory.detectedGame!=="pes2021")throw new Error("The selected route requires PES2021 source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
+ const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-mtl","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
+ const referencedTexturePaths=new Set(inventory.dependencies.filter(dep=>dep.status==="resolved"||dep.status==="ambiguous").flatMap(dep=>dep.candidates));
+ const criticalMalformed=inventory.files.filter(file=>{
+  if(!file.kind.startsWith("invalid-")&&file.kind!=="container-kpfd-unknown")return false;
+  if(criticalInvalidKinds.has(file.kind))return true;
+  if(file.kind==="invalid-ftex"||file.kind==="invalid-dds")return referencedTexturePaths.has(file.path);
+  return true;
+ });
+ if(criticalMalformed.length)throw new Error("Face preflight found "+criticalMalformed.length+" critical malformed or unsupported file(s): "+criticalMalformed.slice(0,8).map(file=>file.path+" ("+(file.formatDetails?.[0]??file.kind)+")").join(" | ")+(criticalMalformed.length>8?" | and "+(criticalMalformed.length-8)+" more.":""));
+ const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
+ if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
+ const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
+ if(unresolvedDependencies.length){
+  const describe=(dependency:typeof unresolvedDependencies[number])=>{
+   const source=inventory.files.find(file=>file.path===dependency.source);
+   const kind=source?.kind==="model-pes2021"?"FMDL texture":source?.kind==="container-fpk"||source?.kind==="container-fpkd"?"FPK package":source?.kind??"unknown source";
+   const matches=dependency.candidates.length?" (matches: "+dependency.candidates.slice(0,4).join(", ")+(dependency.candidates.length>4?", …":"")+")":" (no matching file)";
+   return dependency.status.toUpperCase()+" "+kind+": "+dependency.source+" → "+dependency.reference+matches;
+  };
+  const textureCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021")).length;
+  const packageCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd"))).length;
+  const unknownCount=unresolvedDependencies.length-textureCount-packageCount;
+  throw new Error("Face preflight found "+unresolvedDependencies.length+" unresolved dependency reference(s) ("+textureCount+" texture, "+packageCount+" package, "+unknownCount+" other). "+unresolvedDependencies.slice(0,8).map(describe).join(" | ")+(unresolvedDependencies.length>8?" | and "+(unresolvedDependencies.length-8)+" more.":""));
+ }
+}
 function registerIpc(){
  ipcMain.handle("face:choose-folder",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose PES face project folder",properties:["openDirectory"]});return result.canceled?null:result.filePaths[0]??null;});
  ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose face folders for batch or project",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
- ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);inspectedFaceProjects.clear();inspectedFaceProjects.set(project.root,project);return project;});
+ ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);preflightPes2021FaceProject(project);inspectedFaceProjects.clear();inspectedFaceProjects.set(project.root,project);return project;});
  ipcMain.handle("face:export-manifest",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");const project=await inspectFaceFolder(folder);const manifest=buildFaceProjectManifest(project);if(!manifest.integrity.complete)throw new Error("Manifest integrity check failed; export was stopped.");const suggested=path.join(path.dirname(folder),path.basename(folder)+"-FACE-FORGE-manifest.json");const picked=await dialog.showSaveDialog(mainWindow!,{title:"Export face project manifest",defaultPath:suggested,filters:[{name:"FACE FORGE manifest",extensions:["json"]}]});if(picked.canceled||!picked.filePath)return null;if(path.extname(picked.filePath).toLowerCase()!==".json")throw new Error("Choose a .json manifest destination.");const payload=JSON.stringify(manifest,null,2)+"\n";await writeFile(picked.filePath,payload,{flag:"wx"});return {destination:picked.filePath,files:manifest.summary.fileCount,bytes:Buffer.byteLength(payload)};});
  ipcMain.handle("face:convert-native-model",async(event,folder:unknown)=>{
   trusted(event);
@@ -145,55 +176,7 @@ function registerIpc(){
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
   const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
   inspectedFaceProjects.set(root,inventory);
-  const expected=target===2017?"pes2021":"pes2017";
-  if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
-  // Critical malformed assets always block conversion (models, materials, archives, face-diff).
-// Unreferenced invalid FTEX/DDS are common in community face packs (extra platform variants,
-// placeholder stubs under sourceimages/#Win/dx11, etc.) and must not abort the whole job.
-const criticalInvalidKinds = new Set([
-  "invalid-fmdl",
-  "invalid-model",
-  "invalid-mtl",
-  "invalid-fpk",
-  "invalid-face-diff",
-  "container-kpfd-unknown",
-]);
-const referencedTexturePaths = new Set(
-  inventory.dependencies
-    .filter(dep => dep.status === "resolved" || dep.status === "ambiguous")
-    .flatMap(dep => dep.candidates)
-);
-const criticalMalformed = inventory.files.filter(file => {
-  if (!file.kind.startsWith("invalid-") && file.kind !== "container-kpfd-unknown") return false;
-  if (criticalInvalidKinds.has(file.kind)) return true;
-  // invalid-ftex / invalid-dds only critical when actually referenced by a model
-  if (file.kind === "invalid-ftex" || file.kind === "invalid-dds") {
-    return referencedTexturePaths.has(file.path);
-  }
-  return true;
-});
-if (criticalMalformed.length) {
-  throw new Error(
-    "Face preflight found " + criticalMalformed.length + " critical malformed or unsupported file(s): " +
-    criticalMalformed.slice(0, 8).map(file => file.path + " (" + (file.formatDetails?.[0] ?? file.kind) + ")").join(" | ") +
-    (criticalMalformed.length > 8 ? " | and " + (criticalMalformed.length - 8) + " more." : "")
-  );
-}
-  const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
-  if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
-  const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
-  if(unresolvedDependencies.length){
-   const describe=(dependency:typeof unresolvedDependencies[number])=>{
-    const source=inventory.files.find(file=>file.path===dependency.source);
-    const kind=source?.kind==="model-pes2021"?"FMDL texture":source?.kind==="container-fpk"||source?.kind==="container-fpkd"?"FPK package":source?.kind??"unknown source";
-    const matches=dependency.candidates.length?" (matches: "+dependency.candidates.slice(0,4).join(", ")+(dependency.candidates.length>4?", …":"")+")":" (no matching file)";
-    return dependency.status.toUpperCase()+" "+kind+": "+dependency.source+" → "+dependency.reference+matches;
-   };
-   const textureCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021")).length;
-   const packageCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd"))).length;
-   const unknownCount=unresolvedDependencies.length-textureCount-packageCount;
-   throw new Error("Face preflight found "+unresolvedDependencies.length+" unresolved dependency reference(s) ("+textureCount+" texture, "+packageCount+" package, "+unknownCount+" other). "+unresolvedDependencies.slice(0,8).map(describe).join(" | ")+(unresolvedDependencies.length>8?" | and "+(unresolvedDependencies.length-8)+" more.":""));
-  }
+  preflightPes2021FaceProject(inventory);
   const destination=await dialog.showOpenDialog(mainWindow!,{title:target===2017?"Choose an empty output folder for the converted PES 2017 face CPK":"Choose an empty output folder for the converted PES 2021 face FPK/FPKD",properties:["openDirectory"]});
   if(destination.canceled||!destination.filePaths[0])return null;
   const output=path.resolve(destination.filePaths[0]),outputStat=await fs.promises.lstat(output);

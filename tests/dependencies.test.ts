@@ -29,6 +29,23 @@ describe("face package dependency resolver",()=>{
   expect(result[0].status).toBe("resolved");
   expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.dds"]);
  });
+ it("keeps a malformed required FTEX visible as a resolved candidate for preflight to reject",()=>{
+  const result=resolveFaceDependencies([
+   {path:"face_high.fmdl",kind:"model-pes2021",assetReferences:["/Assets/pes16/model/character/face/real/123/sourceimages/face_bsm_alp.ftex"]},
+   {path:"sourceimages/#windx11/face_bsm_alp.ftex",kind:"invalid-ftex",sha256:"bad"}
+  ]);
+  expect(result[0].status).toBe("resolved");
+  expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.ftex"]);
+ });
+ it("does not let an unreferenced malformed platform variant affect valid dependencies",()=>{
+  const result=resolveFaceDependencies([
+   {path:"face_high.fmdl",kind:"model-pes2021",assetReferences:["/Assets/pes16/model/character/face/real/123/sourceimages/face_bsm_alp.dds"]},
+   {path:"sourceimages/#windx11/face_bsm_alp.dds",kind:"texture-pes2017",sha256:"good"},
+   {path:"sourceimages/#windx11/1/hair_parts_nrm.ftex",kind:"invalid-ftex",sha256:"bad"}
+  ]);
+  expect(result[0].status).toBe("resolved");
+  expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.dds"]);
+ });
  it("classifies PES common sourceimages as external game dependencies",()=>{
   const result=resolveFaceDependencies([
    {path:"face_high.fmdl",kind:"model-pes2021",assetReferences:[
