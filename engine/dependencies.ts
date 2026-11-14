@@ -2,12 +2,19 @@ import path from "node:path";
 export type DependencyFile={path:string;kind:string;sha256?:string;assetReferences?:string[];packageReferences?:string[]};
 export type FaceDependency={source:string;reference:string;status:"resolved"|"missing"|"ambiguous";candidates:string[]};
 function normalizeAsset(value:string):string{
- return value.split(String.fromCharCode(92)).join("/").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(ftex|dds)$/i,"").toLowerCase();
+ return value.split(String.fromCharCode(92)).join("/").replace(/^\/+/, "").replace(/^Assets\//i,"").toLowerCase();
 }
 function suffixScore(candidate:string,requested:string):number{
  const a=candidate.split("/"),b=requested.split("/");let score=0;
  while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;
  return score;
+}
+/** Match the full virtual path, including its extension. DDS and FTEX files with the same stem are distinct assets, not interchangeable duplicates. */
+export function matchTextureFiles<T extends {path:string}>(files:T[],reference:string):T[]{
+ const wanted=normalizeAsset(reference),scored=files.map(file=>({file,score:suffixScore(normalizeAsset(file.path.split("!/").pop()??file.path),wanted)})).filter(item=>item.score>0);
+ if(scored.length){const best=Math.max(...scored.map(item=>item.score));return scored.filter(item=>item.score===best).map(item=>item.file);}
+ const base=wanted.split("/").pop()??wanted;
+ return files.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
 }
 function statusFor(candidates:DependencyFile[]):FaceDependency["status"]{
  if(!candidates.length)return "missing";
@@ -23,16 +30,10 @@ export function resolveFaceDependencies(files:DependencyFile[]):FaceDependency[]
   for(const reference of model.assetReferences??[]){
    const sourcePath=reference.replace(/\\/g,"/");
    if(/^\/Assets\/pes16\/model\/character\/common\/sourceimages\/dummy_(?:nrm|srm)\.(?:ftex|dds|tga)$/i.test(sourcePath))continue;
-   const normalized=normalizeAsset(reference),base=normalized.split("/").pop()??normalized;
+   const normalized=normalizeAsset(reference);
    const relative=model.kind==="material-pes2017"?normalizeAsset(path.posix.join(path.posix.dirname(model.path.split("!/").pop()??model.path),reference)):normalized;
    const escapesRoot=model.kind==="material-pes2017"&&(relative===".."||relative.startsWith("../"));
-   const exact=escapesRoot?[]:textures.filter(file=>{const candidate=normalizeAsset(file.path.split("!/").pop()??file.path);return candidate===relative||candidate===normalized;});
-   let candidates=exact;
-   if(!candidates.length&&!escapesRoot){
-    const scored=textures.map(file=>({file,score:suffixScore(normalizeAsset(file.path.split("!/").pop()??file.path),relative.startsWith("../")?"":relative)||suffixScore(normalizeAsset(file.path.split("!/").pop()??file.path),normalized)})).filter(item=>item.score>0);
-    const best=scored.length?Math.max(...scored.map(item=>item.score)):0;
-    candidates=best?scored.filter(item=>item.score===best).map(item=>item.file):textures.filter(file=>(normalizeAsset(file.path.split("!/").pop()??file.path).split("/").pop()??"")===base);
-   }
+   const candidates=escapesRoot?[]:matchTextureFiles(textures,relative);
    dependencies.push({source:model.path,reference,status:statusFor(candidates),candidates:candidates.map(file=>file.path)});
   }
  }
