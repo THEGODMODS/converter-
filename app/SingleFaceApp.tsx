@@ -11,7 +11,7 @@ export default function SingleFaceApp(){
  const [busy,setBusy]=useState(false),[previewBusy,setPreviewBusy]=useState(false),[previewError,setPreviewError]=useState<string|null>(null),[converting,setConverting]=useState(false),[dragging,setDragging]=useState(false);
  const [error,setError]=useState(""),[result,setResult]=useState("");
  const loadFolder=async(folder:string)=>{
-  setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setPreviewError(previewError instanceof Error?previewError.message:String(previewError));setTargetId("");
+  setBusy(true);setError("");setResult("");setProject(null);setPreview(null);setPreviewError(null);setTargetId("");
   try{
    const scanned=await window.faceForge.inspectFolder(folder);
    if(scanned.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
@@ -37,8 +37,7 @@ export default function SingleFaceApp(){
     setPreview({source:"PES 2021 face assembly ("+loaded+" models)",generation:"pes2021",meshes,materials,warnings});
    }catch(previewError){
     console.error("FACE FORGE 3D preview failed; conversion remains available",previewError);
-    setPreview(null);
-    setError("The face folder is ready, but its 3D preview could not be displayed. You can still convert it.");
+    setPreview(null);setPreviewError(previewError instanceof Error?previewError.message:String(previewError));
    }
   }catch(e){
    console.error("FACE FORGE source inspection failed",e);
