@@ -22,8 +22,19 @@ export default function SingleFaceApp(){
    if(sourceId&&/[1-9]/.test(sourceId))setTargetId(sourceId);
    setPreviewBusy(true);
    try{
-    const headScene=await window.faceForge.previewModel(scanned.root,head.path);
-    setPreview({source:"PES 2021 head model",generation:"pes2021",meshes:headScene.meshes,materials:headScene.materials,warnings:headScene.warnings});
+    const highDetailModels=scanned.files.filter(file=>file.kind==="model-pes2021"&&/(?:^|\\/) [^/]+_high\\.fmdl$/i.test(file.path.replace(/\\s/g,"")));
+    const previewModels=(highDetailModels.length?highDetailModels:[head]).slice(0,24);
+    const settled=await Promise.allSettled(previewModels.map(file=>window.faceForge.previewModel(scanned.root,file.path)));
+    const materials:FacePreviewData["materials"]=[],meshes:FacePreviewData["meshes"]=[],warnings:string[]=[];
+    let loaded=0;
+    for(let i=0;i<settled.length;i++){
+     const result=settled[i];
+     if(result.status==="rejected"){warnings.push("Could not preview "+previewModels[i].path+": "+(result.reason instanceof Error?result.reason.message:String(result.reason)));continue;}
+     const scene=result.value,offset=materials.length;loaded++;materials.push(...scene.materials);meshes.push(...scene.meshes.map(mesh=>({...mesh,materialIndex:mesh.materialIndex+offset})));warnings.push(...scene.warnings);
+    }
+    if(!loaded||!meshes.length)throw new Error("No high-detail face component could be rendered.");
+    if(highDetailModels.length>previewModels.length)warnings.push("Preview limited to the first 24 high-detail face components.");
+    setPreview({source:"PES 2021 face assembly ("+loaded+" models)",generation:"pes2021",meshes,materials,warnings});
    }catch(previewError){
     console.error("FACE FORGE 3D preview failed; conversion remains available",previewError);
     setPreview(null);
