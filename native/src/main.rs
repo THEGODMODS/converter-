@@ -417,10 +417,17 @@ fn inject_preserved_sidecars(
             return Err(format!("Preserved sidecar is missing, unsafe or oversized: {sidecar}"));
         }
         let archive_name = relative.to_string_lossy().replace('\\', "/");
-        if !existing.insert(archive_name.to_ascii_lowercase()) {
-            return Err(format!("Sidecar collides with an existing nested CPK entry: {archive_name}"));
-        }
         let bytes = fs::read(&source).map_err(|e| format!("Read preserved sidecar {}: {e}", sidecar))?;
+        if !existing.insert(archive_name.to_ascii_lowercase()) {
+            let prior = nested_entries.iter().find(|entry| entry.path.trim_start_matches('/').eq_ignore_ascii_case(&archive_name))
+                .ok_or_else(|| format!("Sidecar path collision could not be resolved for {archive_name}."))?;
+            let prior_bytes = nested.read(prior)
+                .map_err(|e| format!("Read existing sidecar collision {archive_name}: {e}"))?;
+            if prior_bytes.as_slice() == bytes.as_slice() {
+                continue;
+            }
+            return Err(format!("Sidecar collides with different data in the generated nested CPK: {archive_name}"));
+        }
         nested_writer.add(&archive_name, &bytes, None)
             .map_err(|e| format!("Add preserved sidecar {} to nested face CPK: {e}", sidecar))?;
     }
