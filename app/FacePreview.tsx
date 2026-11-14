@@ -60,10 +60,10 @@ export default function FacePreview({preview}:{preview:FacePreviewData}){
      else if(/metallic|metalness/i.test(semantic)){material.metalnessMap=texture;material.metalness=1;}
      else if(/opacity|alpha/i.test(semantic)){material.alphaMap=texture;material.transparent=true;}
 
-    }catch(error){}
+    }catch{
+     // Texture preview failures fall back silently; diagnostics are not rendered under the 3D preview.
+    }
    }
-   if(!material.map&&Object.keys(source.textures).length&&!isEyeOcclusion)
-   if(!Object.keys(source.textureData??{}).length&&Object.keys(source.textures).length)
    if(material.map){material.color.set(0xffffff);if(isHair){material.transparent=true;material.alphaTest=.35;material.depthWrite=true;}}
    return material;
   });
