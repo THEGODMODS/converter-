@@ -64,6 +64,16 @@ describe("PES 2017 nested face CPK verification",()=>{
     expect(result.faceMaterialPath).toMatch(/face_high\.mtl$/i);
     expect(result.referencedTextures).toContain("common/character1/model/character/uniform/common/714/05 - A/skin.dds");
   });
+  it("rejects a face_high model that is paired with the wrong material in face.xml",()=>{
+    const mismatched=[
+      {path:"face.xml",data:Buffer.from('<?xml version="1.0"?><config><model path="./oral_face_high_*.model" material="./hair.mtl"/><model path="./oral_dummy_*.model" material="./face_high.mtl"/></config>')},
+      {path:"oral_face_high_win32.model",data:modelFixture()},
+      {path:"oral_dummy_win32.model",data:modelFixture()},
+      {path:"hair.mtl",data:Buffer.from("<materialset></materialset>")},
+      {path:"face_high.mtl",data:Buffer.from("<materialset></materialset>")},
+    ];
+    expect(()=>verifyPes2017FaceCpk(teamArchive(mismatched),"71405")).toThrow(/does not pair the face_high head mesh with its head material/i);
+  });
   it("rejects a referenced model with an invalid PES 2017 MODEL header",()=>{
     const invalidFiles=faceFiles.map(file=>file.path==="face_high_win32.model"?{...file,data:Buffer.from("not-a-model")}:file);
     expect(()=>verifyPes2017FaceCpk(teamArchive(invalidFiles),"71405")).toThrow(/referenced PES 2017 model is invalid/i);
