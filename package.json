@@ -1,6 +1,6 @@
 {
   "name": "thegodmods-face-forge",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "PES 2021 to PES 2017 face converter with interactive 3D preview by KFC GODMODS",
   "main": "dist-electron/electron/main.js",
