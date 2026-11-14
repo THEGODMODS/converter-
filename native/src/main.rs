@@ -314,8 +314,16 @@ fn normalize_fox_face_texture_directory(
     if !folded.contains("/model/character/face/real/") || !folded.contains("/sourceimages/") {
         return false;
     }
+    // Preserve the source FMDL's platform directory preference. A folder can
+    // contain both DDS and FTEX variants under sourceimages and #windx11; always
+    // choosing #windx11 can silently bind a same-named but different asset.
+    let variants = if folded.contains("/sourceimages/#windx11/") {
+        ["sourceimages/#windx11", "sourceimages"]
+    } else {
+        ["sourceimages", "sourceimages/#windx11"]
+    };
     for ancestor in model_directory.ancestors() {
-        for relative in ["sourceimages/#windx11", "sourceimages"] {
+        for relative in variants {
             let texture_directory = ancestor.join(relative);
             if !texture_directory.join(file_name).is_file() {
                 continue;
@@ -1732,6 +1740,35 @@ mod nested_face_archive_selection_tests {
         let error = write_face_archive_member(&root, "face_diff.bin", b"fpkd-version", &mut seen, &mut count, &mut total).unwrap_err();
         assert!(error.contains("different data"));
         assert_eq!(std::fs::read(root.join("face_diff.bin")).unwrap(), b"loose-version");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sourceimages_resolution_preserves_the_fmdl_platform_directory_preference() {
+        use super::normalize_fox_face_texture_directory;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "face-forge-sourceimages-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let model_dir = root.join("#Win");
+        let standard = root.join("sourceimages");
+        let windx11 = standard.join("#windx11");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        std::fs::create_dir_all(&windx11).unwrap();
+        std::fs::write(standard.join("skin.dds"), b"standard").unwrap();
+        std::fs::write(windx11.join("skin.dds"), b"windx11").unwrap();
+
+        let mut standard_reference = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
+        assert!(normalize_fox_face_texture_directory(&model_dir, &mut standard_reference, "skin.dds"));
+        assert_eq!(standard_reference, "../sourceimages/");
+
+        let mut windx11_reference = "/Assets/pes16/model/character/face/real/176104/sourceimages/#windx11/".to_string();
+        assert!(normalize_fox_face_texture_directory(&model_dir, &mut windx11_reference, "skin.dds"));
+        assert_eq!(windx11_reference, "../sourceimages/#windx11/");
+
         std::fs::remove_dir_all(root).unwrap();
     }
 
