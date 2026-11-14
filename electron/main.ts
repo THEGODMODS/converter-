@@ -46,7 +46,7 @@ function registerIpc(){
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
  ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);inspectedFaceProjects.clear();inspectedFaceProjects.set(project.root,project);return project;});
  ipcMain.handle("face:export-manifest",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");const project=await inspectFaceFolder(folder);const manifest=buildFaceProjectManifest(project);if(!manifest.integrity.complete)throw new Error("Manifest integrity check failed; export was stopped.");const suggested=path.join(path.dirname(folder),path.basename(folder)+"-FACE-FORGE-manifest.json");const picked=await dialog.showSaveDialog(mainWindow!,{title:"Export face project manifest",defaultPath:suggested,filters:[{name:"FACE FORGE manifest",extensions:["json"]}]});if(picked.canceled||!picked.filePath)return null;if(path.extname(picked.filePath).toLowerCase()!==".json")throw new Error("Choose a .json manifest destination.");const payload=JSON.stringify(manifest,null,2)+"\n";await writeFile(picked.filePath,payload,{flag:"wx"});return {destination:picked.filePath,files:manifest.summary.fileCount,bytes:Buffer.byteLength(payload)};});
- // FULL ORIGINAL CONTENT CONTINUES HERE - the tool call is being truncated in this interface. The restored file is ready.
+ ipcMain.handle("face:convert-native-model",async(event,folder:unknown)=>{
   trusted(event);
   if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid source project folder.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
@@ -132,7 +132,7 @@ function registerIpc(){
    return {destination:published,report,textures};
   }catch(error){
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
-   const detail=error instanceof Error?error.message:String(error);
+   const detail=describeProcessFailure(error);
    throw new Error("Native PES conversion failed; the selected output folder was not intentionally cleared: "+detail);
   }
  });
@@ -143,9 +143,14 @@ function registerIpc(){
    if(typeof resolvedPlayerId!=="string"||!/^[0-9]{1,6}$/.test(resolvedPlayerId)||/^0+$/.test(resolvedPlayerId))throw new Error("Enter the numeric player ID belonging to this face.");
   const root=path.resolve(folder),rootStat=await fs.promises.lstat(root);
   if(rootStat.isSymbolicLink()||!rootStat.isDirectory())throw new Error("The source face folder is not a safe directory.");
-  const realRoot=await fs.promises.realpath(root),inventory=inspectedFaceProjects.get(root)??await inspectFaceFolder(root);
+  const realRoot=await fs.promises.realpath(root),inventory=await inspectFaceFolder(root);
+  inspectedFaceProjects.set(root,inventory);
   const expected=target===2017?"pes2021":"pes2017";
   if(inventory.detectedGame!==expected)throw new Error("The selected route requires "+expected.toUpperCase()+" source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
+  const malformedAssets=inventory.files.filter(file=>file.kind.startsWith("invalid-"));
+  if(malformedAssets.length)throw new Error("Face preflight found "+malformedAssets.length+" malformed or unsupported file(s): "+malformedAssets.slice(0,8).map(file=>file.path+" ("+(file.formatDetails?.[0]??file.kind)+")").join(" | ")+(malformedAssets.length>8?" | and "+(malformedAssets.length-8)+" more.":""));
+  const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
+  if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
   const unresolvedDependencies=inventory.dependencies.filter(dependency=>dependency.status==="missing"||dependency.status==="ambiguous");
   if(unresolvedDependencies.length){
    const describe=(dependency:typeof unresolvedDependencies[number])=>{
@@ -203,7 +208,7 @@ function registerIpc(){
    return {destination:published,outputFormat:"cpk",report};
   }catch(error){
    try{await fs.promises.rm(stageParent,{recursive:true,force:true});}catch{}
-   const detail=error instanceof Error?error.message:String(error);
+   const detail=describeProcessFailure(error);
    throw new Error("Complete face conversion failed. The selected output folder was not intentionally cleared: "+detail);
   }
  });
