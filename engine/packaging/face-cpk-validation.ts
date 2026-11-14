@@ -1,5 +1,5 @@
 import { inspectCpk, type CpkInspection } from "./cpk";
-import { inspectDdsHeader } from "../formats/headers";
+import { inspectDdsHeader, inspectModelHeader } from "../formats/headers";
 
 export type Pes2017FaceCpkVerification = {
   outerInspection: CpkInspection;
@@ -81,6 +81,13 @@ function verifyFaceXmlReferences(
   const unique = (values: string[]) => [...new Set(values)];
   const resolvedModels = unique(models);
   const resolvedMaterials = unique(materials);
+  for (const modelPath of resolvedModels) {
+    const modelEntry = files.find((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === modelPath);
+    if (!modelEntry) throw new Error("Resolved model entry disappeared from the nested face CPK: " + modelPath);
+    const modelBytes = archiveBytes.subarray(modelEntry.offset, modelEntry.offset + modelEntry.size);
+    const modelInspection = inspectModelHeader(modelBytes);
+    if (!modelInspection.valid) throw new Error("Referenced PES 2017 model is invalid: " + modelPath + " (" + modelInspection.details.join("; ") + ")");
+  }
   // Both names occur in the pinned Team Compiler's real face fixtures and output conventions.
   const head = resolvedModels.find((name) => /(?:^|\/)(?:oral_)?face_high_win32\.model$/i.test(name));
   const headMaterial = resolvedMaterials.find((name) => /(?:^|\/)(?:face_high|face)\.mtl$/i.test(name));
@@ -92,6 +99,9 @@ function verifyFaceXmlReferences(
     const materialEntry = files.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === materialPath);
     if (!materialEntry) continue;
     const materialXml = archiveBytes.subarray(materialEntry.offset, materialEntry.offset + materialEntry.size).toString("utf8");
+    if (!/<materialset(?:\\s|>)/i.test(materialXml) || !/<\\/materialset\\s*>\\s*$/i.test(materialXml)) {
+      throw new Error("Referenced PES 2017 material set is not a complete materialset document: " + materialPath);
+    }
     for (const sampler of materialXml.matchAll(/<sampler\b([^>]*)\/?\s*>/gi)) {
       const attributes = new Map<string, string>();
       for (const match of sampler[1].matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*(["'])(.*?)\2/gs)) {
