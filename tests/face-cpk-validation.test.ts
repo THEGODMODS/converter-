@@ -62,7 +62,7 @@ describe("PES 2017 nested face CPK verification",()=>{
     const result=verifyPes2017FaceCpk(outer,"176104");
     expect(result.faceModelPath).toMatch(/oral_face_high_win32\.model$/i);
     expect(result.faceMaterialPath).toMatch(/face_high\.mtl$/i);
-    expect(result.referencedTextures).toContain("common/character1/model/character/uniform/common/714/05 - A/skin.dds");
+    expect(result.referencedTextures).toContain("common/character1/model/character/uniform/common/714/05 - a/skin.dds");
   });
   it("rejects a face_high model that is paired with the wrong material in face.xml",()=>{
     const mismatched=[
@@ -97,7 +97,7 @@ describe("PES 2017 nested face CPK verification",()=>{
   it("rejects a missing player-owned texture referenced by the nested face MTL",()=>{
     const upstreamFiles=[
       {path:"common/character0/model/character/face/real/176104/face.xml",data:Buffer.from('<?xml version="1.0"?><config><model path="./oral_face_high_*.model" material="./face_high.mtl"/></config>')},
-      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:Buffer.from("head")},
+      {path:"common/character0/model/character/face/real/176104/oral_face_high_win32.model",data:modelFixture()},
       {path:"common/character0/model/character/face/real/176104/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
     ];
     const outer=buildCpk([{path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)}]);
