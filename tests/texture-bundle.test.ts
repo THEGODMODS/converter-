@@ -24,7 +24,7 @@ describe("whole-face texture dependency conversion",()=>{
   expect(result.converted).toBe(1);expect(result.files[0].destination).toBe("Assets/sourceimages/#windx11/face.dds");
   expect((await readFile(path.join(output,"Assets/sourceimages/#windx11/face.dds"))).toString("ascii",0,4)).toBe("DDS ");
  });
- it("uses the Fox FTEX game texture when an FMDL names its same-stem DDS authoring image",async()=>{
+ it("preserves the exact FMDL-named legacy DDS when a same-stem FTEX game texture also exists",async()=>{
   const root=await temp(),output=path.join(root,"out");await mkdir(path.join(root,"sourceimages","#windx11"),{recursive:true});await mkdir(output);
   const ftex=ddsToFtex(rgbaDds(),"SRGB").data,dds=rgbaDds();
   await writeFile(path.join(root,"sourceimages","#windx11","face_bsm_alp.ftex"),ftex);
@@ -37,9 +37,9 @@ describe("whole-face texture dependency conversion",()=>{
   ],[{source:"face.fpk!/face_high.fmdl",reference,status:"resolved",candidates:["sourceimages/#windx11/face_bsm_alp.dds"]}]);
   const result=await convertFaceTextureDependencies(inventory,root,output,"2017");
   expect(result.converted).toBe(1);
-  expect(result.files[0].source).toBe("sourceimages/#windx11/face_bsm_alp.ftex");
+  expect(result.files[0].source).toBe("sourceimages/#windx11/face_bsm_alp.dds");
   expect(result.files[0].destination).toBe("Assets/pes16/model/character/face/real/176104/sourceimages/face_bsm_alp.dds");
-  expect((await readFile(path.join(output,result.files[0].destination))).toString("ascii",0,4)).toBe("DDS ");
+  expect(await readFile(path.join(output,result.files[0].destination))).toEqual(dds);
  });
  it("resolves and converts an FTEX dependency embedded in an FPK package",async()=>{
   const root=await temp(),output=path.join(root,"out");await mkdir(output);
