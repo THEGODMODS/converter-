@@ -576,7 +576,8 @@ fn inspect_pes2021_face_source(root: &Path) -> Result<Pes2021FaceInventory, Stri
                     model_paths.insert(relative_text.to_ascii_lowercase());
                     inventory.models.push(relative_text);
                 }
-                "model" | "mtl" => return Err(format!("This first-release route accepts PES 2021 Fox assets only; legacy .{extension} source detected at {relative_text}.")),
+                "model" => return Err(format!("This first-release route accepts PES 2021 Fox assets only; legacy .{extension} source detected at {relative_text}.")),
+                "mtl" => inventory.preserved_sidecars.push(relative_text),
                 "skl" => {
                     let bytes = fs::read(&path).map_err(|e| format!("Read source SKL {}: {e}", relative_text))?;
                     SklFile::read(&bytes).map_err(|e| format!("Invalid PES 2021 SKL {relative_text}: {e}"))?;
