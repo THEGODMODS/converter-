@@ -53,7 +53,7 @@ function preflightPes2021FaceProject(inventory:FaceProject):void{
  const fpkd=archives.filter(file=>file.path.toLowerCase().endsWith(".fpkd")||file.path.toLowerCase().endsWith(".kpfd"));
  if(fpk.length>1||fpkd.length>1)throw new Error("This single-face conversion expects one Windows face.fpk and at most one paired face.fpkd/.kpfd archive. Select the #Win face folder rather than a multi-platform parent folder.");
  if(fpkd.length&&!fpk.length)throw new Error("A face.fpkd/.kpfd archive was found without its face.fpk companion: "+fpkd[0].path);
- if(fpkd.length&&fpk.length){const stem=(value:string)=>value.slice(0,value.lastIndexOf("/")+1)+value.split("/").pop()!.replace(/\.(?:fpkd|kpfd)$/i,"").toLowerCase();if(stem(fpkd[0].path)!==stem(fpk[0].path))throw new Error("The face.fpkd/.kpfd archive does not match the face.fpk in the same folder.");}
+ if(fpkd.length&&fpk.length){const stem=(value:string)=>value.slice(0,value.lastIndexOf("/")+1)+value.split("/").pop()!.replace(/\.(?:fpkd?|kpfd)$/i,"").toLowerCase();if(stem(fpkd[0].path)!==stem(fpk[0].path))throw new Error("The face.fpkd/.kpfd archive does not match the face.fpk in the same folder.");}
  if(archives.some(file=>file.bytes>1024*1024*1024))throw new Error("A Fox face archive exceeds the native 1 GiB per-archive safety limit.");
  const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
  // This route converts PES 2021 FMDLs. Legacy PES 2017 MTL sidecars are not
