@@ -28,6 +28,17 @@ describe("PES 2017 nested face CPK verification",()=>{
     expect(result.referencedMaterials.some(path=>path.endsWith("/face.mtl"))).toBe(true);
     expect(result.referencedTextures.some(path=>path.endsWith("/face.dds"))).toBe(true);
   });
+  it("accepts the exact upstream Team Compiler oral_face_high_win32.model output",()=>{
+    const upstreamFiles=[
+      {path:"common/character0/model/character/face/real/71405/face.xml",data:Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\\r\\n<config>\\r\\n   <model level="0" type="face_neck" path="./oral_face_high_*.model" material="./face_high.mtl" />\\r\\n</config>')},
+      {path:"common/character0/model/character/face/real/71405/oral_face_high_win32.model",data:Buffer.from("upstream-model")},
+      {path:"common/character0/model/character/face/real/71405/face_high.mtl",data:Buffer.from('<materialset><material name="face"><sampler name="DiffuseMap" path="model/character/uniform/common/714/05 - A/skin.dds"/></material></materialset>')},
+    ];
+    const outer=buildCpk([{path:"common/character0/model/character/face/real/176104.cpk",data:buildCpk(upstreamFiles)}]);
+    const result=verifyPes2017FaceCpk(outer,"176104");
+    expect(result.faceModelPath).toMatch(/oral_face_high_win32\\.model$/i);
+    expect(result.faceMaterialPath).toMatch(/face_high\\.mtl$/i);
+  });
   it("accepts a six-digit real PES player ID",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(faceFiles,"176104"),"176104");
     expect(result.faceCpkPath).toMatch(/176104\.cpk$/i);
