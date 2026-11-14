@@ -30,10 +30,10 @@ function readFrame(data:Buffer,offset:number,chunks:number,rawSize:number,compre
 }
 export function inspectFtex(data:Buffer):TextureInfo{
  if(data.length<64||data.toString("ascii",0,4)!=="FTEX")throw new TextureFormatError("Not a valid FTEX file.");
- const version=data.readFloatLE(4),pixelFormat=data.readUInt16LE(8),width=data.readUInt16LE(10),height=data.readUInt16LE(12),depth=data.readUInt16LE(14),mipCount=data.readUInt8(16),textureType=data.readUInt32LE(28),variants=data.readUInt8(32);
+ const version=data.readFloatLE(4),pixelFormat=data.readUInt16LE(8),width=data.readUInt16LE(10),height=data.readUInt16LE(12),depth=Math.max(1,data.readUInt16LE(14)),mipCount=data.readUInt8(16),textureType=data.readUInt32LE(28),variants=data.readUInt8(32);
  if(version<2.025||version>2.045)throw new TextureFormatError("Unsupported FTEX version "+version.toFixed(3)+".");
  if(!formats[pixelFormat])throw new TextureFormatError("Unsupported FTEX pixel format "+pixelFormat+".");
- if(!width||!height||!depth||!mipCount||variants!==0)throw new TextureFormatError("Invalid dimensions, mip count or FTEX variant.");
+ // Fox stores ordinary 2D FTEX depth as zero; treat that sentinel as one slice.\n if(!width||!height||!mipCount||variants!==0)throw new TextureFormatError("Invalid dimensions, mip count or FTEX variant.");
  const cubeMap=(textureType&4)!==0,frames=(cubeMap?6:1)*mipCount,tableEnd=64+frames*16;
  if(tableEnd>data.length)throw new TextureFormatError("FTEX mipmap table is truncated.");
  for(let i=0;i<frames;i++){const p=64+i*16,offset=data.readUInt32LE(p),raw=data.readUInt32LE(p+4),compressed=data.readUInt32LE(p+8),index=data.readUInt8(p+12),chunks=data.readUInt16LE(p+14);if(index>=mipCount||raw>512*1024*1024||compressed>512*1024*1024||offset<tableEnd||offset>=data.length||chunks>0&&offset+chunks*8>data.length)throw new TextureFormatError("Invalid FTEX mipmap descriptor.");}
