@@ -122,7 +122,15 @@ function verifyFaceXmlReferences(
       const materialDirectory = materialEntry.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
       const local = localReference(texturePath);
       if (local !== null) {
-        textures.push(...resolve(texturePath, "texture", materialDirectory));
+        const localTextures = resolve(texturePath, "texture", materialDirectory);
+        for (const localPath of localTextures) {
+          const localEntry = files.find((file) => file.path.replaceAll("\\\\", "/").toLowerCase() === localPath);
+          if (!localEntry) throw new Error("Resolved local texture disappeared from the nested face CPK: " + localPath);
+          const textureBytes = archiveBytes.subarray(localEntry.offset, localEntry.offset + localEntry.size);
+          const dds = inspectDdsHeader(textureBytes);
+          if (!dds.valid) throw new Error("Local player texture is not a valid DDS: " + localPath + " (" + dds.details.join("; ") + ")");
+        }
+        textures.push(...localTextures);
         continue;
       }
       // Team Compiler emits player-owned PES 2017 textures into the outer team
