@@ -4,6 +4,7 @@ import type {FaceProject} from "../engine/inventory";
 import {parseFpkArchive} from "../engine/formats/fpk";
 import {parsePes2017Mtl} from "../engine/formats/mtl";
 import {ddsToFtex,ftexToDds,type TextureColorSpace} from "../engine/formats/texture";
+import {inspectDdsHeader} from "../engine/formats/headers";
 
 type TargetGeneration="2017"|"2021";
 type PlannedTexture={source:string;reference:string;destination:string;data:Buffer;format:string;width:number;height:number};
@@ -18,23 +19,7 @@ function outputPath(reference:string,targetExtension:string):string{
  if(![".dds",".ftex"].includes(path.posix.extname(relative).toLowerCase()))throw new Error("Texture reference has an unsupported source extension: "+reference);
  return path.posix.join(path.posix.dirname(relative),path.posix.basename(relative,path.posix.extname(relative))+"."+targetExtension);
 }
-function textureStemKey(value:string):string{
- return value.split("!/").pop()!.replace(/\\/g,"/").replace(/\/+/g,"/").replace(/\/#windx11(?=\/)/ig,"").replace(/^\/+/, "").replace(/^Assets\//i,"").replace(/\.(?:dds|ftex)$/i,"").toLowerCase();
-}
-function suffixPathScore(candidate:string,requested:string):number{
- const a=candidate.split("/"),b=requested.split("/");let score=0;
- while(score<a.length&&score<b.length&&a[a.length-1-score]===b[b.length-1-score])score++;
- return score;
-}
-function findFoxFtexCounterpart(project:FaceProject,reference:string):string{
- const wanted=textureStemKey(reference);
- const candidates=project.files.filter(file=>file.kind==="texture-pes2021").map(file=>({file,score:suffixPathScore(textureStemKey(file.path),wanted)})).filter(item=>item.score>0);
- if(!candidates.length)throw new Error("The PES 2021 FMDL reference "+reference+" has no matching FTEX game texture. A same-stem DDS authoring image is not a substitute for the Fox game texture.");
- const best=Math.max(...candidates.map(item=>item.score)),matches=candidates.filter(item=>item.score===best);
- const hashes=new Set(matches.map(item=>item.file.sha256).filter(Boolean));
- if(matches.length>1&&hashes.size!==1)throw new Error("The PES 2021 FTEX counterpart for "+reference+" is ambiguous: "+matches.map(item=>item.file.path).join(", "));
- return matches[0].file.path;
-}
+
 
 async function readProjectFile(root:string,relative:string):Promise<Buffer>{
  const marker=relative.indexOf("!/");
@@ -68,15 +53,22 @@ export async function convertFaceTextureDependencies(project:FaceProject,sourceR
  let totalBytes=0;
  for(const dependency of dependencies){
   if(dependency.candidates.length!==1)throw new Error("Texture dependency is not uniquely resolved: "+dependency.reference);
-  const resolvedSource=dependency.candidates[0];
-  const source=target==="2017"?findFoxFtexCounterpart(project,dependency.reference):resolvedSource;
+  const source=dependency.candidates[0];
   const file=project.files.find(item=>item.path===source);
-  if(!file||file.kind!==(target==="2017"?"texture-pes2021":"texture-pes2017"))throw new Error("Resolved texture has the wrong source generation: "+source);
+  if(!file)throw new Error("Resolved texture is missing from the face inventory: "+source);
   const input=await readProjectFile(sourceRoot,source);
   if(input.length>MAX_TEXTURE_BYTES)throw new Error("Texture exceeds the 128 MiB conversion limit: "+source);
   let converted:{data:Buffer;info:{formatName:string;width:number;height:number}};
-  if(target==="2017")converted=ftexToDds(input);
-  else{
+  if(target==="2017"){
+   if(file.kind==="texture-pes2021")converted=ftexToDds(input);
+   else if(file.kind==="texture-pes2017"){
+    const info=inspectDdsHeader(input);
+    if(!info.valid)throw new Error("Resolved DDS texture failed header validation: "+source);
+    if(!["DXT1","DXT3","DXT5","RGBA8"].includes(info.pixelFormat??""))throw new Error("DDS texture "+source+" uses "+(info.pixelFormat??"an unsupported format")+"; FACE FORGE will not pass an unverified modern codec into PES 2017.");
+    converted={data:input,info:{formatName:info.pixelFormat??"DDS",width:info.width??0,height:info.height??0}};
+   }else throw new Error("Resolved texture has the wrong source generation: "+source);
+  }else{
+   if(file.kind!=="texture-pes2017")throw new Error("Resolved texture has the wrong source generation: "+source);
    const mtlBytes=await readProjectFile(sourceRoot,dependency.source);
    const mtl=parsePes2017Mtl(mtlBytes);
    const samplers=mtl.materials.flatMap(material=>material.samplers).filter(sampler=>sampler.path.toLowerCase()===dependency.reference.replace(/\\/g,"/").replace(/^\.\/+/,"").toLowerCase());
