@@ -29,6 +29,24 @@ describe("face package dependency resolver",()=>{
   expect(result[0].status).toBe("resolved");
   expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.dds"]);
  });
+ it("prefers the explicitly referenced #windx11 FTEX when a same-name sourceimages copy exists",()=>{
+  const result=resolveFaceDependencies([
+   {path:"#Win/face.fpk!/face_high.fmdl",kind:"model-pes2021",assetReferences:["/Assets/pes16/model/character/face/real/176104/sourceimages/#windx11/face_bsm_alp.ftex"]},
+   {path:"sourceimages/#windx11/face_bsm_alp.ftex",kind:"texture-pes2021",sha256:"windx11"},
+   {path:"sourceimages/face_bsm_alp.ftex",kind:"texture-pes2021",sha256:"standard"}
+  ]);
+  expect(result[0].status).toBe("resolved");
+  expect(result[0].candidates).toEqual(["sourceimages/#windx11/face_bsm_alp.ftex"]);
+ });
+ it("prefers the standard sourceimages DDS when the FMDL reference omits #windx11",()=>{
+  const result=resolveFaceDependencies([
+   {path:"#Win/face.fpk!/face_high.fmdl",kind:"model-pes2021",assetReferences:["/Assets/pes16/model/character/face/real/176104/sourceimages/face_bsm_alp.dds"]},
+   {path:"sourceimages/#windx11/face_bsm_alp.dds",kind:"texture-pes2017",sha256:"windx11"},
+   {path:"sourceimages/face_bsm_alp.dds",kind:"texture-pes2017",sha256:"standard"}
+  ]);
+  expect(result[0].status).toBe("resolved");
+  expect(result[0].candidates).toEqual(["sourceimages/face_bsm_alp.dds"]);
+ });
  it("keeps a malformed required FTEX visible as a resolved candidate for preflight to reject",()=>{
   const result=resolveFaceDependencies([
    {path:"face_high.fmdl",kind:"model-pes2021",assetReferences:["/Assets/pes16/model/character/face/real/123/sourceimages/face_bsm_alp.ftex"]},
