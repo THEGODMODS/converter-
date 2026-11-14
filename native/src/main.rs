@@ -470,7 +470,7 @@ fn inject_preserved_sidecars(
             verified_face_candidates.push((index, entry.path.clone()));
         }
     }
-    let nested_index = choose_nested_face_cpk_index(&verified_face_candidates, compiler_player_id)
+    let nested_index = choose_nested_face_cpk_index(&verified_face_candidates, &compiler_player_id)
         .map_err(|reason| format!(
             "{reason} Verified nested CPK candidates: {}. Outer archive members that parsed as CPK: {}",
             verified_face_candidates.iter().map(|(_, path)| path.as_str()).collect::<Vec<_>>().join(" | "),
@@ -1002,8 +1002,8 @@ fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
 
 /// A single-face conversion must not publish a partial Team Compiler result.
 /// Warnings are allowed; any Error/Fatal finding makes Complete.success false.
-fn synthetic_player_folder_name(target_player_id: &str) -> String {
-    format!("01 - FACE FORGE {target_player_id}")
+fn synthetic_player_folder_name(player_slot: &str, target_player_id: &str) -> String {
+    format!("{player_slot} - FACE FORGE {target_player_id}")
 }
 
 fn team_compiler_completed_cleanly(exit_code: u8, complete: Option<(bool, usize)>) -> bool {
@@ -1019,7 +1019,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     // temporary identity and rename its nested CPK to the real player ID.
     let team_id = "701";
     let player_slot = "01";
-    let compiler_player_id = "70101";
+    let compiler_player_id = format!("{team_id}{player_slot}");
     let input_metadata = fs::symlink_metadata(input).map_err(|e| format!("Inspect face input: {e}"))?;
     if input_metadata.file_type().is_symlink() || !input_metadata.is_dir() {
         return Err("Complete face conversion requires a real source folder.".into());
@@ -1039,7 +1039,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     // Keep the Team Compiler's player-common texture namespace unique per
     // target ID. A fixed slot name would make every separately converted face
     // point at the same common/701/01 - FACE FORGE texture directory.
-    let player = export.join("Players").join(synthetic_player_folder_name(target_player_id));
+    let player = export.join("Players").join(synthetic_player_folder_name(player_slot, target_player_id));
     let data = workspace.0.join("data");
     let pes = workspace.0.join("PES");
     fs::create_dir_all(&player).map_err(|e| format!("Create staged player folder: {e}"))?;
@@ -1652,8 +1652,8 @@ mod pes2017_target_id_tests {
     #[test]
     fn synthetic_player_texture_namespace_is_unique_per_real_player_id() {
         use super::synthetic_player_folder_name;
-        assert_eq!(synthetic_player_folder_name("176104"), "01 - FACE FORGE 176104");
-        assert_ne!(synthetic_player_folder_name("176104"), synthetic_player_folder_name("3997"));
+        assert_eq!(synthetic_player_folder_name("01", "176104"), "01 - FACE FORGE 176104");
+        assert_ne!(synthetic_player_folder_name("176104"), synthetic_player_folder_name("01", "3997"));
     }
 
     #[test]
