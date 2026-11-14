@@ -144,3 +144,4 @@ jobs:
           node scripts/verify-release-installer.mjs
           if (!(Test-Path 'release/latest.yml')) { throw 'electron-builder did not generate latest.yml; automatic updates cannot work.' }
           if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'electron-builder did not generate the NSIS blockmap required for update downloads.' }
+          if (!(Test-Path 'release/win-unpacked/resources/app-update.yml')) { throw 'The packaged app is missing its GitHub update feed configuration.' }
