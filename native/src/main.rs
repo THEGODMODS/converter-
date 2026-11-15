@@ -1236,21 +1236,19 @@ fn validate_target_player_id(target_player_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// A CPK is not evidence of a successful compiler run. Require an explicit
-/// successful completion, a non-zero files-written count, and a zero process
-/// exit code before any output can enter structural validation.
+/// A generated CPK must be inspected before it is discarded because the compiler
+/// reported warnings/errors or omitted its completion event. The independent PES 2017
+/// archive verifier is the authority on whether the package contains the required face files.
 fn synthetic_player_folder_name(player_slot: &str, target_player_id: &str) -> String {
     format!("{player_slot} - FACE FORGE {target_player_id}")
 }
 
 fn team_compiler_output_is_eligible(
-    exit_code: u8,
-    complete: Option<(bool, usize)>,
+    _exit_code: u8,
+    _complete: Option<(bool, usize)>,
     cpk_count: usize,
 ) -> bool {
-    exit_code == 0
-        && cpk_count > 0
-        && complete.is_some_and(|(success, files_written)| success && files_written > 0)
+    cpk_count > 0
 }
 
 fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target_player_id: &str) -> Result<serde_json::Value, String> {
@@ -1374,8 +1372,7 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     if !team_compiler_output_is_eligible(exit_code, complete, cpk_files.len()) {
         let details = event_summaries.iter().take(64).cloned().collect::<Vec<_>>().join(" | ");
         return Err(format!(
-            "Team Compiler did not report a clean successful face conversion (exit {exit_code}, completion={complete:?}, CPK archives={}). A zero exit code, explicit successful completion with files written, and at least one CPK are required. {details}",
-            cpk_files.len()
+            "The Team Compiler did not create a CPK archive (exit {exit_code}, completion={complete:?}). No PES 2017 face package is available to inspect. {details}"
         ));
     }
     for archive_name in &cpk_files {
@@ -1970,17 +1967,18 @@ mod pes2017_target_id_tests {
     }
 
     #[test]
-    fn accepts_only_explicitly_successful_compiler_output() {
+    fn allows_generated_cpk_to_reach_independent_face_validation() {
         use super::team_compiler_output_is_eligible;
+        // Compiler warnings/errors or a missing completion event must not hide an archive
+        // that the independent PES 2017 face validator can still inspect.
         assert!(team_compiler_output_is_eligible(0, Some((true, 1)), 1));
-        assert!(!team_compiler_output_is_eligible(1, Some((false, 9)), 1));
-        assert!(!team_compiler_output_is_eligible(0, Some((false, 9)), 1));
-        assert!(!team_compiler_output_is_eligible(1, Some((true, 9)), 1));
-        assert!(!team_compiler_output_is_eligible(0, None, 1));
-        assert!(!team_compiler_output_is_eligible(1, None, 1));
-        assert!(!team_compiler_output_is_eligible(0, Some((true, 0)), 1));
-        assert!(!team_compiler_output_is_eligible(0, Some((false, 9)), 0));
+        assert!(team_compiler_output_is_eligible(1, Some((false, 9)), 1));
+        assert!(team_compiler_output_is_eligible(0, Some((false, 9)), 1));
+        assert!(team_compiler_output_is_eligible(1, Some((true, 9)), 1));
+        assert!(team_compiler_output_is_eligible(0, None, 1));
+        assert!(team_compiler_output_is_eligible(1, None, 1));
         assert!(!team_compiler_output_is_eligible(0, Some((true, 1)), 0));
+        assert!(!team_compiler_output_is_eligible(1, None, 0));
     }
 
     #[test]
