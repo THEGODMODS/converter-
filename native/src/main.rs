@@ -763,13 +763,28 @@ fn resolve_texture_stem_conflicts_for_references(
             let resolved = fs::canonicalize(path).unwrap_or_else(|_| (**path).clone());
             referenced.contains(&resolved)
         }).collect();
-        if selected.len() != 1 {
+        // Prefer an explicitly referenced file. When no FMDL names either
+        // member of a DDS/FTEX pair, retain DDS: it is the legacy texture
+        // representation consumed by the PES 2017 conversion route, while
+        // the sibling FTEX is a Fox source variant. This matches real face
+        // folders where removing the FTEX leaves the preview unchanged.
+        let keep = if selected.len() == 1 {
+            (*selected[0]).clone()
+        } else if selected.is_empty() && files.len() == 2 {
+            let dds: Vec<_> = files.iter().filter(|path| path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("dds"))).collect();
+            let ftex: Vec<_> = files.iter().filter(|path| path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("ftex"))).collect();
+            if dds.len() == 1 && ftex.len() == 1 {
+                (*dds[0]).clone()
+            } else {
+                let names = files.iter().map(|path| path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")).collect::<Vec<_>>().join(", ");
+                return Err(format!("Ambiguous texture stem conflict '{stem}' in the selected face folder. No FMDL reference selects a variant and this is not a simple DDS/FTEX pair. Conflicting files: {names}"));
+            }
+        } else {
             let names = files.iter().map(|path| path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")).collect::<Vec<_>>().join(", ");
             return Err(format!(
-                "Ambiguous texture stem conflict '{stem}' in the selected face folder. Team Compiler requires one image per stem in each folder; source FMDLs must identify exactly one variant. Conflicting files: {names}"
+                "Ambiguous texture stem conflict '{stem}' in the selected face folder. Multiple FMDL references select different variants or the conflict has unsupported formats. Conflicting files: {names}"
             ));
-        }
-        let keep = (*selected[0]).clone();
+        };
         for path in &files {
             if path == &keep { continue; }
             fs::remove_file(path).map_err(|e| format!("Remove unreferenced conflicting texture variant {}: {e}", path.display()))?;
@@ -1779,15 +1794,29 @@ mod face_texture_stem_conflict_tests {
     }
 
     #[test]
-    fn refuses_to_guess_when_no_conflicting_variant_is_referenced() {
+    fn keeps_dds_and_removes_unreferenced_ftex_in_a_simple_pair() {
+        let root = std::env::temp_dir().join(format!("face-forge-texture-stem-dds-default-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("eye_occlusion_all.ftex"), b"unused-ftex").unwrap();
+        std::fs::write(root.join("eye_occlusion_all.dds"), b"legacy-dds").unwrap();
+        let removed = resolve_texture_stem_conflicts_for_references(&root, &std::collections::HashSet::new()).unwrap();
+        assert_eq!(removed, vec!["eye_occlusion_all.ftex"]);
+        assert!(!root.join("eye_occlusion_all.ftex").exists());
+        assert!(root.join("eye_occlusion_all.dds").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn refuses_to_guess_for_other_unreferenced_conflict_types() {
         let root = std::env::temp_dir().join(format!("face-forge-texture-stem-ambiguous-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("face_trm.ftex"), b"ftex").unwrap();
+        std::fs::write(root.join("face_trm.png"), b"png").unwrap();
         std::fs::write(root.join("face_trm.dds"), b"dds").unwrap();
         let error = resolve_texture_stem_conflicts_for_references(&root, &std::collections::HashSet::new()).unwrap_err();
         assert!(error.contains("Ambiguous texture stem conflict 'face_trm'"));
-        assert!(root.join("face_trm.ftex").exists());
+        assert!(root.join("face_trm.png").exists());
         assert!(root.join("face_trm.dds").exists());
         std::fs::remove_dir_all(&root).unwrap();
     }
