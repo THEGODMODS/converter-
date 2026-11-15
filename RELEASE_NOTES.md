@@ -1,3 +1,23 @@
+# FACE FORGE v0.3.3
+
+## Face conversion reliability
+- Accept PES 2021 platform texture folders (`#Windx11`, `#windx11`, `#Win`) inside nested PES 2017 face CPK validation.
+- Resolve game-rooted `/Assets/pes16/.../sourceimages/...` texture references against packed relative paths, including platform-stripped fallbacks.
+- Treat face-local `sourceimages/...` paths without a leading `./` as package-local instead of rejecting them as unsafe.
+- Missing-texture errors now list sample `.dds` paths present in the nested CPK so packing mismatches are easier to diagnose.
+- Added regression tests covering the reported `#Windx11` and full `/Assets/.../face_bsm_alp.dds` conversion failures.
+
+## Validation status
+- Automated quality checks run on every main push (typecheck, Vitest, native tests, app build).
+- Windows installer build and GitHub release publish run from the main-branch release job.
+- Genuine in-game PES 2017 validation of every face folder is still required by the user before treating a converted pack as final.
+
+## Installer
+- Windows x64 NSIS installer: `KFC-GODMODS-FACE-FORGE-0.3.3-Setup.exe`
+- Automatic updates use the GitHub release feed for this repository.
+
+---
+
 # FACE FORGE v0.3.0
 
 ## Reliability and format handling
