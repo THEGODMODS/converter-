@@ -54,6 +54,29 @@ describe("PES 2017 nested face CPK verification",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(rootedFiles),"71405");
     expect(result.faceModelPath.endsWith("face_high_win32.model")).toBe(true);
   });
+  it("resolves a game-rooted texture by a unique internal path suffix",()=>{
+    const rootedMtl=mtl("//Assets/pes16/model/character/face/real/71405/sourceimages/face_bsm_alp.dds");
+    const files=[
+      {...faceFiles[0]},
+      {...faceFiles[1]},
+      {...faceFiles[2],data:rootedMtl},
+      {path:"packed-textures/sourceimages/face_bsm_alp.dds",data:ddsFixture()},
+    ];
+    const result=verifyPes2017FaceCpk(teamArchive(files),"71405");
+    expect(result.referencedTextures).toContain("common/character0/model/character/face/real/71405/packed-textures/sourceimages/face_bsm_alp.dds");
+  });
+  it("accepts a literal #Win directory and wildcard oral model reference",()=>{
+    const rootedXml=Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\\n<config>\\n'+
+      '<model path="./face_high_*.model" material="./face.mtl"/>'+
+      '<model path="./Asset/model/character/face/real/71405/#Win/oral_taping_*.model" material="./face.mtl"/>'+
+      '</config>');
+    const files=[
+      ...faceFiles,
+      {path:"#Win/oral_taping_win32.model",data:modelFixture()},
+    ];
+    const result=verifyPes2017FaceCpk(teamArchive(files.map(file=>file.path==="face.xml"?{...file,data:rootedXml}:file)),"71405");
+    expect(result.referencedModels.some(path=>path.endsWith("/#win/oral_taping_win32.model"))).toBe(true);
+  });
   it("accepts Team Compiler face_high wildcard references and validates their material texture",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(),"71405");
     expect(result.outerInspection.valid).toBe(true);
