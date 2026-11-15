@@ -716,33 +716,6 @@ fn resolve_face_texture_stem_conflicts(root: &Path) -> Result<Vec<String>, Strin
         Ok(())
     }
 
-    fn collect_textures(
-        root: &Path,
-        current: &Path,
-        groups: &mut std::collections::HashMap<(PathBuf, String), Vec<PathBuf>>,
-    ) -> Result<(), String> {
-        const IMAGE_EXTENSIONS: &[&str] = &["dds", "ftex", "png", "jpg", "jpeg", "bmp", "webp", "tga", "tif", "tiff", "jxl"];
-        for entry in fs::read_dir(current).map_err(|e| format!("Read staged face folder {}: {e}", current.display()))? {
-            let entry = entry.map_err(|e| format!("Read staged face entry: {e}"))?;
-            let path = entry.path();
-            let metadata = fs::symlink_metadata(&path).map_err(|e| format!("Inspect staged face entry {}: {e}", path.display()))?;
-            if metadata.file_type().is_symlink() {
-                return Err(format!("Symbolic links are not accepted in staged face data: {}", path.display()));
-            }
-            if metadata.is_dir() {
-                collect_textures(root, &path, groups)?;
-                continue;
-            }
-            if !metadata.is_file() { continue; }
-            let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
-            if !IMAGE_EXTENSIONS.contains(&extension.as_str()) { continue; }
-            let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
-            let parent = path.parent().unwrap_or(root);
-            let parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-            groups.entry((parent, stem)).or_default().push(path);
-        }
-        Ok(())
-    }
 
     let mut referenced = std::collections::HashSet::new();
     walk_models(root, root, &mut referenced)?;
