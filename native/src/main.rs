@@ -760,7 +760,7 @@ fn resolve_texture_stem_conflicts_for_references(
     for ((_, stem), files) in groups {
         if files.len() < 2 { continue; }
         let selected: Vec<_> = files.iter().filter(|path| {
-            let resolved = fs::canonicalize(path).unwrap_or_else(|_| (*path).clone());
+            let resolved = fs::canonicalize(path).unwrap_or_else(|_| (**path).clone());
             referenced.contains(&resolved)
         }).collect();
         if selected.len() != 1 {
