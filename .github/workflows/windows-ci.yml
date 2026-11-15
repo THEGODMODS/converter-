@@ -88,6 +88,33 @@ jobs:
       - run: npm test
       - run: npm run build
 
+
+  installer-build:
+    name: Build and verify Windows installer
+    needs: quality
+    if: needs.quality.result == 'success' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm install
+      - name: Build Windows installer without publishing
+        run: npm run dist:win
+      - name: Verify installer and updater metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/verify-release-installer.mjs
+          if (!(Test-Path 'release/latest.yml')) { throw 'Installer build did not generate latest.yml.' }
+          if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'Installer build did not generate an NSIS blockmap.' }
+          if (!(Test-Path 'release/win-unpacked/resources/app-update.yml')) { throw 'Packaged app is missing updater feed configuration.' }
+
   release:
     name: Publish updater-enabled Windows release
     needs: quality
