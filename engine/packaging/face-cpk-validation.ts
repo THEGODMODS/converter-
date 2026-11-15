@@ -47,14 +47,12 @@ function localReference(value: string): string | null {
     (normalized.startsWith("./") ? normalized.slice(2) : null);
 
   // Face-local relative paths sometimes omit the leading "./" (Team Compiler MTL
-  // output and some sourceimages references). Treat clear face-local prefixes as
-  // local rather than external common paths.
+  // output and some sourceimages references). Only treat clear face-local
+  // prefixes as local. Do NOT match arbitrary *.dds paths — outer team textures
+  // like model/character/uniform/common/.../skin.dds must stay external.
   if (relative === null) {
     const bare = normalized.replace(/^\/+/, "");
-    if (
-      /^(?:sourceimages|#win|oral_|face_|hair_|beard_)/i.test(bare) ||
-      /\.(?:dds|model|mtl)$/i.test(bare)
-    ) {
+    if (/^(?:sourceimages|#win|oral_|face_|hair_|beard_)/i.test(bare)) {
       relative = bare;
     }
   }
