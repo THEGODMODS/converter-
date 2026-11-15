@@ -20,8 +20,8 @@ function decodeXmlAttribute(value: string): string {
 function localReference(value: string): string | null {
   const normalized = value.trim().replaceAll("\\", "/");
   // Real PES face assets use package-relative paths and game-virtual paths.
-  const rooted = normalized.match(/^\\/{0,2}Assets\\/pes16\\/model\\/character\\/face\\/real\\/[0-9]{1,6}\\/(.+)$/i);
-  const legacyRooted = normalized.match(/^\\.\\/Asset\\/model\\/character\\/face\\/real\\/[0-9]{1,6}\\/(.+)$/i);
+  const rooted = normalized.match(/^\/{0,2}Assets\/pes16\/model\/character\/face\/real\/[0-9]{1,6}\/(.+)$/i);
+  const legacyRooted = normalized.match(/^\.\/Asset\/model\/character\/face\/real\/[0-9]{1,6}\/(.+)$/i);
   const relative = rooted?.[1] ?? legacyRooted?.[1] ?? (normalized.startsWith("./") ? normalized.slice(2) : null);
   if (!relative) {
     if (!normalized || normalized.startsWith("/") || /^[a-z]:/i.test(normalized) ||
