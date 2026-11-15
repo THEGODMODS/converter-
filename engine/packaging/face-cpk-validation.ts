@@ -19,12 +19,17 @@ function decodeXmlAttribute(value: string): string {
 
 function localReference(value: string): string | null {
   const normalized = value.trim().replaceAll("\\", "/");
-  if (!normalized || normalized.startsWith("/") || /^[a-z]:/i.test(normalized) ||
-      normalized.split("/").some((part) => part === ".." || (part === "." && !normalized.startsWith("./")))) {
-    throw new Error("face package contains an unsafe reference: " + value);
+  // Real PES face assets use package-relative paths and game-virtual paths.
+  const rooted = normalized.match(/^\/{0,2}Assets\/pes16\/model\/character\/face\/real\/[0-9]{1,6}\/(.+)$/i);
+  const legacyRooted = normalized.match(/^\.\/Asset\/model\/character\/face\/real\/[0-9]{1,6}\/(.+)$/i);
+  const relative = rooted?.[1] ?? legacyRooted?.[1] ?? (normalized.startsWith("./") ? normalized.slice(2) : null);
+  if (!relative) {
+    if (!normalized || normalized.startsWith("/") || /^[a-z]:/i.test(normalized) ||
+        normalized.split("/").some((part) => part === ".." || part === ".")) {
+      throw new Error("face package contains an unsafe reference: " + value);
+    }
+    return null; // Common/game-shared paths are outside the player CPK.
   }
-  if (!normalized.startsWith("./")) return null; // Common/game-shared paths are outside the player CPK.
-  const relative = normalized.slice(2);
   if (!relative || relative.split("/").some((part) => !part || part === "." || part === "..")) {
     throw new Error("face package contains an unsafe local reference: " + value);
   }
@@ -51,9 +56,12 @@ function verifyFaceXmlReferences(
   const resolve = (raw: string, kind: string, baseDirectory = xmlDirectory): string[] => {
     const relative = localReference(raw);
     if (relative === null) return [];
-    if (/[?#[\]{}]/.test(relative)) throw new Error("Unsupported " + kind + " reference: " + raw);
-    const target = (baseDirectory ? baseDirectory + "/" : "") + relative;
-    const escaped = target.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*");
+    if (/[#[\]{}]/.test(relative)) throw new Error("Unsupported " + kind + " reference: " + raw);
+    const gameRooted = /^\/{0,2}Assets\/pes16\/model\/character\/face\/real\/[0-9]{1,6}\//i.test(raw.trim().replaceAll("\\", "/")) ||
+      /^\.\/Asset\/model\/character\/face\/real\/[0-9]{1,6}\//i.test(raw.trim().replaceAll("\\", "/"));
+    const directory = gameRooted ? xmlDirectory : baseDirectory;
+    const target = (directory ? directory + "/" : "") + relative;
+    const escaped = target.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
     const matcher = new RegExp("^" + escaped + "$", "i");
     const matches = archivePaths.filter((archivePath) => matcher.test(archivePath));
     if (!matches.length) throw new Error(kind + " reference does not resolve inside the nested face CPK: " + raw);
