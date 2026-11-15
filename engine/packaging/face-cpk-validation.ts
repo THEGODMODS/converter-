@@ -17,27 +17,77 @@ function decodeXmlAttribute(value: string): string {
   return value.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
+/** True when a path segment is a known PES platform folder (e.g. #Win, #Windx11). */
+function isPlatformSegment(part: string): boolean {
+  return /^#win(?:dx\d+)?$/i.test(part);
+}
+
+/** True when a path segment is unsafe for a local face package reference. */
+function isUnsafePathSegment(part: string): boolean {
+  if (!part || part === "." || part === "..") return true;
+  // Allow # platform folders; reject other traversal / absolute / reserved forms.
+  if (isPlatformSegment(part)) return false;
+  if (part.includes(":") || part.includes("\\")) return true;
+  return false;
+}
+
+/**
+ * Normalize a face package reference into a path relative to the nested face CPK,
+ * or null when the reference is intentionally outside the player face package
+ * (shared common textures).
+ */
 function localReference(value: string): string | null {
   const normalized = value.trim().replaceAll("\\", "/");
   // Real PES face assets use package-relative paths and game-virtual paths.
   const rooted = normalized.match(/^\/{0,2}Assets\/pes16\/model\/character\/face\/real\/[0-9]{1,6}\/(.+)$/i);
   const legacyRooted = normalized.match(/^\.\/Asset\/model\/character\/face\/real\/[0-9]{1,6}\/(.+)$/i);
-  const relative = rooted?.[1] ?? legacyRooted?.[1] ?? (normalized.startsWith("./") ? normalized.slice(2) : null);
+  let relative =
+    rooted?.[1] ??
+    legacyRooted?.[1] ??
+    (normalized.startsWith("./") ? normalized.slice(2) : null);
+
+  // Face-local relative paths sometimes omit the leading "./" (Team Compiler MTL
+  // output and some sourceimages references). Treat clear face-local prefixes as
+  // local rather than external common paths.
+  if (relative === null) {
+    const bare = normalized.replace(/^\/+/, "");
+    if (
+      /^(?:sourceimages|#win|oral_|face_|hair_|beard_)/i.test(bare) ||
+      /\.(?:dds|model|mtl)$/i.test(bare)
+    ) {
+      relative = bare;
+    }
+  }
+
   if (!relative) {
-    if (!normalized || normalized.startsWith("/") || /^[a-z]:/i.test(normalized) ||
-        normalized.split("/").some((part) => part === ".." || part === ".")) {
+    if (
+      !normalized ||
+      normalized.startsWith("/") ||
+      /^[a-z]:/i.test(normalized) ||
+      normalized.split("/").some((part) => part === ".." || part === ".")
+    ) {
       throw new Error("face package contains an unsafe reference: " + value);
     }
     return null; // Common/game-shared paths are outside the player CPK.
   }
-  if (!relative || relative.split("/").some((part) => !part || part === "." || part === "..")) {
+
+  const parts = relative.split("/");
+  if (parts.some(isUnsafePathSegment)) {
     throw new Error("face package contains an unsafe local reference: " + value);
   }
   return relative.toLowerCase();
 }
 
+/** Strip known platform folder segments for fallback matching. */
+function stripPlatformFolders(relative: string): string {
+  return relative
+    .split("/")
+    .filter((part) => !isPlatformSegment(part))
+    .join("/");
+}
+
 function escapedRelative(relative: string): string {
-  return relative.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
+  return relative.replace(/[.+^$()|\\[\]]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
 }
 
 function verifyFaceXmlReferences(
@@ -49,35 +99,73 @@ function verifyFaceXmlReferences(
   outerBytes: Buffer,
 ) {
   const xml = xmlBytes.toString("utf8");
-  if (xml.includes("\u0000") || !/^\s*<\?xml\b[\s\S]*?\?>/i.test(xml) ||
-      !/<config(?:\s|>)/i.test(xml) || !/<\/config\s*>\s*$/.test(xml)) {
+  if (
+    xml.includes("\u0000") ||
+    !/^\s*<\?xml\b[\s\S]*?\?>/i.test(xml) ||
+    !/<config(?:\s|>)/i.test(xml) ||
+    !/<\/config\s*>\s*$/.test(xml)
+  ) {
     throw new Error("face.xml is not a complete UTF-8 config document.");
   }
   if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error("face.xml DTD and entity declarations are not accepted.");
 
   const archivePaths = files.map((file) => file.path.replaceAll("\\", "/").toLowerCase());
   const xmlDirectory = faceXmlPath.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
+
   const resolve = (raw: string, kind: string, baseDirectory = xmlDirectory): string[] => {
     const relative = localReference(raw);
     if (relative === null) return [];
     if (/[[\]{}]/.test(relative)) throw new Error("Unsupported " + kind + " reference: " + raw);
-    const gameRooted = /^\/{0,2}Assets\/pes16\/model\/character\/face\/real\/[0-9]{1,6}\//i.test(raw.trim().replaceAll("\\", "/")) ||
+
+    const gameRooted =
+      /^\/{0,2}Assets\/pes16\/model\/character\/face\/real\/[0-9]{1,6}\//i.test(
+        raw.trim().replaceAll("\\", "/"),
+      ) ||
       /^\.\/Asset\/model\/character\/face\/real\/[0-9]{1,6}\//i.test(raw.trim().replaceAll("\\", "/"));
+
     const directory = gameRooted ? xmlDirectory : baseDirectory;
     const target = (directory ? directory + "/" : "") + relative;
-    const escaped = target.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
+    const escaped = target.replace(/[.+^$()|\\[\]]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
     const matcher = new RegExp("^" + escaped + "$", "i");
     let matches = archivePaths.filter((archivePath) => matcher.test(archivePath));
+
     // Some game-virtual Assets paths omit the physical prefix used by the
     // nested CPK. Fall back only to a unique path-suffix match, never basename-only.
-    if (!matches.length && gameRooted) {
-      const suffix = new RegExp("(?:^|/)" + escapedRelative(relative) + "$", "i");
-      matches = archivePaths.filter((archivePath) => suffix.test(archivePath));
-      if (matches.length > 1) {
-        throw new Error("Ambiguous " + kind + " reference inside the nested face CPK: " + raw);
+    // Also try a platform-folder-stripped form so #Windx11 / #Win references can
+    // resolve when the packed file lives under plain sourceimages/.
+    if (!matches.length) {
+      const candidates = [relative];
+      const stripped = stripPlatformFolders(relative);
+      if (stripped && stripped !== relative) candidates.push(stripped);
+
+      for (const candidate of candidates) {
+        const suffix = new RegExp("(?:^|/)" + escapedRelative(candidate) + "$", "i");
+        const suffixMatches = archivePaths.filter((archivePath) => suffix.test(archivePath));
+        if (suffixMatches.length === 1) {
+          matches = suffixMatches;
+          break;
+        }
+        if (suffixMatches.length > 1) {
+          throw new Error("Ambiguous " + kind + " reference inside the nested face CPK: " + raw);
+        }
       }
     }
-    if (!matches.length) throw new Error(kind + " reference does not resolve inside the nested face CPK: " + raw);
+
+    if (!matches.length) {
+      const presentTextures = archivePaths
+        .filter((p) => /\.(?:dds)$/i.test(p))
+        .slice(0, 12)
+        .map((p) => p.split("/").slice(-3).join("/"))
+        .join(", ");
+      throw new Error(
+        kind +
+          " reference does not resolve inside the nested face CPK: " +
+          raw +
+          (presentTextures
+            ? " (nested CPK texture samples: " + presentTextures + (archivePaths.filter((p) => /\.dds$/i.test(p)).length > 12 ? ", …" : "") + ")"
+            : " (nested CPK contains no .dds textures)"),
+      );
+    }
     return matches;
   };
 
@@ -116,7 +204,11 @@ function verifyFaceXmlReferences(
     if (!modelEntry) throw new Error("Resolved model entry disappeared from the nested face CPK: " + modelPath);
     const modelBytes = archiveBytes.subarray(modelEntry.offset, modelEntry.offset + modelEntry.size);
     const modelInspection = inspectModelHeader(modelBytes);
-    if (!modelInspection.valid) throw new Error("Referenced PES 2017 model is invalid: " + modelPath + " (" + modelInspection.details.join("; ") + ")");
+    if (!modelInspection.valid) {
+      throw new Error(
+        "Referenced PES 2017 model is invalid: " + modelPath + " (" + modelInspection.details.join("; ") + ")",
+      );
+    }
   }
   // Both names occur in the pinned Team Compiler's real face fixtures and output conventions.
   const head = resolvedModels.find((name) => /(?:^|\/)(?:oral_)?face_high_win32\.model$/i.test(name));
@@ -129,7 +221,9 @@ function verifyFaceXmlReferences(
   for (const materialPath of resolvedMaterials) {
     const materialEntry = files.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === materialPath);
     if (!materialEntry) continue;
-    const materialXml = archiveBytes.subarray(materialEntry.offset, materialEntry.offset + materialEntry.size).toString("utf8");
+    const materialXml = archiveBytes
+      .subarray(materialEntry.offset, materialEntry.offset + materialEntry.size)
+      .toString("utf8");
     if (!/<materialset(?:\s|>)/i.test(materialXml) || !/<\/materialset\s*>\s*$/i.test(materialXml)) {
       throw new Error("Referenced PES 2017 material set is not a complete materialset document: " + materialPath);
     }
@@ -140,7 +234,12 @@ function verifyFaceXmlReferences(
       }
       const texturePath = attributes.get("path");
       if (!texturePath) throw new Error("Material sampler is missing its texture path: " + materialPath);
-      const materialDirectory = materialEntry.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/").toLowerCase();
+      const materialDirectory = materialEntry.path
+        .replaceAll("\\", "/")
+        .split("/")
+        .slice(0, -1)
+        .join("/")
+        .toLowerCase();
       const local = localReference(texturePath);
       if (local !== null) {
         const localTextures = resolve(texturePath, "texture", materialDirectory);
@@ -149,7 +248,11 @@ function verifyFaceXmlReferences(
           if (!localEntry) throw new Error("Resolved local texture disappeared from the nested face CPK: " + localPath);
           const textureBytes = archiveBytes.subarray(localEntry.offset, localEntry.offset + localEntry.size);
           const dds = inspectDdsHeader(textureBytes);
-          if (!dds.valid) throw new Error("Local player texture is not a valid DDS: " + localPath + " (" + dds.details.join("; ") + ")");
+          if (!dds.valid) {
+            throw new Error(
+              "Local player texture is not a valid DDS: " + localPath + " (" + dds.details.join("; ") + ")",
+            );
+          }
         }
         textures.push(...localTextures);
         continue;
@@ -160,18 +263,38 @@ function verifyFaceXmlReferences(
       const virtualPath = texturePath.trim().replaceAll("\\", "/").replace(/^\/+/, "").toLowerCase();
       if (virtualPath.startsWith("model/character/uniform/common/")) {
         const outerPath = "common/character1/" + virtualPath;
-        const outerEntry = outerFiles.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === outerPath);
+        const outerEntry = outerFiles.find(
+          (file) => file.path.replaceAll("\\", "/").toLowerCase() === outerPath,
+        );
         if (!outerEntry) throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
         const textureBytes = outerBytes.subarray(outerEntry.offset, outerEntry.offset + outerEntry.size);
         const dds = inspectDdsHeader(textureBytes);
-        if (!dds.valid) throw new Error("Player texture in the outer team CPK is not a valid DDS: " + texturePath + " (" + dds.details.join("; ") + ")");
+        if (!dds.valid) {
+          throw new Error(
+            "Player texture in the outer team CPK is not a valid DDS: " +
+              texturePath +
+              " (" +
+              dds.details.join("; ") +
+              ")",
+          );
+        }
         textures.push(outerPath);
       } else if (virtualPath.startsWith("common/character1/")) {
-        const outerEntry = outerFiles.find((file) => file.path.replaceAll("\\", "/").toLowerCase() === virtualPath);
+        const outerEntry = outerFiles.find(
+          (file) => file.path.replaceAll("\\", "/").toLowerCase() === virtualPath,
+        );
         if (!outerEntry) throw new Error("Player texture reference does not resolve in the outer team CPK: " + texturePath);
         const textureBytes = outerBytes.subarray(outerEntry.offset, outerEntry.offset + outerEntry.size);
         const dds = inspectDdsHeader(textureBytes);
-        if (!dds.valid) throw new Error("Player texture in the outer team CPK is not a valid DDS: " + texturePath + " (" + dds.details.join("; ") + ")");
+        if (!dds.valid) {
+          throw new Error(
+            "Player texture in the outer team CPK is not a valid DDS: " +
+              texturePath +
+              " (" +
+              dds.details.join("; ") +
+              ")",
+          );
+        }
         textures.push(virtualPath);
       }
     }
@@ -181,7 +304,9 @@ function verifyFaceXmlReferences(
 
 /** Verify the Team Compiler's outer team CPK and requested nested player-face CPK. */
 export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): Pes2017FaceCpkVerification {
-  if (!/^[0-9]{1,6}$/.test(expectedPlayerId) || /^0+$/.test(expectedPlayerId)) throw new Error("Expected PES 2017 player ID must be a non-zero numeric ID of up to six digits.");
+  if (!/^[0-9]{1,6}$/.test(expectedPlayerId) || /^0+$/.test(expectedPlayerId)) {
+    throw new Error("Expected PES 2017 player ID must be a non-zero numeric ID of up to six digits.");
+  }
   const outerInspection = inspectCpk(bytes);
   if (!outerInspection.valid || outerInspection.fileCount === 0) {
     throw new Error("Independent outer CPK read-back failed: " + outerInspection.errors.join("; "));
@@ -189,10 +314,14 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
 
   const expectedFaceDirectory = "common/character0/model/character/face/real/" + expectedPlayerId;
   const expectedFaceCpk = expectedFaceDirectory + ".cpk";
-  const candidates = outerInspection.files.filter((entry) =>
-    entry.path.replaceAll("\\", "/").toLowerCase() === expectedFaceCpk.toLowerCase()
+  const candidates = outerInspection.files.filter(
+    (entry) => entry.path.replaceAll("\\", "/").toLowerCase() === expectedFaceCpk.toLowerCase(),
   );
-  if (!candidates.length) throw new Error("PES 2017 team CPK has no nested player-face CPK for target player ID " + expectedPlayerId + ".");
+  if (!candidates.length) {
+    throw new Error(
+      "PES 2017 team CPK has no nested player-face CPK for target player ID " + expectedPlayerId + ".",
+    );
+  }
 
   const failures: string[] = [];
   for (const candidate of candidates) {
@@ -209,12 +338,25 @@ export function verifyPes2017FaceCpk(bytes: Buffer, expectedPlayerId: string): P
     }
     const faceDirectory = faceXml.path.replaceAll("\\", "/").split("/").slice(0, -1).join("/");
     if (faceDirectory.toLowerCase() !== expectedFaceDirectory.toLowerCase()) {
-      failures.push(candidate.path + ": face.xml is stored under internal folder " + (faceDirectory || "<root>") + ", expected " + expectedFaceDirectory);
+      failures.push(
+        candidate.path +
+          ": face.xml is stored under internal folder " +
+          (faceDirectory || "<root>") +
+          ", expected " +
+          expectedFaceDirectory,
+      );
       continue;
     }
     try {
       const xmlBytes = nestedBytes.subarray(faceXml.offset, faceXml.offset + faceXml.size);
-      const references = verifyFaceXmlReferences(xmlBytes, faceInspection.files, faceXml.path, nestedBytes, outerInspection.files, bytes);
+      const references = verifyFaceXmlReferences(
+        xmlBytes,
+        faceInspection.files,
+        faceXml.path,
+        nestedBytes,
+        outerInspection.files,
+        bytes,
+      );
       return {
         outerInspection,
         faceCpkPath: candidate.path,

@@ -49,7 +49,7 @@ describe("PES 2017 nested face CPK verification",()=>{
     expect(result.referencedTextures.some(path=>path.endsWith("/face.dds"))).toBe(true);
   });
   it("accepts legacy ./Asset game-rooted face model paths",()=>{
-    const rootedXml=Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\\n<config><model path="./Asset/model/character/face/real/71405/face_high_?????.model" material="./face.mtl"/></config>');
+    const rootedXml=Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n<config><model path="./Asset/model/character/face/real/71405/face_high_?????.model" material="./face.mtl"/></config>');
     const rootedFiles=faceFiles.map(file=>file.path==="face.xml"?{...file,data:rootedXml}:file);
     const result=verifyPes2017FaceCpk(teamArchive(rootedFiles),"71405");
     expect(result.faceModelPath.endsWith("face_high_win32.model")).toBe(true);
@@ -66,7 +66,7 @@ describe("PES 2017 nested face CPK verification",()=>{
     expect(result.referencedTextures).toContain("common/character0/model/character/face/real/71405/packed-textures/sourceimages/face_bsm_alp.dds");
   });
   it("accepts a literal #Win directory and wildcard oral model reference",()=>{
-    const rootedXml=Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\\n<config>\\n'+
+    const rootedXml=Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'+
       '<model path="./face_high_*.model" material="./face.mtl"/>'+
       '<model path="./Asset/model/character/face/real/71405/#Win/oral_taping_*.model" material="./face.mtl"/>'+
       '</config>');
@@ -76,6 +76,39 @@ describe("PES 2017 nested face CPK verification",()=>{
     ];
     const result=verifyPes2017FaceCpk(teamArchive(files.map(file=>file.path==="face.xml"?{...file,data:rootedXml}:file)),"71405");
     expect(result.referencedModels.some(path=>path.endsWith("/#win/oral_taping_win32.model"))).toBe(true);
+  });
+  it("accepts ./sourceimages/#Windx11 texture references when the DDS is packed under that path",()=>{
+    const platformMtl=mtl("./sourceimages/#Windx11/texture.dds");
+    const files=[
+      {...faceFiles[0]},
+      {...faceFiles[1]},
+      {...faceFiles[2],data:platformMtl},
+      {path:"sourceimages/#Windx11/texture.dds",data:ddsFixture()},
+    ];
+    const result=verifyPes2017FaceCpk(teamArchive(files),"71405");
+    expect(result.referencedTextures.some(path=>path.endsWith("sourceimages/#windx11/texture.dds"))).toBe(true);
+  });
+  it("resolves #Windx11 texture reference to a plain sourceimages DDS via platform-stripped suffix",()=>{
+    const platformMtl=mtl("./sourceimages/#Windx11/face_bsm_alp.dds");
+    const files=[
+      {...faceFiles[0]},
+      {...faceFiles[1]},
+      {...faceFiles[2],data:platformMtl},
+      {path:"sourceimages/face_bsm_alp.dds",data:ddsFixture()},
+    ];
+    const result=verifyPes2017FaceCpk(teamArchive(files),"71405");
+    expect(result.referencedTextures.some(path=>path.endsWith("sourceimages/face_bsm_alp.dds"))).toBe(true);
+  });
+  it("resolves full /Assets/.../sourceimages/face_bsm_alp.dds when packed under a nested relative path",()=>{
+    const rootedMtl=mtl("/Assets/pes16/model/character/face/real/176104/sourceimages/face_bsm_alp.dds");
+    const files=[
+      {...faceFiles[0]},
+      {...faceFiles[1]},
+      {...faceFiles[2],data:rootedMtl},
+      {path:"sourceimages/face_bsm_alp.dds",data:ddsFixture()},
+    ];
+    const result=verifyPes2017FaceCpk(teamArchive(files,"176104"),"176104");
+    expect(result.referencedTextures.some(path=>path.endsWith("sourceimages/face_bsm_alp.dds"))).toBe(true);
   });
   it("accepts Team Compiler face_high wildcard references and validates their material texture",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(),"71405");
