@@ -37,7 +37,7 @@ function localReference(value: string): string | null {
 }
 
 function escapedRelative(relative: string): string {
-  return relative.replace(/[.+^$()|\\\\]/g, "\\\\$&").replaceAll("*", ".*").replaceAll("?", ".");
+  return relative.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
 }
 
 function verifyFaceXmlReferences(
