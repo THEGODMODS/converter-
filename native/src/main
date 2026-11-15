@@ -2215,4 +2215,3 @@ mod nested_face_archive_selection_tests {
         ];
         assert!(choose_nested_face_cpk_index(&candidates, "70101").unwrap_err().contains("multiple"));
     }
-}
