@@ -1806,7 +1806,7 @@ mod face_source_path_tests {
         std::fs::write(sourceimages.join("face_bsm_alp.dds"), b"dds").unwrap();
         let mut directory = "/Assets/pes16/model/character/face/real/176104/sourceimages/".to_string();
         assert!(super::normalize_fox_face_texture_directory(&root, &mut directory, "face_bsm_alp.dds"));
-        assert_eq!(directory, "sourceimages/");
+        assert_eq!(directory, "sourceimages/#windx11/");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
