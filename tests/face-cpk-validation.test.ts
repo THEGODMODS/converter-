@@ -45,14 +45,14 @@ describe("PES 2017 nested face CPK verification",()=>{
       ? {...file,data:xml("./face_high_?????.model")}
       : file.path==="face.mtl" ? {...file,data:rootedMtl} : file);
     const result=verifyPes2017FaceCpk(teamArchive(rootedFiles),"71405");
-    expect(result.faceModelPath).toMatch(/face_high_win32\\.model$/i);
+    expect(result.faceModelPath.endsWith("face_high_win32.model")).toBe(true);
     expect(result.referencedTextures.some(path=>path.endsWith("/face.dds"))).toBe(true);
   });
   it("accepts legacy ./Asset game-rooted face model paths",()=>{
     const rootedXml=Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\\n<config><model path="./Asset/model/character/face/real/71405/face_high_?????.model" material="./face.mtl"/></config>');
     const rootedFiles=faceFiles.map(file=>file.path==="face.xml"?{...file,data:rootedXml}:file);
     const result=verifyPes2017FaceCpk(teamArchive(rootedFiles),"71405");
-    expect(result.faceModelPath).toMatch(/face_high_win32\\.model$/i);
+    expect(result.faceModelPath.endsWith("face_high_win32.model")).toBe(true);
   });
   it("accepts Team Compiler face_high wildcard references and validates their material texture",()=>{
     const result=verifyPes2017FaceCpk(teamArchive(),"71405");
