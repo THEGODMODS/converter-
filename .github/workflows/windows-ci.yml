@@ -117,9 +117,8 @@ jobs:
 
   release:
     name: Publish updater-enabled Windows release
-    # Run independently of quality: a successful installer build must not be skipped
-    # merely because the separate quality job is still running or fails.
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    needs: quality
+    if: needs.quality.result == 'success' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     permissions:
       contents: write
     runs-on: windows-latest
