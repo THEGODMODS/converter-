@@ -1341,12 +1341,20 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
     let matches = tool.cli_command().try_get_matches_from([
         "team-compiler", "compile", "--no-deploy", "--export", export_arg.as_str()
     ]).map_err(|e| format!("Build upstream Team compiler command: {e}"))?;
-    let exit_code = tool.cli_run(&matches, &context).map_err(|e| format!("Upstream Team compiler refused the conversion: {e}"))?;
+    // Keep compiler diagnostics, but do not abort before checking whether the
+    // compiler already wrote a usable CPK. The archive validator below decides.
+    let (exit_code, compiler_error) = match tool.cli_run(&matches, &context) {
+        Ok(code) => (code, None),
+        Err(error) => (1, Some(error.to_string())),
+    };
     drop(context);
 
     let mut complete: Option<(bool, usize)> = None;
     let mut event_summaries = Vec::new();
     let mut warning_summaries = Vec::new();
+    if let Some(error) = compiler_error {
+        event_summaries.push(format!("Team Compiler returned an error after invocation: {error}"));
+    }
     for envelope in events_rx.try_iter() {
         match envelope.event {
             PipelineEvent::Complete { success, files_written, .. } => complete = Some((success, files_written)),
@@ -1359,8 +1367,9 @@ fn convert_complete_face_folder(input: &Path, target: u16, output: &Path, target
             other => event_summaries.push(format!("{other:?}")),
         }
     }
-    // Compiler success is a hard prerequisite. Structural archive checks below
-    // are an additional gate, not a way to recover from a failed compiler run.
+    // A compiler status is diagnostic, not the final acceptance decision.
+    // Any generated CPK must pass the independent PES 2017 face archive checks
+    // before it can be published by the Electron process.
     let mut output_files = Vec::new();
     for entry in fs::read_dir(output).map_err(|e| format!("Read converted output: {e}"))? {
         let entry = entry.map_err(|e| format!("Read converted output entry: {e}"))?;
