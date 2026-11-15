@@ -114,12 +114,21 @@ jobs:
           if (!(Test-Path 'release/latest.yml')) { throw 'Installer build did not generate latest.yml.' }
           if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'Installer build did not generate an NSIS blockmap.' }
           if (!(Test-Path 'release/win-unpacked/resources/app-update.yml')) { throw 'Packaged app is missing updater feed configuration.' }
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FACE-FORGE-v0.3.6-Windows-Installer
+          path: |
+            release/*.exe
+            release/latest.yml
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
 
   release:
     name: Publish updater-enabled Windows release
-    # Run independently of quality: a successful installer build must not be skipped
-    # merely because the separate quality job is still running or fails.
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    needs: quality
+    if: needs.quality.result == 'success' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     permissions:
       contents: write
     runs-on: windows-latest

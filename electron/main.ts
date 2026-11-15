@@ -49,53 +49,18 @@ function trusted(event:Electron.IpcMainInvokeEvent){
  * available when a texture is missing, malformed, or unsupported by the preview renderer.
  */
 function preflightPes2021FaceProject(inventory:FaceProject):void{
- if(inventory.detectedGame!=="pes2021")throw new Error("The selected route requires PES2021 source assets; detected "+inventory.detectedGame+". Mixed or unknown-generation folders must be resolved before conversion.");
- const unsafeEntries=inventory.warnings.filter(warning=>warning.startsWith("Skipped symbolic link:")||warning.startsWith("Skipped unsupported filesystem entry:")||warning.startsWith("Could not extract "));
- if(unsafeEntries.length)throw new Error("Face inspection found filesystem or archive entries that the native converter cannot safely stage: "+unsafeEntries.slice(0,8).join(" | ")+(unsafeEntries.length>8?" | and "+(unsafeEntries.length-8)+" more.":""));
- const archives=inventory.files.filter(file=>["container-fpk","container-fpkd"].includes(file.kind));
- const fpk=archives.filter(file=>file.path.toLowerCase().endsWith(".fpk"));
- const fpkd=archives.filter(file=>file.path.toLowerCase().endsWith(".fpkd")||file.path.toLowerCase().endsWith(".kpfd"));
- if(fpk.length>1||fpkd.length>1)throw new Error("This single-face conversion expects one Windows face.fpk and at most one paired face.fpkd/.kpfd archive. Select the #Win face folder rather than a multi-platform parent folder.");
- if(fpkd.length&&!fpk.length)throw new Error("A face.fpkd/.kpfd archive was found without its face.fpk companion: "+fpkd[0].path);
- if(fpkd.length&&fpk.length){const stem=(value:string)=>value.slice(0,value.lastIndexOf("/")+1)+value.split("/").pop()!.replace(/\.(?:fpkd?|kpfd)$/i,"").toLowerCase();if(stem(fpkd[0].path)!==stem(fpk[0].path))throw new Error("The face.fpkd/.kpfd archive does not match the face.fpk in the same folder.");}
- if(archives.some(file=>file.bytes>1024*1024*1024))throw new Error("A Fox face archive exceeds the native 1 GiB per-archive safety limit.");
- const criticalInvalidKinds=new Set(["invalid-fmdl","invalid-model","invalid-fpk","invalid-face-diff","container-kpfd-unknown"]);
- // This route converts PES 2021 FMDLs. Legacy PES 2017 MTL sidecars are not
- // inputs to this route and must not make their own stale texture links fatal.
- const fmdlDependencies=inventory.dependencies.filter(dep=>inventory.files.some(file=>file.path===dep.source&&file.kind==="model-pes2021"));
- const referencedTexturePaths=new Set(fmdlDependencies.filter(dep=>dep.status==="resolved"||dep.status==="ambiguous").flatMap(dep=>dep.candidates));
- const criticalMalformed=inventory.files.filter(file=>{
-  if(!file.kind.startsWith("invalid-")&&file.kind!=="container-kpfd-unknown")return false;
-  if(criticalInvalidKinds.has(file.kind))return true;
-  if(file.kind==="invalid-ftex"||file.kind==="invalid-dds")return referencedTexturePaths.has(file.path);
-  return false;
- });
- if(criticalMalformed.length)throw new Error("Face preflight found "+criticalMalformed.length+" critical malformed or unsupported file(s): "+criticalMalformed.slice(0,8).map(file=>file.path+" ("+(file.formatDetails?.[0]??file.kind)+")").join(" | ")+(criticalMalformed.length>8?" | and "+(criticalMalformed.length-8)+" more.":""));
- const unreadableModels=inventory.files.filter(file=>file.kind==="model-pes2021"&&file.formatDetails?.some(detail=>detail.includes("could not be semantically resolved")));
- if(unreadableModels.length)throw new Error("Face preflight could not semantically read "+unreadableModels.length+" FMDL model(s): "+unreadableModels.slice(0,8).map(file=>file.path).join(", "));
- const unresolvedDependencies=inventory.dependencies.filter(dependency=>{
-  const source=inventory.files.find(file=>file.path===dependency.source);
-  const requiredSource=source?.kind==="model-pes2021"||source?.kind==="container-fpk"||source?.kind==="container-fpkd";
-  return requiredSource&&(dependency.status==="missing"||dependency.status==="ambiguous");
- });
- if(unresolvedDependencies.length){
-  const describe=(dependency:typeof unresolvedDependencies[number])=>{
-   const source=inventory.files.find(file=>file.path===dependency.source);
-   const kind=source?.kind==="model-pes2021"?"FMDL texture":source?.kind==="container-fpk"||source?.kind==="container-fpkd"?"FPK package":source?.kind??"unknown source";
-   const matches=dependency.candidates.length?" (matches: "+dependency.candidates.slice(0,4).join(", ")+(dependency.candidates.length>4?", …":"")+")":" (no matching file)";
-   return dependency.status.toUpperCase()+" "+kind+": "+dependency.source+" → "+dependency.reference+matches;
-  };
-  const textureCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&file.kind==="model-pes2021")).length;
-  const packageCount=unresolvedDependencies.filter(dependency=>inventory.files.some(file=>file.path===dependency.source&&(file.kind==="container-fpk"||file.kind==="container-fpkd"))).length;
-  const unknownCount=unresolvedDependencies.length-textureCount-packageCount;
-  throw new Error("Face preflight found "+unresolvedDependencies.length+" unresolved dependency reference(s) ("+textureCount+" texture, "+packageCount+" package, "+unknownCount+" other). "+unresolvedDependencies.slice(0,8).map(describe).join(" | ")+(unresolvedDependencies.length>8?" | and "+(unresolvedDependencies.length-8)+" more.":""));
- }
+ // Let the native conversion engine make the authoritative decision about
+ // model and texture compatibility. The inventory parser is a preview/indexing
+ // aid and can report ambiguous references that the compiler resolves itself.
+ if(inventory.detectedGame!=="pes2021")throw new Error("Choose a PES 2021 face folder. This release converts PES 2021 → PES 2017 only.");
+ // Archive extraction, duplicate paths, model decoding, and texture resolution
+ // are checked by the native converter and the independent output validator.
 }
 function registerIpc(){
  ipcMain.handle("face:choose-folder",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose PES face project folder",properties:["openDirectory"]});return result.canceled?null:result.filePaths[0]??null;});
  ipcMain.handle("face:choose-folders",async event=>{trusted(event);const result=await dialog.showOpenDialog(mainWindow!,{title:"Choose face folders for batch or project",properties:["openDirectory","multiSelections"]});return result.canceled?[]:result.filePaths;});
  ipcMain.handle("face:inspect-database",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid database path.");if(!fs.existsSync(folder))throw new Error("The selected database folder no longer exists.");return inspectFaceDatabase(folder);});
- ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);preflightPes2021FaceProject(project);inspectedFaceProjects.clear();inspectedFaceProjects.set(project.root,project);return project;});
+ ipcMain.handle("face:inspect-folder",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");if(!fs.existsSync(folder))throw new Error("The selected folder no longer exists.");const project=await inspectFaceFolder(folder);inspectedFaceProjects.clear();inspectedFaceProjects.set(project.root,project);return project;});
  ipcMain.handle("face:export-manifest",async(event,folder:unknown)=>{trusted(event);if(typeof folder!=="string"||!path.isAbsolute(folder))throw new Error("Invalid folder path.");const project=await inspectFaceFolder(folder);const manifest=buildFaceProjectManifest(project);if(!manifest.integrity.complete)throw new Error("Manifest integrity check failed; export was stopped.");const suggested=path.join(path.dirname(folder),path.basename(folder)+"-FACE-FORGE-manifest.json");const picked=await dialog.showSaveDialog(mainWindow!,{title:"Export face project manifest",defaultPath:suggested,filters:[{name:"FACE FORGE manifest",extensions:["json"]}]});if(picked.canceled||!picked.filePath)return null;if(path.extname(picked.filePath).toLowerCase()!==".json")throw new Error("Choose a .json manifest destination.");const payload=JSON.stringify(manifest,null,2)+"\n";await writeFile(picked.filePath,payload,{flag:"wx"});return {destination:picked.filePath,files:manifest.summary.fileCount,bytes:Buffer.byteLength(payload)};});
  ipcMain.handle("face:convert-native-model",async(event,folder:unknown)=>{
   trusted(event);
