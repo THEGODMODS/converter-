@@ -36,6 +36,10 @@ function localReference(value: string): string | null {
   return relative.toLowerCase();
 }
 
+function escapedRelative(relative: string): string {
+  return relative.replace(/[.+^$()|\\\\]/g, "\\\\$&").replaceAll("*", ".*").replaceAll("?", ".");
+}
+
 function verifyFaceXmlReferences(
   xmlBytes: Buffer,
   files: CpkInspection["files"],
@@ -63,7 +67,16 @@ function verifyFaceXmlReferences(
     const target = (directory ? directory + "/" : "") + relative;
     const escaped = target.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
     const matcher = new RegExp("^" + escaped + "$", "i");
-    const matches = archivePaths.filter((archivePath) => matcher.test(archivePath));
+    let matches = archivePaths.filter((archivePath) => matcher.test(archivePath));
+    // Some game-virtual Assets paths omit the physical prefix used by the
+    // nested CPK. Fall back only to a unique path-suffix match, never basename-only.
+    if (!matches.length && gameRooted) {
+      const suffix = new RegExp("(?:^|/)" + escapedRelative(relative) + "$", "i");
+      matches = archivePaths.filter((archivePath) => suffix.test(archivePath));
+      if (matches.length > 1) {
+        throw new Error("Ambiguous " + kind + " reference inside the nested face CPK: " + raw);
+      }
+    }
     if (!matches.length) throw new Error(kind + " reference does not resolve inside the nested face CPK: " + raw);
     return matches;
   };
