@@ -60,7 +60,7 @@ function verifyFaceXmlReferences(
   const resolve = (raw: string, kind: string, baseDirectory = xmlDirectory): string[] => {
     const relative = localReference(raw);
     if (relative === null) return [];
-    if (/[#[\]{}]/.test(relative)) throw new Error("Unsupported " + kind + " reference: " + raw);
+    if (/[[\]{}]/.test(relative)) throw new Error("Unsupported " + kind + " reference: " + raw);
     const gameRooted = /^\/{0,2}Assets\/pes16\/model\/character\/face\/real\/[0-9]{1,6}\//i.test(raw.trim().replaceAll("\\", "/")) ||
       /^\.\/Asset\/model\/character\/face\/real\/[0-9]{1,6}\//i.test(raw.trim().replaceAll("\\", "/"));
     const directory = gameRooted ? xmlDirectory : baseDirectory;
