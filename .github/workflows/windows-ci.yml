@@ -114,6 +114,16 @@ jobs:
           if (!(Test-Path 'release/latest.yml')) { throw 'Installer build did not generate latest.yml.' }
           if (@(Get-ChildItem 'release' -Filter '*.blockmap' -File).Count -lt 1) { throw 'Installer build did not generate an NSIS blockmap.' }
           if (!(Test-Path 'release/win-unpacked/resources/app-update.yml')) { throw 'Packaged app is missing updater feed configuration.' }
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FACE-FORGE-v0.3.6-Windows-Installer
+          path: |
+            release/*.exe
+            release/latest.yml
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
 
   release:
     name: Publish updater-enabled Windows release
