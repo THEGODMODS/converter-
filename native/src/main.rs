@@ -769,11 +769,11 @@ fn resolve_texture_stem_conflicts_for_references(
                 "Ambiguous texture stem conflict '{stem}' in the selected face folder. Team Compiler requires one image per stem in each folder; source FMDLs must identify exactly one variant. Conflicting files: {names}"
             ));
         }
-        let keep = selected[0];
-        for path in files {
-            if &path == keep { continue; }
-            fs::remove_file(&path).map_err(|e| format!("Remove unreferenced conflicting texture variant {}: {e}", path.display()))?;
-            removed.push(path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/"));
+        let keep = (*selected[0]).clone();
+        for path in &files {
+            if path == &keep { continue; }
+            fs::remove_file(path).map_err(|e| format!("Remove unreferenced conflicting texture variant {}: {e}", path.display()))?;
+            removed.push(path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/"));
         }
     }
     removed.sort();
