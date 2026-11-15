@@ -314,20 +314,33 @@ fn normalize_fox_face_texture_directory(
     if !folded.contains("/model/character/face/real/") || !folded.contains("/sourceimages/") {
         return false;
     }
-    // PES 2017 nested face CPKs must not depend on Fox platform folders such as
-    // #Windx11. Prefer a plain sourceimages/ binding; if the DDS only exists under
-    // a platform folder, still emit a plain sourceimages/ path so Team Compiler
-    // packs a path the PES 2017 validator accepts (platform folders are flattened
-    // onto sourceimages/ before compile).
-    let variants = ["sourceimages", "sourceimages/#windx11", "sourceimages/#win"];
+    // Resolve the actual texture directory relative to the model directory.
+    // Preserve the platform folder when the FMDL itself names one; otherwise
+    // prefer plain sourceimages, falling back to the available platform folder.
+    // Team Compiler resolves these references relative to the exported model.
+    let prefers_windx11 = folded.contains("/sourceimages/#windx11/");
+    let prefers_win = folded.contains("/sourceimages/#win/");
+    let variants: &[&str] = if prefers_windx11 {
+        &["sourceimages/#windx11", "sourceimages", "sourceimages/#win"]
+    } else if prefers_win {
+        &["sourceimages/#win", "sourceimages", "sourceimages/#windx11"]
+    } else {
+        &["sourceimages", "sourceimages/#windx11", "sourceimages/#win"]
+    };
     for ancestor in model_directory.ancestors() {
         for relative in variants {
             let texture_directory = ancestor.join(relative);
             if !texture_directory.join(file_name).is_file() {
                 continue;
             }
-            // Always rewrite to plain sourceimages/ relative to the model folder.
-            *directory = "sourceimages/".to_string();
+            let Some(relative_path) = relative_directory(model_directory, &texture_directory) else {
+                continue;
+            };
+            let mut normalized = relative_path.to_string_lossy().replace('\\', "/");
+            if !normalized.ends_with('/') {
+                normalized.push('/');
+            }
+            *directory = normalized;
             return true;
         }
     }
