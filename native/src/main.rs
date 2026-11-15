@@ -746,6 +746,41 @@ fn resolve_face_texture_stem_conflicts(root: &Path) -> Result<Vec<String>, Strin
 
     let mut referenced = std::collections::HashSet::new();
     walk_models(root, root, &mut referenced)?;
+    resolve_texture_stem_conflicts_for_references(root, &referenced)
+}
+
+fn resolve_texture_stem_conflicts_for_references(
+    root: &Path,
+    referenced: &std::collections::HashSet<PathBuf>,
+) -> Result<Vec<String>, String> {
+    fn collect_textures(
+        root: &Path,
+        current: &Path,
+        groups: &mut std::collections::HashMap<(PathBuf, String), Vec<PathBuf>>,
+    ) -> Result<(), String> {
+        const IMAGE_EXTENSIONS: &[&str] = &["dds", "ftex", "png", "jpg", "jpeg", "bmp", "webp", "tga", "tif", "tiff", "jxl"];
+        for entry in fs::read_dir(current).map_err(|e| format!("Read staged face folder {}: {e}", current.display()))? {
+            let entry = entry.map_err(|e| format!("Read staged face entry: {e}"))?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path).map_err(|e| format!("Inspect staged face entry {}: {e}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!("Symbolic links are not accepted in staged face data: {}", path.display()));
+            }
+            if metadata.is_dir() {
+                collect_textures(root, &path, groups)?;
+                continue;
+            }
+            if !metadata.is_file() { continue; }
+            let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
+            if !IMAGE_EXTENSIONS.contains(&extension.as_str()) { continue; }
+            let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
+            let parent = path.parent().unwrap_or(root);
+            let parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+            groups.entry((parent, stem)).or_default().push(path);
+        }
+        Ok(())
+    }
+
     let mut groups = std::collections::HashMap::new();
     collect_textures(root, root, &mut groups)?;
     let mut removed = Vec::new();
@@ -1751,28 +1786,50 @@ mod face_source_path_tests {
 }
 #[cfg(test)]
 mod face_texture_stem_conflict_tests {
-    use super::resolve_face_texture_stem_conflicts;
-    use std::path::Path;
+    use super::resolve_texture_stem_conflicts_for_references;
 
     #[test]
-    fn keeps_the_exact_texture_variant_referenced_by_the_fmdl() {
+    fn keeps_the_exact_referenced_texture_and_removes_only_the_conflicting_variant() {
         let root = std::env::temp_dir().join(format!("face-forge-texture-stem-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("face_srm.ftex"), b"referenced-ftex").unwrap();
-        std::fs::write(root.join("face_srm.dds"), b"unused-dds-variant").unwrap();
-        let referenced = std::fs::canonicalize(root.join("face_srm.ftex")).unwrap();
-        let files = vec![root.join("face_srm.ftex"), root.join("face_srm.dds")];
-        let mut selected = std::collections::HashSet::new();
-        selected.insert(referenced);
-        let groups = files;
-        let stem = Path::new("face_srm");
-        assert_eq!(stem.to_string_lossy(), "face_srm");
-        // Exercise the production resolver through a minimal valid FMDL fixture
-        // in the dedicated integration test; this unit fixture guards path setup.
-        assert!(groups.iter().all(|path| path.exists()));
+        let ftex = root.join("face_srm.ftex");
+        let dds = root.join("face_srm.dds");
+        std::fs::write(&ftex, b"referenced-ftex").unwrap();
+        std::fs::write(&dds, b"unused-dds-variant").unwrap();
+        let referenced = std::collections::HashSet::from([std::fs::canonicalize(&ftex).unwrap()]);
+        let removed = resolve_texture_stem_conflicts_for_references(&root, &referenced).unwrap();
+        assert_eq!(removed, vec!["face_srm.dds"]);
+        assert!(ftex.exists());
+        assert!(!dds.exists());
         std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(selected.len(), 1);
+    }
+
+    #[test]
+    fn refuses_to_guess_when_no_conflicting_variant_is_referenced() {
+        let root = std::env::temp_dir().join(format!("face-forge-texture-stem-ambiguous-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("face_trm.ftex"), b"ftex").unwrap();
+        std::fs::write(root.join("face_trm.dds"), b"dds").unwrap();
+        let error = resolve_texture_stem_conflicts_for_references(&root, &std::collections::HashSet::new()).unwrap_err();
+        assert!(error.contains("Ambiguous texture stem conflict 'face_trm'"));
+        assert!(root.join("face_trm.ftex").exists());
+        assert!(root.join("face_trm.dds").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn does_not_confuse_same_stems_in_separate_directories() {
+        let root = std::env::temp_dir().join(format!("face-forge-texture-stem-folders-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("a")).unwrap();
+        std::fs::create_dir_all(root.join("b")).unwrap();
+        std::fs::write(root.join("a/face_srm.ftex"), b"a").unwrap();
+        std::fs::write(root.join("b/face_srm.dds"), b"b").unwrap();
+        let removed = resolve_texture_stem_conflicts_for_references(&root, &std::collections::HashSet::new()).unwrap();
+        assert!(removed.is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
 
